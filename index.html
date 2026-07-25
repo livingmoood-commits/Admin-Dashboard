@@ -64,6 +64,8 @@
   tr{ transition:background .15s; }
   tbody tr:hover td{ background:#f3ead9; }
   .tbl-wrap{ overflow-x:auto; }
+  .tbl-wrap-scroll{ overflow:auto; max-height:520px; }
+  .tbl-wrap-scroll thead th{ position:sticky; top:0; z-index:1; }
   .empty{ text-align:center; color:var(--muted); padding:24px; font-size:13px; }
 
   .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:18px; }
@@ -421,22 +423,29 @@ const PAGES = {
 document.getElementById('nav').addEventListener('click', e => {
   const btn = e.target.closest('button'); if (!btn) return; goTo(btn.dataset.page);
 });
+// كل مرة ندخل صفحة، بيتزود التوكن ده. أي صفحة قديمة لسه بتحمّل (fetch) بتتاكد قبل
+// ما تكتب في الـ DOM إن التوكن بتاعها لسه هو الحالي — لو المستخدم دخل صفحة تانية
+// قبل ما تخلص، بتلاقي التوكن اتغير فبتلغي نفسها من غير ما تكتب حاجة فوق الصفحة الجديدة
+let _navToken = 0;
 function goTo(page) {
   if (!PAGES[page]) page = 'dashboard';
+  const token = ++_navToken;
   sessionStorage.setItem('lm_currentPage', page);
   document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('active', b.dataset.page === page));
   document.getElementById('pageTitle').textContent = PAGES[page].title;
   document.getElementById('pageSub').textContent = PAGES[page].sub;
   if (!checkApiConfigured()) return;
   document.getElementById('content').innerHTML = '<div class="loading-row">جاري التحميل...</div>';
-  PAGES[page].render();
+  PAGES[page].render(token);
 }
+function isStaleNav(token){ return token !== undefined && token !== _navToken; }
 function showError(err){ document.getElementById('content').innerHTML = `<div class="panel"><div class="msg err" style="display:block;">حصل خطأ: ${err.message||err}</div></div>`; }
 
 /* ================= Dashboard ================= */
-async function renderDashboard() {
+async function renderDashboard(token) {
   try {
     const d = await apiGet('getDashboardData');
+    if (isStaleNav(token)) return;
     document.getElementById('content').innerHTML = `
       <div class="cards">
         <div class="card clickable" onclick="openEmployeesCard()"><div class="label">عدد الموظفين</div><div class="value">${d.employeesCount}</div></div>
@@ -522,9 +531,10 @@ function renderEmployeesListView(kind){
 }
 
 /* ================= Employees ================= */
-async function renderEmployees() {
+async function renderEmployees(token) {
   try {
     const { employees } = await apiGet('listEmployees');
+    if (isStaleNav(token)) return;
     document.getElementById('content').innerHTML = `
       <div class="grid2">
         <div class="panel">
@@ -600,11 +610,12 @@ async function deleteEmployeeConfirm(name){
 }
 
 /* ================= Log Hours & Evenings ================= */
-async function renderLogHours() {
+async function renderLogHours(token) {
   try {
     const [{employees}, {projects}, recentData] = await Promise.all([
       apiGet('listEmployees'), apiGet('listProjects'), apiGet('listHoursEntries', { filters:{limit:10} })
     ]);
+    if (isStaleNav(token)) return;
     document.getElementById('content').innerHTML = `
       <div class="grid2">
         <div class="panel">
@@ -665,9 +676,10 @@ async function deleteHoursEntryConfirm(id){
 }
 
 /* ================= Distribution ================= */
-async function renderDistribution() {
+async function renderDistribution(token) {
   try {
     const [{employees}, {projects}] = await Promise.all([apiGet('listEmployees'), apiGet('listProjects')]);
+    if (isStaleNav(token)) return;
     const wk = currentWeekRange();
     document.getElementById('content').innerHTML = `
       <div class="panel">
@@ -718,9 +730,10 @@ async function loadDistributionReport(){
 let _treasuryMoves = [];
 let _editingMoveId = null;
 
-async function renderTreasury() {
+async function renderTreasury(token) {
   try {
     const [summary, movesData] = await Promise.all([apiGet('getTreasurySummary'), apiGet('getTreasuryMoves', {})]);
+    if (isStaleNav(token)) return;
     _treasuryMoves = movesData.moves;
     _editingMoveId = null;
     document.getElementById('content').innerHTML = `
@@ -786,7 +799,7 @@ async function renderTreasury() {
 function renderTreasuryMoves(moves){
   const box = document.getElementById('movesBox');
   if (!moves.length){ box.innerHTML = '<div class="empty">مفيش حركات مسجلة</div>'; return; }
-  box.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>البيان</th><th>النوع</th><th>المشروع</th><th>المبلغ</th><th>الرصيد بعدها</th><th></th></tr></thead>
+  box.innerHTML = `<div class="tbl-wrap tbl-wrap-scroll"><table><thead><tr><th>التاريخ</th><th>البيان</th><th>النوع</th><th>المشروع</th><th>المبلغ</th><th>الرصيد بعدها</th><th></th></tr></thead>
     <tbody>${moves.map(m=>`<tr><td>${m.date}</td><td>${m.desc}</td><td><span class="pill ${m.type==='إيداع'?'dep':'exp'}">${m.type}</span></td><td>${m.project||'—'}</td>
       <td style="color:${m.type==='إيداع'?'var(--green)':'var(--red)'}">${fmt(m.amount)} ج</td><td>${fmt(m.balanceAfter)} ج</td>
       <td style="white-space:nowrap;"><button class="btn btn-sm btn-outline" onclick="editTreasuryMove('${m.id}')">تعديل</button>
@@ -820,9 +833,10 @@ async function deleteTreasuryMoveConfirm(id){
 }
 
 /* ================= Projects ================= */
-async function renderProjects() {
+async function renderProjects(token) {
   try {
     const { projects } = await apiGet('listProjectsSummary');
+    if (isStaleNav(token)) return;
     document.getElementById('content').innerHTML = `
       <div class="panel">
         <h3>ملخص تكلفة المشاريع (${projects.length})</h3>
@@ -835,18 +849,20 @@ async function renderProjects() {
     `;
   } catch(err){ showError(err); }
 }
+let _projectDetailCache = null;
 async function showProjectDetail(name){
   const box = document.getElementById('projectDetailBox');
   box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
     const d = await apiGet('getProjectFullSummary', { name });
+    _projectDetailCache = d;
     box.innerHTML = `
       <div class="panel">
         <h3>تفاصيل مشروع: ${d.project}</h3>
         <div class="cards">
           <div class="card"><div class="label">تكلفة العمالة</div><div class="value gold">${fmt(d.laborCost)} ج</div></div>
           <div class="card"><div class="label">ساعات العمالة</div><div class="value">${fmt(d.laborHours)} س</div></div>
-          <div class="card"><div class="label">تكلفة الخامات</div><div class="value gold">${fmt(d.materialsCost)} ج</div></div>
+          <div class="card clickable" onclick="showProjectMaterialsModal(_projectDetailCache)"><div class="label">تكلفة الخامات</div><div class="value gold">${fmt(d.materialsCost)} ج</div></div>
           <div class="card"><div class="label">إجمالي التكلفة</div><div class="value green">${fmt(d.totalCost)} ج</div></div>
           ${d.financials ? `<div class="card"><div class="label">الإيرادات المسجلة</div><div class="value green">${fmt(d.financials.revenue)} ج</div></div>` : ''}
         </div>
@@ -858,12 +874,27 @@ async function showProjectDetail(name){
     `;
   } catch(err){ box.innerHTML = `<div class="panel"><div class="msg err" style="display:block;">خطأ: ${err.message||err}</div></div>`; }
 }
+// بيفتح مودال فيه تفصيل كل خامة استخدمت في كل منتج بالمشروع ده (بيتفتح من كارت "تكلفة الخامات")
+function showProjectMaterialsModal(d){
+  if (!d) return;
+  const products = d.products || [];
+  const body = products.length ? products.map(p => {
+    const mats = p.materials || [];
+    const matRows = mats.map(m => `<tr><td>${m.name||''}</td><td>${fmt(m.qty)}</td><td>${m.unit||'—'}</td><td>${fmt(m.unitPrice)} ج</td><td>${fmt((Number(m.qty)||0)*(Number(m.unitPrice)||0))} ج</td></tr>`).join('');
+    return `<div style="margin-bottom:16px;">
+      <div style="font-weight:700;margin-bottom:8px;">${p.name} <span style="color:var(--gold-dim);font-weight:700;">— ${fmt(p.materialsCost)} ج</span></div>
+      ${matRows ? `<div class="tbl-wrap"><table><thead><tr><th>الخامة</th><th>الكمية</th><th>الوحدة</th><th>سعر الوحدة</th><th>الإجمالي</th></tr></thead><tbody>${matRows}</tbody></table></div>` : `<div class="empty">مفيش خامات مسجلة للمنتج ده</div>`}
+    </div>`;
+  }).join('') : `<div class="empty">مفيش منتجات مسجلة على المشروع ده</div>`;
+  openCardModal(`<h3 style="margin-bottom:14px;">خامات مشروع: ${d.project}</h3>${body}`);
+}
 
 /* ================= Product Costing ================= */
 let materialRows = [], laborRows = [];
-async function renderProducts() {
+async function renderProducts(token) {
   try {
     const [{projects}, {employees}, {products}] = await Promise.all([apiGet('listProjects'), apiGet('listEmployees'), apiGet('listProducts', {filters:{}})]);
+    if (isStaleNav(token)) return;
     materialRows = [{name:'',qty:'',unit:'',unitPrice:''}]; laborRows=[{employee:'',hours:''}];
     document.getElementById('content').innerHTML = `
       <div class="grid2">
@@ -953,9 +984,10 @@ async function deleteProductConfirm(id){
 }
 
 /* ================= Fixed Expenses ================= */
-async function renderFixedExp() {
+async function renderFixedExp(token) {
   try {
     const [{items}, dist] = await Promise.all([apiGet('listFixedExpenses'), apiGet('getFixedExpensesDistribution', {basis:'labor'})]);
+    if (isStaleNav(token)) return;
     document.getElementById('content').innerHTML = `
       <div class="grid2">
         <div class="panel">
@@ -1030,16 +1062,17 @@ function qRestoreSession(){
   } catch(e){ return false; }
 }
 
-async function renderQuotation(){
+async function renderQuotation(token){
   qPopulateCategoryList();
   if (qRestoreSession()) return QSTATE.subpage === 'preview' ? qRenderPreview() : qRenderEditor();
   QSTATE = { subpage:'home', customer:null, rows:[], discount:{percent:0,amount:0}, dollar:QCFG.defaultDollar };
-  return qRenderHome();
+  return qRenderHome(token);
 }
 
-async function qRenderHome(){
+async function qRenderHome(token){
   try {
     const { customers } = await apiGet('quoteListCustomers');
+    if (isStaleNav(token)) return;
     document.getElementById('content').innerHTML = `
       <div class="panel">
         <h3>إنشاء كوتيشن جديد</h3>
@@ -1438,16 +1471,17 @@ function pRestoreSession(){
   } catch(e){ return false; }
 }
 
-async function renderDebtors(){
+async function renderDebtors(token){
   if (pRestoreSession()) return PSTATE.subpage === 'preview' ? pRenderPreview() : pRenderEditor();
   PSTATE = { subpage:'home', customer:null, rows:[] };
-  return pRenderHome();
+  return pRenderHome(token);
 }
 
-async function pRenderHome(){
+async function pRenderHome(token){
   document.getElementById('content').innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
     const { customers } = await apiGet('payListCustomers');
+    if (isStaleNav(token)) return;
     const sorted = [...customers].sort((a,b) => String(b.date||'').localeCompare(String(a.date||'')));
     document.getElementById('content').innerHTML = `
       <div class="panel">
