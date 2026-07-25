@@ -193,7 +193,7 @@ function checkApiConfigured(){
 /* ================= Router ================= */
 const PAGES = {
   dashboard:    { title:'نظرة عامة', sub:'ملخص شامل لكل حاجة في المصنع', render: renderDashboard },
-  employees:    { title:'الموظفين', sub:'من شيت "تفاصيل المرتبات" مباشرة', render: renderEmployees },
+  employees:    { title:'الموظفين', sub:'من شيت "تفاصيل المرتبات" بتاع الشهر الحالي مباشرة', render: renderEmployees },
   logHours:     { title:'ساعات وسهرات', sub:'سجّل شغل أي صنايعي على أي مشروع', render: renderLogHours },
   distribution: { title:'توزيع تكلفة المرتبات', sub:'مين شغل فين، وكام ساعة، وسهر إمتى', render: renderDistribution },
   treasury:     { title:'الخزنة — Cash Flow', sub:'الرصيد الحالي، الداخل والخارج، الإيداعات والمصاريف', render: renderTreasury },
@@ -208,6 +208,8 @@ document.getElementById('nav').addEventListener('click', e => {
   const btn = e.target.closest('button'); if (!btn) return; goTo(btn.dataset.page);
 });
 function goTo(page) {
+  if (!PAGES[page]) page = 'dashboard';
+  sessionStorage.setItem('lm_currentPage', page);
   document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('active', b.dataset.page === page));
   document.getElementById('pageTitle').textContent = PAGES[page].title;
   document.getElementById('pageSub').textContent = PAGES[page].sub;
@@ -280,12 +282,12 @@ async function renderEmployees() {
         <div class="panel">
           <h3>قائمة الموظفين (${employees.length})</h3>
           <div class="tbl-wrap"><table>
-            <thead><tr><th>الاسم</th><th>طريقة القبض</th><th>اليومية</th><th>أجر الساعة</th><th></th></tr></thead>
+            <thead><tr><th>الاسم</th><th>طريقة القبض</th><th>اليومية</th><th>أجر الساعة</th><th>قبض الاسبوع</th><th>قبض الشهر</th><th></th></tr></thead>
             <tbody>${employees.length ? employees.map(e => `<tr>
-              <td>${e.name}</td><td>${e.paymentType}</td><td>${fmt(e.dailyRate)} ج</td><td>${fmt(e.hourlyRate)} ج</td>
+              <td>${e.name}</td><td>${e.paymentType}</td><td>${fmt(e.dailyRate)} ج</td><td>${fmt(e.hourlyRate)} ج</td><td>${fmt(e.weeklyPay)} ج</td><td>${fmt(e.monthlyPay)} ج</td>
               <td><button class="btn btn-sm btn-outline" onclick='editEmployee(${JSON.stringify(e).replace(/'/g,"&#39;")})'>تعديل</button>
                   <button class="btn btn-sm btn-danger" onclick="deleteEmployeeConfirm('${e.name.replace(/'/g,"\\'")}')">حذف</button></td>
-            </tr>`).join('') : `<tr><td colspan="5" class="empty">مفيش موظفين مسجلين في شيت المرتبات</td></tr>`}</tbody>
+            </tr>`).join('') : `<tr><td colspan="7" class="empty">مفيش موظفين مسجلين في شيت المرتبات</td></tr>`}</tbody>
           </table></div>
         </div>
       </div>
@@ -765,7 +767,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     await apiGet('login', { name, pass }); // apiGet بيرمي Error لو data.error موجودة
     document.getElementById('loginWrap').style.display = 'none';
     document.getElementById('appRoot').style.display = 'block';
-    if (checkApiConfigured()) renderDashboard();
+    goTo(sessionStorage.getItem('lm_currentPage') || 'dashboard');
   } catch (err) {
     msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err);
     btn.disabled = false; btn.textContent = 'دخول';
