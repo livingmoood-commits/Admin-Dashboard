@@ -10,7 +10,7 @@
 
 <script>
   const CFG = {
-    appsScriptUrl: 'PUT_YOUR_WEB_APP_URL_HERE' // ⚠️ حط هنا الـ Web App URL بتاع الـ Apps Script
+    appsScriptUrl: 'https://script.google.com/macros/s/AKfycbzstJuI5EKdabQmOIechewiCvCnJ2MEHgDubQMFRmZPqqZG7rBByy6OUrfLEIV9zl7U/exec' // ⚠️ حط هنا الـ Web App URL بتاع الـ Apps Script
   };
 </script>
 
