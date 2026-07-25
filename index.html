@@ -7,7 +7,7 @@
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Living Mood — ERP</title>
+<title>Living Mood</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 <style>
@@ -284,7 +284,7 @@
   <div class="login-box">
     <div class="logo">LM</div>
     <h1>Living Mood</h1>
-    <p class="sub">نظام إدارة المصنع — ERP</p>
+    <p class="sub">نظام إدارة المصنع</p>
     <form id="loginForm">
       <div class="field"><label>اسم المستخدم</label><input id="l_name" required autocomplete="username"></div>
       <div class="field"><label>كلمة المرور</label><input type="password" id="l_pass" required autocomplete="current-password"></div>
@@ -299,7 +299,7 @@
   <div class="brand">
     <div class="logo">LM</div>
     <h1>Living Mood</h1>
-    <p>نظام إدارة المصنع — ERP</p>
+    <p>نظام إدارة المصنع</p>
   </div>
   <div class="nav" id="nav">
     <button data-page="dashboard" class="active"><span class="icon">&#9679;</span><span class="label">نظرة عامة</span></button>
@@ -344,7 +344,7 @@
 <div id="changePassModal">
   <div class="q-confirm-card">
     <h3>تغيير كلمة السر</h3>
-    <p>هتتغير كلمة السر بتاعتك في نظام Living Mood ERP</p>
+    <p>هتتغير كلمة السر بتاعتك في نظام Living Mood</p>
     <div class="field" style="margin-bottom:12px;"><input type="password" id="cp-old" placeholder="كلمة السر الحالية" autocomplete="current-password"></div>
     <div class="field" style="margin-bottom:12px;"><input type="password" id="cp-new" placeholder="كلمة السر الجديدة" autocomplete="new-password"></div>
     <div class="field" style="margin-bottom:16px;"><input type="password" id="cp-confirm" placeholder="تأكيد كلمة السر الجديدة" autocomplete="new-password"></div>
@@ -704,7 +704,7 @@ async function loadDistributionReport(){
 /* ================= Treasury / Cash Flow ================= */
 async function renderTreasury() {
   try {
-    const [summary, movesData] = await Promise.all([apiGet('getTreasurySummary'), apiGet('getTreasuryMoves', { limit:20 })]);
+    const [summary, movesData] = await Promise.all([apiGet('getTreasurySummary'), apiGet('getTreasuryMoves', {})]);
     document.getElementById('content').innerHTML = `
       <div class="cards">
         <div class="card"><div class="label">الرصيد الحالي</div><div class="value green">${fmt(summary.balance)} ج</div></div>
