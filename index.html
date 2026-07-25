@@ -20,7 +20,24 @@
   body{ font-family:'Cairo',sans-serif; background:var(--cream); color:var(--dark); display:flex; min-height:100vh; overflow-x:hidden; }
   .mono{ font-family:'IBM Plex Mono', monospace; direction:ltr; }
 
-  .sidebar{ width:235px; background:var(--dark); color:#f0e6d8; flex-shrink:0; display:flex; flex-direction:column; padding:22px 0; position:sticky; top:0; height:100vh; overflow-y:auto; transition:transform .35s var(--bounce); }
+  .sidebar{ width:235px; background:var(--dark); color:#f0e6d8; flex-shrink:0; display:flex; flex-direction:column; padding:22px 0; position:sticky; top:0; height:100vh; overflow-y:auto; overflow-x:hidden; transition:transform .35s var(--bounce), width .3s var(--bounce); }
+
+  /* ===== Sidebar collapse (desktop) ===== */
+  .sidebar-toggle{ position:absolute; top:18px; left:-14px; width:28px; height:28px; border-radius:50%; background:var(--gold); color:var(--dark); border:2px solid var(--dark); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:14px; font-weight:800; line-height:1; z-index:5; transition:transform .3s var(--bounce), background .2s, color .2s; }
+  .sidebar-toggle:hover{ background:var(--gold-dim); color:#fff; }
+  .sidebar-toggle:active{ transform:scale(.88); }
+  .sidebar.collapsed .sidebar-toggle{ transform:rotate(180deg); }
+  .sidebar.collapsed .sidebar-toggle:active{ transform:rotate(180deg) scale(.88); }
+  .sidebar.collapsed{ width:72px; }
+  .sidebar.collapsed .brand{ padding:0 8px; }
+  .sidebar.collapsed .brand h1,
+  .sidebar.collapsed .brand p,
+  .sidebar.collapsed .nav .label,
+  .sidebar.collapsed .user-menu-btn .label{ display:none; }
+  .sidebar.collapsed .nav button,
+  .sidebar.collapsed .user-menu-btn{ justify-content:center; padding:11px 0; }
+  .sidebar.collapsed .nav button:hover{ transform:none; }
+  .sidebar.collapsed .sep{ margin:10px 16px; }
   .brand{ text-align:center; margin-bottom:22px; padding:0 14px; }
   .brand .logo{ width:54px; height:54px; border-radius:14px; background:linear-gradient(155deg,var(--gold),var(--gold-dim)); color:var(--dark); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:19px; margin:0 auto 10px; font-family:'IBM Plex Mono',monospace; }
   .brand h1{ font-size:16px; font-weight:800; letter-spacing:.5px; }
@@ -74,6 +91,7 @@
   /* ===== Mobile: hamburger off-canvas sidebar ===== */
   @media(max-width:900px){
     .hamburger{ display:flex; }
+    .sidebar-toggle{ display:none; }
     .sidebar{
       position:fixed; inset-inline-end:0; top:0; bottom:0; z-index:1000;
       width:250px; max-width:82vw; transform:translateX(100%);
@@ -297,7 +315,8 @@
 </div>
 
 <div id="appRoot">
-<div class="sidebar">
+<div class="sidebar" id="sidebar">
+  <button class="sidebar-toggle" id="sidebarToggleBtn" onclick="toggleSidebarCollapse()" title="طي/توسيع القائمة" aria-label="طي القائمة الجانبية">‹</button>
   <div class="brand">
     <div class="logo">LM</div>
     <h1>Living Mood</h1>
@@ -420,8 +439,37 @@ const PAGES = {
   debtors:      { title:'المستحقات (الدائنون)', sub:'متابعة تحصيل الدفعات من العملاء', render: renderDebtors }
 };
 
+/* ================= Sidebar (mobile off-canvas + desktop collapse) ================= */
+function openSidebar(){
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sidebarOverlay').classList.add('open');
+  document.getElementById('hamburgerBtn').classList.add('open');
+}
+function closeSidebar(){
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('open');
+  document.getElementById('hamburgerBtn').classList.remove('open');
+}
+function toggleSidebar(){
+  const sb = document.getElementById('sidebar');
+  if (sb.classList.contains('open')) closeSidebar(); else openSidebar();
+}
+function toggleSidebarCollapse(){
+  const sb = document.getElementById('sidebar');
+  sb.classList.toggle('collapsed');
+  try{ localStorage.setItem('lm_sidebarCollapsed', sb.classList.contains('collapsed') ? '1' : '0'); }catch(e){}
+}
+(function restoreSidebarCollapse(){
+  try{
+    if (localStorage.getItem('lm_sidebarCollapsed') === '1') {
+      document.getElementById('sidebar').classList.add('collapsed');
+    }
+  }catch(e){}
+})();
+
 document.getElementById('nav').addEventListener('click', e => {
   const btn = e.target.closest('button'); if (!btn) return; goTo(btn.dataset.page);
+  closeSidebar(); // يقفل القايمة تلقائي بعد الاختيار في وضع الموبايل
 });
 // كل مرة ندخل صفحة، بيتزود التوكن ده. أي صفحة قديمة لسه بتحمّل (fetch) بتتاكد قبل
 // ما تكتب في الـ DOM إن التوكن بتاعها لسه هو الحالي — لو المستخدم دخل صفحة تانية
