@@ -154,12 +154,12 @@
   .q-grand-bar{ background:var(--dark); color:#D4B483; padding:13px 20px; border-radius:6px; display:flex; justify-content:space-between; align-items:center; font-size:16px; font-weight:700; margin-bottom:16px; }
   .q-grand-bar .amt{ font-family:'IBM Plex Mono',monospace; font-size:20px; color:var(--gold); }
 
-  .q-clist .c-item{ display:flex; align-items:center; justify-content:space-between; gap:14px; padding:13px 14px; background:var(--cream); border:1px solid var(--border); border-radius:6px; margin-bottom:8px; transition:border-color .2s, background .2s; }
+  .q-clist .c-item{ display:flex; align-items:center; justify-content:flex-start; flex-wrap:wrap; gap:14px; padding:13px 14px; background:var(--cream); border:1px solid var(--border); border-radius:6px; margin-bottom:8px; transition:border-color .2s, background .2s; }
   .q-clist .c-item:hover{ border-color:var(--gold); background:#ece6dd; }
-  .q-clist .ci-info{ flex:1; cursor:pointer; }
+  .q-clist .ci-info{ flex:0 1 auto; min-width:0; max-width:100%; cursor:pointer; }
   .q-clist .ci-name{ font-weight:700; font-size:14px; }
   .q-clist .ci-meta{ font-size:11px; color:var(--muted); margin-top:2px; }
-  .q-clist .ci-actions{ display:flex; gap:8px; align-items:center; flex-shrink:0; }
+  .q-clist .ci-actions{ display:flex; gap:8px; align-items:center; flex-shrink:0; margin-inline-start:auto; }
   .q-clist .ci-badge{ background:var(--gold); color:#fff; font-size:11px; padding:4px 12px; border-radius:20px; font-weight:700; cursor:pointer; border:none; font-family:inherit; }
 
   .q-preview-box{ margin-top:14px; border-radius:10px; overflow:hidden; box-shadow:0 4px 24px rgba(30,26,21,.10); background:#fff; }
@@ -1250,6 +1250,7 @@ async function renderDebtors(){
 }
 
 async function pRenderHome(){
+  document.getElementById('content').innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
     const { customers } = await apiGet('payListCustomers');
     const sorted = [...customers].sort((a,b) => String(b.date||'').localeCompare(String(a.date||'')));
