@@ -1628,7 +1628,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     localStorage.setItem('lm_loggedIn', '1');
     localStorage.setItem('lm_userName', name);
     document.getElementById('loginWrap').style.display = 'none';
-    document.getElementById('appRoot').style.display = 'block';
+    document.getElementById('appRoot').style.display = 'flex';
     goTo(sessionStorage.getItem('lm_currentPage') || 'dashboard');
   } catch (err) {
     msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err);
@@ -1683,7 +1683,7 @@ async function submitChangePassword(){
 /* ================= Init ================= */
 if (localStorage.getItem('lm_loggedIn') === '1') {
   document.getElementById('loginWrap').style.display = 'none';
-  document.getElementById('appRoot').style.display = 'block';
+  document.getElementById('appRoot').style.display = 'flex';
   goTo(sessionStorage.getItem('lm_currentPage') || 'dashboard');
 } else {
   document.getElementById('l_name').focus();
