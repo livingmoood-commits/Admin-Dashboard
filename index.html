@@ -252,7 +252,7 @@
   /* ===== Dashboard cards: clickable + drill-down modal ===== */
   .card.clickable{ cursor:pointer; position:relative; }
   .card.clickable::after{
-    content:'\\25BE'; position:absolute; top:8px; left:10px; font-size:11px; color:var(--muted); opacity:.55;
+    content:'\25BE'; position:absolute; top:8px; left:10px; font-size:11px; color:var(--muted); opacity:.55;
   }
   .card.clickable:hover{ border-color:var(--gold); }
 
@@ -268,8 +268,8 @@
   .cd-subcard:hover{ transform:translateY(-2px); border-color:var(--gold); }
   .cd-subcard .label{ font-size:12px; color:var(--muted); font-weight:600; margin-bottom:6px; }
   .cd-subcard .value{ font-size:20px; font-weight:800; }
-  .cd-back{ all:unset; cursor:pointer; font-size:12px; color:var(--gold-dim); font-weight:700; margin-bottom:12px; display:inline-block; }
-  .cd-back:hover{ text-decoration:underline; }
+  .cd-back{ all:unset; cursor:pointer; font-size:13px; color:var(--dark); font-weight:700; margin-bottom:14px; display:inline-flex; align-items:center; gap:6px; background:var(--cream); border:1px solid var(--border); padding:8px 16px; border-radius:20px; transition:background .2s, transform .2s var(--bounce); }
+  .cd-back:hover{ background:var(--gold); color:var(--dark); transform:translateX(4px); }
   .cd-list-row{ display:flex; align-items:center; justify-content:space-between; padding:9px 4px; border-bottom:1px solid var(--border); font-size:13px; }
   .cd-list-row:last-child{ border-bottom:none; }
   .cd-list-row .n{ font-weight:700; }
@@ -382,6 +382,15 @@ async function apiPost(action, payload) {
 function fmt(n){ return (Number(n)||0).toLocaleString('en-US', {maximumFractionDigits:0}); }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function weekAgoStr(){ const d=new Date(); d.setDate(d.getDate()-7); return d.toISOString().slice(0,10); }
+// الأسبوع عندنا بيبدأ السبت وينتهي الخميس (الجمعة أجازة) — بيرجع {from, to} لأقرب سبت وخميس اللي بعده
+function currentWeekRange(){
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun ... 6=Sat
+  const diffToSat = (day + 1) % 7; // عدد الأيام من آخر سبت لحد النهاردة
+  const sat = new Date(now); sat.setDate(now.getDate() - diffToSat);
+  const thu = new Date(sat); thu.setDate(sat.getDate() + 5);
+  return { from: sat.toISOString().slice(0,10), to: thu.toISOString().slice(0,10) };
+}
 function checkApiConfigured(){
   if (API_URL.indexOf('PASTE_YOUR') === 0) {
     document.getElementById('liveBadge').textContent = 'مش متصل';
@@ -659,21 +668,25 @@ async function deleteHoursEntryConfirm(id){
 async function renderDistribution() {
   try {
     const [{employees}, {projects}] = await Promise.all([apiGet('listEmployees'), apiGet('listProjects')]);
+    const wk = currentWeekRange();
     document.getElementById('content').innerHTML = `
       <div class="panel">
         <div class="filters">
-          <input type="date" id="filFrom"><span style="color:var(--muted);font-size:12px;">إلى</span><input type="date" id="filTo">
+          <input type="date" id="filFrom" value="${wk.from}"><span style="color:var(--muted);font-size:12px;">إلى</span><input type="date" id="filTo" value="${wk.to}">
           <select id="filProject"><option value="">كل المشاريع</option>${projects.map(p=>`<option value="${p}">${p}</option>`).join('')}</select>
           <select id="filEmployee"><option value="">كل الموظفين</option>${employees.map(e=>`<option value="${e.name}">${e.name}</option>`).join('')}</select>
           <button class="btn btn-sm btn-outline" id="thisWeekBtn">الأسبوع ده</button>
-          <button class="btn btn-primary" id="applyFilters">فلترة</button>
         </div>
       </div>
       <div id="reportBox"><div class="loading-row">جاري التحميل...</div></div>
     `;
-    document.getElementById('applyFilters').addEventListener('click', loadDistributionReport);
+    // الفلاتر بتشتغل أوتوماتيك أول ما أي حقل يتغير، من غير ما تدوس زرار
+    ['filFrom','filTo','filProject','filEmployee'].forEach(id => {
+      document.getElementById(id).addEventListener('change', loadDistributionReport);
+    });
     document.getElementById('thisWeekBtn').addEventListener('click', () => {
-      document.getElementById('filFrom').value = weekAgoStr(); document.getElementById('filTo').value = todayStr();
+      const w = currentWeekRange();
+      document.getElementById('filFrom').value = w.from; document.getElementById('filTo').value = w.to;
       loadDistributionReport();
     });
     loadDistributionReport();
