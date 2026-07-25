@@ -5,770 +5,732 @@
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>نظام إدارة المصنع</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet"/>
-
-<script>
-  const CFG = {
-    appsScriptUrl: 'https://script.google.com/macros/s/AKfycbzstJuI5EKdabQmOIechewiCvCnJ2MEHgDubQMFRmZPqqZG7rBByy6OUrfLEIV9zl7U/exec' // ⚠️ حط هنا الـ Web App URL بتاع الـ Apps Script
-  };
-</script>
-
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Living Mood — ERP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 <style>
-:root{
-  --bg:#F3EFEA; --paper:#fff; --gold:#B8975A; --gold-l:#D4B483;
-  --dark:#1E1A15; --mid:#6B5E4E; --border:#D9D0C4;
-  --green:#2C5F3A; --red:#dc3545; --radius:8px;
-  --shadow:0 4px 24px rgba(30,26,21,.10);
-}
-*{box-sizing:border-box;margin:0;padding:0;}
-body{background:var(--bg);font-family:'Cairo',sans-serif;color:var(--dark);min-height:100vh;font-size:14px;}
+  :root{
+    --dark:#1E1A15; --dark2:#2a231c; --gold:#B8975A; --gold-dim:#8f7546; --cream:#F3EFEA;
+    --muted:#6B5E4E; --green:#2C5F3A; --red:#c0392b; --white:#ffffff; --border:#e7e0d4;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{ font-family:'Cairo',sans-serif; background:var(--cream); color:var(--dark); display:flex; min-height:100vh; overflow-x:hidden; }
+  .mono{ font-family:'IBM Plex Mono', monospace; direction:ltr; }
 
-input,select,textarea{
-  width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:6px;
-  font-family:'Cairo',sans-serif;font-size:14px;color:var(--dark);
-  background:var(--bg);transition:border-color .2s;outline:none;
-  direction:rtl;text-align:right;
-}
-input[type=number]{direction:ltr;text-align:left;}
-input:focus,select:focus,textarea:focus{border-color:var(--gold);background:#fff;}
+  .sidebar{ width:235px; background:var(--dark); color:#f0e6d8; flex-shrink:0; display:flex; flex-direction:column; padding:22px 0; position:sticky; top:0; height:100vh; overflow-y:auto; }
+  .brand{ text-align:center; margin-bottom:22px; padding:0 14px; }
+  .brand .logo{ width:54px; height:54px; border-radius:14px; background:linear-gradient(155deg,var(--gold),var(--gold-dim)); color:var(--dark); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:19px; margin:0 auto 10px; font-family:'IBM Plex Mono',monospace; }
+  .brand h1{ font-size:16px; font-weight:800; letter-spacing:.5px; }
+  .brand p{ font-size:10.5px; color:var(--gold); margin-top:3px; letter-spacing:.5px; }
+  .nav{ flex:1; display:flex; flex-direction:column; gap:2px; padding:0 10px; }
+  .nav button{ all:unset; cursor:pointer; padding:11px 14px; border-radius:8px; font-size:13.5px; color:#cbbfae; display:flex; align-items:center; gap:9px; transition:.15s; font-family:inherit; }
+  .nav button:hover{ background:var(--dark2); color:#fff; }
+  .nav button.active{ background:var(--gold); color:var(--dark); font-weight:700; }
+  .nav .icon{ font-size:15px; width:18px; text-align:center; }
+  .nav .sep{ height:1px; background:#3a3129; margin:10px 12px; }
 
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:11px 22px;border:none;border-radius:6px;font-family:'Cairo',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:opacity .15s,transform .1s;white-space:nowrap;}
-.btn:active{transform:scale(.97);}
-.btn-gold{background:var(--gold);color:#fff;}
-.btn-dark{background:var(--dark);color:var(--gold-l);}
-.btn-outline{background:transparent;color:var(--dark);border:1.5px solid var(--border);}
-.btn-danger{background:var(--red);color:#fff;}
-.btn-sm{padding:6px 14px;font-size:12px;}
-.btn-full{width:100%;}
+  .main{ flex:1; padding:26px 34px; max-width:100%; }
+  .topbar{ display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:22px; flex-wrap:wrap; gap:10px;}
+  .topbar h2{ font-size:23px; font-weight:800; }
+  .topbar p{ color:var(--muted); font-size:13px; margin-top:3px; }
+  .badge-live{ background:#e6f4ea; color:var(--green); font-size:12px; font-weight:700; padding:6px 14px; border-radius:20px; white-space:nowrap; }
 
-.alert{padding:11px 16px;border-radius:6px;font-size:13px;margin-bottom:14px;display:none;}
-.alert-ok{background:#d4edda;color:#155724;border:1px solid #c3e6cb;}
-.alert-err{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb;}
+  .cards{ display:grid; grid-template-columns:repeat(auto-fit, minmax(185px,1fr)); gap:14px; margin-bottom:22px; }
+  .card{ background:var(--white); border:1px solid var(--border); border-radius:12px; padding:17px; text-align:center; }
+  .card .label{ color:var(--muted); font-size:12px; font-weight:600; margin-bottom:7px; }
+  .card .value{ font-size:22px; font-weight:800; }
+  .card .value.green{ color:var(--green); } .card .value.red{ color:var(--red); } .card .value.gold{ color:var(--gold-dim); }
 
-#overlay{display:none;position:fixed;inset:0;background:rgba(30,26,21,.55);z-index:900;justify-content:center;align-items:center;flex-direction:column;gap:14px;color:var(--gold-l);font-size:15px;font-weight:600;}
-.spinner{width:44px;height:44px;border:4px solid rgba(184,151,90,.3);border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;}
-@keyframes spin{to{transform:rotate(360deg);}}
+  .panel{ background:var(--white); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:20px; }
+  .panel h3{ font-size:15px; font-weight:700; margin-bottom:14px; border-right:4px solid var(--gold); padding-right:10px; display:flex; justify-content:space-between; align-items:center; }
 
-/* شاشة الدخول */
-#login-shell{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--dark);padding:20px;}
-.login-card{background:#fff;border-radius:16px;padding:38px 32px;width:min(380px,92vw);box-shadow:0 20px 60px rgba(0,0,0,.35);text-align:center;}
-.login-avatar{width:76px;height:76px;border-radius:50%;background:var(--bg);color:var(--gold);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:24px;margin:0 auto 18px;font-family:'Playfair Display',serif;}
-.login-title{font-family:'Playfair Display',serif;font-size:23px;color:var(--dark);margin-bottom:10px;}
-.login-status{display:inline-block;background:#e8f5ea;color:var(--green);font-size:12px;font-weight:700;padding:4px 14px;border-radius:20px;margin-bottom:10px;}
-.login-sub{font-size:12px;color:var(--mid);letter-spacing:1px;text-transform:uppercase;margin-bottom:26px;}
-.login-field{text-align:right;margin-bottom:16px;}
-.login-field label{font-size:11px;font-weight:700;color:var(--mid);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:6px;}
-.pass-wrap{position:relative;}
-.pass-wrap input{padding-left:38px;}
-.pass-toggle{position:absolute;left:8px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--mid);font-size:11px;background:none;border:none;font-family:'Cairo',sans-serif;font-weight:700;}
+  table{ width:100%; border-collapse:collapse; font-size:13px; }
+  th{ background:var(--dark); color:#fff; padding:9px 8px; text-align:center; font-weight:600; }
+  td{ padding:8px 8px; text-align:center; border-bottom:1px solid var(--border); }
+  tr:nth-child(even) td{ background:#fbf9f5; }
+  .tbl-wrap{ overflow-x:auto; }
+  .empty{ text-align:center; color:var(--muted); padding:24px; font-size:13px; }
 
-/* الهيكل العام بعد الدخول */
-#app-shell{display:none;min-height:100vh;}
-.app-flex{display:flex;min-height:100vh;}
+  .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  @media(max-width:980px){ .grid2{ grid-template-columns:1fr; } }
+  @media(max-width:820px){ .sidebar{ width:64px; } .brand h1,.brand p,.nav span.label{ display:none; } .main{ padding:18px 14px; } }
 
-.sidebar{width:250px;flex-shrink:0;background:var(--dark);color:var(--gold-l);display:flex;flex-direction:column;}
-.sidebar-brand{padding:26px 18px;text-align:center;border-bottom:1px solid rgba(255,255,255,.08);}
-.sidebar-avatar{width:52px;height:52px;border-radius:50%;background:rgba(212,180,131,.15);color:var(--gold-l);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;margin:0 auto 10px;font-family:'Playfair Display',serif;}
-.sidebar-title{font-family:'Playfair Display',serif;font-size:16px;color:#fff;letter-spacing:.5px;}
-.sidebar-sub{font-size:10px;letter-spacing:2px;color:var(--gold-l);opacity:.65;text-transform:uppercase;margin-top:5px;}
+  form .field{ margin-bottom:13px; }
+  form label{ display:block; font-size:12px; font-weight:700; color:var(--muted); margin-bottom:5px; }
+  form select, form input, form textarea{ width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px; font-size:13.5px; font-family:inherit; background:#fdfcfa; }
+  form select:focus, form input:focus, form textarea:focus{ outline:none; border-color:var(--gold); }
+  .form-row{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .form-row3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+  .btn{ display:inline-block; padding:10px 22px; border:none; border-radius:8px; font-size:13.5px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .btn-primary{ background:var(--gold); color:var(--dark); }
+  .btn-primary:hover{ background:var(--gold-dim); color:#fff; }
+  .btn-primary:disabled{ opacity:.55; cursor:not-allowed; }
+  .btn-outline{ background:transparent; border:1px solid var(--border); color:var(--muted); }
+  .btn-outline:hover{ border-color:var(--gold); color:var(--dark); }
+  .btn-sm{ padding:5px 11px; font-size:12px; border-radius:6px; }
+  .btn-danger{ background:#fbe2e2; color:var(--red); border:none; }
+  .msg{ font-size:13px; margin-top:10px; padding:9px 12px; border-radius:8px; display:none; }
+  .msg.ok{ background:#e6f4ea; color:var(--green); display:block; }
+  .msg.err{ background:#fbe2e2; color:var(--red); display:block; }
 
-.nav-section-label{padding:16px 20px 6px;font-size:10px;letter-spacing:2px;color:rgba(212,180,131,.45);text-transform:uppercase;}
-.nav-list{padding:0 12px;display:flex;flex-direction:column;gap:3px;}
-.nav-item{padding:11px 16px;border-radius:6px;font-size:13px;font-weight:600;color:rgba(255,255,255,.78);cursor:pointer;transition:background .15s,color .15s;}
-.nav-item:hover{background:rgba(255,255,255,.06);}
-.nav-item.active{background:var(--gold);color:#fff;}
+  .filters{ display:flex; gap:9px; flex-wrap:wrap; margin-bottom:16px; align-items:center; }
+  .filters select, .filters input{ padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:13px; font-family:inherit; }
+  .pill{ display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; }
+  .pill.dep{ background:#e6f4ea; color:var(--green); } .pill.exp{ background:#fbe2e2; color:var(--red); }
 
-.sidebar-footer{margin-top:auto;padding:16px 18px;border-top:1px solid rgba(255,255,255,.08);}
-.sidebar-username{font-weight:700;color:#fff;font-size:14px;}
-.role-badge{display:inline-block;background:var(--gold);color:#fff;font-size:10px;padding:2px 9px;border-radius:20px;font-weight:700;margin-top:5px;}
-.sidebar-btn{width:100%;text-align:center;padding:9px;border-radius:6px;font-size:12px;font-weight:700;background:rgba(255,255,255,.08);color:var(--gold-l);border:none;cursor:pointer;margin-top:9px;font-family:'Cairo',sans-serif;}
-.sidebar-btn:hover{background:rgba(255,255,255,.14);}
+  .spinner{ display:inline-block; width:13px; height:13px; border:2px solid #ffffff55; border-top-color:#fff; border-radius:50%; animation:spin .7s linear infinite; vertical-align:middle; margin-right:6px; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .loading-row{ text-align:center; color:var(--muted); padding:34px; font-size:13px; }
 
-.main-area{flex:1;min-width:0;}
-.page-topbar{background:#fff;border-bottom:1px solid var(--border);padding:16px 26px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;}
-.page-topbar h1{font-family:'Playfair Display',serif;font-size:19px;}
-.page-topbar .sub{font-size:12px;color:var(--mid);margin-top:2px;}
-.status-pill{background:#e8f5ea;color:var(--green);font-size:11px;font-weight:700;padding:5px 12px;border-radius:20px;white-space:nowrap;}
-.main-inner{padding:22px 26px 60px;}
-
-/* عناصر عامة */
-.card{background:var(--paper);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px;margin-bottom:18px;}
-.card-title{font-family:'Playfair Display',serif;font-size:17px;color:var(--dark);margin-bottom:16px;padding-bottom:9px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;}
-.card-title::before{content:'';display:inline-block;width:4px;height:17px;background:var(--gold);border-radius:2px;flex-shrink:0;}
-
-.fg4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
-.fg3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
-.fg2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
-.field{display:flex;flex-direction:column;gap:5px;}
-.field label{font-size:11px;font-weight:700;color:var(--mid);letter-spacing:1px;text-transform:uppercase;}
-
-.q-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
-table.q-tbl{width:100%;border-collapse:collapse;font-size:13px;min-width:640px;}
-.q-tbl thead tr{background:var(--green);color:#fff;}
-.q-tbl thead th{padding:9px 8px;font-weight:600;text-align:right;white-space:nowrap;}
-.q-tbl tbody tr{border-bottom:1px solid var(--border);}
-.q-tbl tbody tr:hover{background:#faf7f3;}
-.q-tbl td{padding:7px 6px;vertical-align:middle;}
-.q-tbl td.num{font-weight:700;direction:ltr;text-align:left;}
-.q-tbl td input,.q-tbl td select{padding:6px 8px;font-size:12px;}
-.q-tbl td.actions{white-space:nowrap;display:flex;gap:6px;}
-
-.pill{display:inline-block;background:var(--gold);color:#fff;font-size:11px;padding:3px 10px;border-radius:20px;font-weight:700;}
-
-.kpi{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:16px;text-align:center;}
-.kpi .kpi-lbl{font-size:11px;color:var(--mid);font-weight:700;letter-spacing:.5px;margin-bottom:8px;}
-.kpi .kpi-val{font-family:'Playfair Display',serif;font-size:24px;color:var(--dark);}
-.kpi .kpi-val.gold{color:var(--gold);}
-.kpi .kpi-val.red{color:var(--red);}
-.proj-bar-row{margin-bottom:10px;}
-.proj-bar-row .pb-top{display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;}
-.proj-bar-row .pb-top b{color:var(--dark);}
-.proj-bar-row .pb-track{background:var(--bg);border-radius:5px;height:8px;overflow:hidden;}
-.proj-bar-row .pb-fill{background:var(--gold);height:100%;border-radius:5px;}
-
-.empty{color:var(--mid);text-align:center;padding:24px;font-size:13px;}
-
-#confirm-modal,#pass-modal{display:none;position:fixed;inset:0;background:rgba(30,26,21,.65);z-index:950;justify-content:center;align-items:center;}
-#confirm-modal.open,#pass-modal.open{display:flex;}
-.confirm-card{background:#fff;border-radius:14px;padding:28px 24px;width:min(360px,92vw);box-shadow:0 20px 60px rgba(30,26,21,.3);text-align:center;}
-.confirm-card h3{font-family:'Playfair Display',serif;font-size:18px;margin-bottom:10px;}
-.confirm-card p{font-size:13px;color:var(--mid);margin-bottom:20px;line-height:1.7;}
-.confirm-btns{display:flex;gap:10px;justify-content:center;}
-
-@media(max-width:900px){
-  .app-flex{flex-direction:column;}
-  .sidebar{width:100%;flex-direction:row;flex-wrap:wrap;align-items:center;}
-  .sidebar-brand{border-bottom:none;padding:12px 16px;}
-  .nav-list{flex-direction:row;flex-wrap:wrap;padding:8px 12px;}
-  .nav-section-label{display:none;}
-  .sidebar-footer{margin-top:0;border-top:none;padding:10px 16px;}
-}
-@media(max-width:720px){
-  .fg4,.fg3,.fg2{grid-template-columns:1fr;}
-  .card{padding:16px;}
-}
+  .dyn-row{ display:grid; grid-template-columns:2fr 1fr 1fr 1fr auto; gap:8px; margin-bottom:8px; align-items:center; }
+  .dyn-row.labor{ grid-template-columns:2fr 1fr 1fr auto; }
+  .dyn-add{ margin-top:4px; }
+  .subtotal-line{ display:flex; justify-content:space-between; font-size:13.5px; padding:8px 4px; border-top:1px dashed var(--border); margin-top:6px; }
+  .subtotal-line b{ color:var(--dark); }
+  .quick-links{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;}
+  .setup-note{ background:#fff8e6; border:1px solid #f0dca0; color:#7a5e12; padding:12px 16px; border-radius:8px; font-size:13px; margin-bottom:18px; }
 </style>
 </head>
 <body>
 
-<div id="overlay"><div class="spinner"></div><span id="overlay-msg">جاري المعالجة...</span></div>
-
-<!-- شاشة الدخول -->
-<div id="login-shell">
-  <div class="login-card">
-    <div class="login-avatar">LM</div>
-    <div class="login-status">متصل</div>
-    <div class="login-title">نظام إدارة المصنع</div>
-    <div class="login-sub">إدارة الموظفين والمشاريع والتكاليف</div>
-    <div id="alert-login" class="alert"></div>
-    <div class="login-field">
-      <label>الاسم</label>
-      <input type="text" id="login-name" placeholder="Your user"/>
-    </div>
-    <div class="login-field">
-      <label>كلمة المرور</label>
-      <div class="pass-wrap">
-        <input type="password" id="login-pass" placeholder="••••••"/>
-        <button type="button" class="pass-toggle" onclick="AUTH.togglePass()">إظهار</button>
-      </div>
-    </div>
-    <button class="btn btn-dark btn-full" onclick="AUTH.login()">دخول</button>
+<div class="sidebar">
+  <div class="brand">
+    <div class="logo">LM</div>
+    <h1>Living Mood</h1>
+    <p>نظام إدارة المصنع — ERP</p>
+  </div>
+  <div class="nav" id="nav">
+    <button data-page="dashboard" class="active"><span class="icon">&#9679;</span><span class="label">نظرة عامة</span></button>
+    <button data-page="employees"><span class="icon">&#128100;</span><span class="label">الموظفين</span></button>
+    <button data-page="logHours"><span class="icon">&#9200;</span><span class="label">ساعات وسهرات</span></button>
+    <button data-page="distribution"><span class="icon">&#128202;</span><span class="label">توزيع تكلفة المرتبات</span></button>
+    <div class="sep"></div>
+    <button data-page="treasury"><span class="icon">&#128176;</span><span class="label">الخزنة (Cash Flow)</span></button>
+    <button data-page="projects"><span class="icon">&#128188;</span><span class="label">المشاريع</span></button>
+    <button data-page="products"><span class="icon">&#128736;&#65039;</span><span class="label">تكلفة المنتجات</span></button>
+    <button data-page="fixedExp"><span class="icon">&#128203;</span><span class="label">المصاريف الثابتة</span></button>
+    <div class="sep"></div>
+    <button data-page="quotation"><span class="icon">&#128221;</span><span class="label">عروض الأسعار</span></button>
+    <button data-page="debtors"><span class="icon">&#128184;</span><span class="label">المستحقات (الدائنون)</span></button>
   </div>
 </div>
 
-<!-- تأكيد الحذف -->
-<div id="confirm-modal">
-  <div class="confirm-card">
-    <h3>تأكيد الحذف</h3>
-    <p id="confirm-msg">هل أنت متأكد من الحذف؟ لا يمكن التراجع عن هذه العملية.</p>
-    <div class="confirm-btns">
-      <button class="btn btn-danger" id="confirm-yes">حذف</button>
-      <button class="btn btn-outline" onclick="closeConfirm()">إلغاء</button>
+<div class="main">
+  <div class="topbar">
+    <div>
+      <h2 id="pageTitle">نظرة عامة</h2>
+      <p id="pageSub">ملخص شامل لكل حاجة في المصنع</p>
     </div>
+    <div class="badge-live" id="liveBadge">متصل</div>
   </div>
-</div>
-
-<!-- تغيير كلمة المرور -->
-<div id="pass-modal">
-  <div class="confirm-card">
-    <h3>تغيير كلمة المرور</h3>
-    <div id="alert-pass" class="alert"></div>
-    <div class="login-field"><label>كلمة المرور الحالية</label><input type="password" id="pass-old"/></div>
-    <div class="login-field"><label>كلمة المرور الجديدة</label><input type="password" id="pass-new"/></div>
-    <div class="confirm-btns">
-      <button class="btn btn-gold" onclick="AUTH.changePassword()">حفظ</button>
-      <button class="btn btn-outline" onclick="closePassModal()">إلغاء</button>
-    </div>
-  </div>
-</div>
-
-<!-- التطبيق الرئيسي -->
-<div id="app-shell">
-  <div class="app-flex">
-
-    <div class="sidebar">
-      <div class="sidebar-brand">
-        <div class="sidebar-avatar">LM</div>
-        <div class="sidebar-title">نظام إدارة المصنع</div>
-        <div class="sidebar-sub">لوحة التحكم</div>
-      </div>
-
-      <div class="nav-section-label">القائمة</div>
-      <div class="nav-list">
-        <div class="nav-item active" data-page="pg-dashboard">الرئيسية</div>
-        <div class="nav-item" data-page="pg-employees">الموظفين</div>
-        <div class="nav-item" data-page="pg-hours">تسجيل ساعات وسهرات</div>
-        <div class="nav-item" data-page="pg-summary">ملخص المشاريع</div>
-      </div>
-
-      <div class="sidebar-footer">
-        <div class="sidebar-username" id="sb-username">-</div>
-        <div class="role-badge">Admin</div>
-        <button class="sidebar-btn" onclick="openPassModal()">تغيير كلمة المرور</button>
-        <button class="sidebar-btn" onclick="AUTH.logout()">تسجيل الخروج</button>
-      </div>
-    </div>
-
-    <div class="main-area">
-      <div class="page-topbar">
-        <div>
-          <h1 id="pt-title">الرئيسية</h1>
-          <div class="sub" id="pt-sub">نظرة عامة على النظام</div>
-        </div>
-        <div class="status-pill">متصل</div>
-      </div>
-
-      <div class="main-inner">
-
-        <!-- صفحة الرئيسية -->
-        <div class="page active" id="pg-dashboard">
-          <div class="card">
-            <div class="card-title">نظرة عامة</div>
-            <div id="dash-kpis" class="fg4"></div>
-          </div>
-          <div class="fg2">
-            <div class="card">
-              <div class="card-title">أعلى 5 مشاريع تكلفة</div>
-              <div id="dash-top-projects"><div class="empty">جاري التحميل...</div></div>
-            </div>
-            <div class="card">
-              <div class="card-title">آخر الحركات المسجلة</div>
-              <div class="q-wrap"><table class="q-tbl">
-                <thead><tr><th>التاريخ</th><th>الموظف</th><th>المشروع</th><th>التكلفة</th></tr></thead>
-                <tbody id="dash-recent"><tr><td colspan="4" class="empty">جاري التحميل...</td></tr></tbody>
-              </table></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- صفحة الموظفين -->
-        <div class="page" id="pg-employees">
-          <div class="card">
-            <div class="card-title">إضافة موظف جديد</div>
-            <div id="alert-emp" class="alert"></div>
-            <div class="fg4">
-              <div class="field"><label>اسم الموظف</label><input type="text" id="emp-name"/></div>
-              <div class="field">
-                <label>طريقة القبض</label>
-                <select id="emp-paytype"><option value="اسبوعي">اسبوعي</option><option value="شهري">شهري</option></select>
-              </div>
-              <div class="field"><label>اجر الساعة</label><input type="number" id="emp-hourly" placeholder="0"/></div>
-              <div class="field"><label>اليومية</label><input type="number" id="emp-daily" placeholder="0"/></div>
-            </div>
-            <div class="field" style="margin-top:14px;"><label>ملاحظات</label><input type="text" id="emp-notes"/></div>
-            <div style="margin-top:16px;display:flex;justify-content:flex-end;">
-              <button class="btn btn-gold" onclick="EMP.add()">إضافة الموظف</button>
-            </div>
-          </div>
-          <div class="card">
-            <div class="card-title">قائمة الموظفين (تقدر تعدّل أي خانة وتضغط حفظ)</div>
-            <div class="q-wrap"><table class="q-tbl">
-              <thead><tr><th>الاسم</th><th>طريقة القبض</th><th>اجر الساعة</th><th>اليومية</th><th>ملاحظات</th><th>إجراءات</th></tr></thead>
-              <tbody id="emp-body"><tr><td colspan="6" class="empty">جاري التحميل...</td></tr></tbody>
-            </table></div>
-          </div>
-        </div>
-
-        <!-- صفحة تسجيل الساعات والسهرات -->
-        <div class="page" id="pg-hours">
-          <div class="card">
-            <div class="card-title">تسجيل يوم عمل أو سهرة</div>
-            <div id="alert-hours" class="alert"></div>
-            <div class="fg3">
-              <div class="field">
-                <label>الموظف</label>
-                <select id="hr-employee"><option value="">اختر الموظف</option></select>
-              </div>
-              <div class="field">
-                <label>المشروع</label>
-                <input type="text" id="hr-project" list="project-list" placeholder="اكتب اسم المشروع أو اختر"/>
-                <datalist id="project-list"></datalist>
-              </div>
-              <div class="field"><label>التاريخ</label><input type="date" id="hr-date"/></div>
-            </div>
-            <div class="fg3" style="margin-top:14px;">
-              <div class="field"><label>عدد الساعات</label><input type="number" id="hr-hours" placeholder="0"/></div>
-              <div class="field"><label>عدد الأيام</label><input type="number" id="hr-days" placeholder="0"/></div>
-              <div class="field"><label>سهرة (مبلغ يدوي)</label><input type="number" id="hr-extra" placeholder="0"/></div>
-            </div>
-            <div class="field" style="margin-top:14px;"><label>ملاحظات</label><input type="text" id="hr-notes"/></div>
-            <div style="margin-top:16px;display:flex;justify-content:flex-end;">
-              <button class="btn btn-gold" onclick="HOURS.add()">حفظ السطر</button>
-            </div>
-          </div>
-          <div class="card">
-            <div class="card-title">آخر السطور المسجلة (تقدر تعدّل وتحفظ)</div>
-            <div class="q-wrap"><table class="q-tbl">
-              <thead><tr><th>التاريخ</th><th>الموظف</th><th>المشروع</th><th>ساعات</th><th>أيام</th><th>سهرة</th><th>الإجمالي</th><th>إجراءات</th></tr></thead>
-              <tbody id="hours-body"><tr><td colspan="8" class="empty">جاري التحميل...</td></tr></tbody>
-            </table></div>
-          </div>
-        </div>
-
-        <!-- صفحة ملخص المشاريع -->
-        <div class="page" id="pg-summary">
-          <div class="card">
-            <div class="card-title">تكلفة العمالة لكل مشروع</div>
-            <div id="proj-summary"></div>
-          </div>
-          <div class="card">
-            <div class="card-title">تكلفة العمالة لكل موظف</div>
-            <div id="emp-summary"></div>
-          </div>
-        </div>
-
-      </div>
-    </div>
-  </div>
+  <div id="content"><div class="loading-row">جاري التحميل...</div></div>
 </div>
 
 <script>
-const $ = id => document.getElementById(id);
-const fmt = n => Number(n||0).toLocaleString('en-US');
-function loading(msg){ $('overlay-msg').textContent = msg||'جاري المعالجة...'; $('overlay').style.display='flex'; }
-function loaded(){ $('overlay').style.display='none'; }
-function alert_(id,type,msg){
-  const el=$(id); el.className='alert alert-'+(type==='ok'?'ok':'err');
-  el.textContent=msg; el.style.display='block';
-  setTimeout(()=>el.style.display='none',4000);
+/* ============ ⚠️ اضبط رابط الـ Web App هنا بعد النشر (Deploy) ============ */
+const API_URL = 'https://script.google.com/macros/s/AKfycbzstJuI5EKdabQmOIechewiCvCnJ2MEHgDubQMFRmZPqqZG7rBByy6OUrfLEIV9zl7U/exec';
+
+/* ================= API helper ================= */
+async function apiGet(action, params) {
+  params = params || {};
+  const qs = new URLSearchParams({ action, ...Object.fromEntries(Object.entries(params).map(([k,v]) => [k, typeof v === 'object' ? JSON.stringify(v) : v])) });
+  const res = await fetch(API_URL + '?' + qs.toString());
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+async function apiPost(action, payload) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // بيتفادى CORS preflight
+    body: JSON.stringify({ action, ...payload })
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+function fmt(n){ return (Number(n)||0).toLocaleString('en-US', {maximumFractionDigits:0}); }
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function weekAgoStr(){ const d=new Date(); d.setDate(d.getDate()-7); return d.toISOString().slice(0,10); }
+function checkApiConfigured(){
+  if (API_URL.indexOf('PASTE_YOUR') === 0) {
+    document.getElementById('liveBadge').textContent = 'مش متصل';
+    document.getElementById('liveBadge').style.background = '#fbe2e2';
+    document.getElementById('liveBadge').style.color = '#c0392b';
+    document.getElementById('content').innerHTML = `<div class="setup-note">
+      ⚠️ لازم الأول تحط رابط الـ Web App بتاع الـ Apps Script في المتغيّر <code>API_URL</code> فوق في الكود، بعد ما تعمل Deploy &gt; New deployment &gt; Web app (Execute as: Me, Who has access: Anyone).
+    </div>`;
+    return false;
+  }
+  return true;
 }
 
-let _confirmCb = null;
-function openConfirm(msg, cb){
-  $('confirm-msg').textContent = msg;
-  _confirmCb = cb;
-  $('confirm-modal').classList.add('open');
-  $('confirm-yes').onclick = function(){
-    const cb = _confirmCb;
-    closeConfirm();
-    if(cb) cb();
-  };
-}
-function closeConfirm(){ $('confirm-modal').classList.remove('open'); _confirmCb=null; }
-function openPassModal(){ $('pass-old').value=''; $('pass-new').value=''; $('alert-pass').style.display='none'; $('pass-modal').classList.add('open'); }
-function closePassModal(){ $('pass-modal').classList.remove('open'); }
-
-/* API */
-const API = {
-  async fetch(method, params){
-    let r;
-    if(method === 'POST'){
-      r = await fetch(CFG.appsScriptUrl, {
-        method:'POST', redirect:'follow',
-        headers:{'Content-Type':'text/plain;charset=utf-8'},
-        body: JSON.stringify(params)
-      });
-    } else {
-      const url = CFG.appsScriptUrl + '?payload=' + encodeURIComponent(JSON.stringify(params));
-      r = await fetch(url, { method:'GET', redirect:'follow' });
-    }
-    const t = await r.text();
-    try { return JSON.parse(t); } catch { throw new Error('رد غير متوقع من السيرفر'); }
-  }
+/* ================= Router ================= */
+const PAGES = {
+  dashboard:    { title:'نظرة عامة', sub:'ملخص شامل لكل حاجة في المصنع', render: renderDashboard },
+  employees:    { title:'الموظفين', sub:'من شيت "تفاصيل المرتبات" مباشرة', render: renderEmployees },
+  logHours:     { title:'ساعات وسهرات', sub:'سجّل شغل أي صنايعي على أي مشروع', render: renderLogHours },
+  distribution: { title:'توزيع تكلفة المرتبات', sub:'مين شغل فين، وكام ساعة، وسهر إمتى', render: renderDistribution },
+  treasury:     { title:'الخزنة — Cash Flow', sub:'الرصيد الحالي، الداخل والخارج، الإيداعات والمصاريف', render: renderTreasury },
+  projects:     { title:'المشاريع', sub:'تكلفة كل مشروع بالتفصيل', render: renderProjects },
+  products:     { title:'تكلفة المنتجات', sub:'خامات + عمالة لكل منتج، بتتحمّل على المشروع', render: renderProducts },
+  fixedExp:     { title:'المصاريف الثابتة', sub:'إيجار / كهرباء / إلخ — وطريقة توزيعها على المشاريع', render: renderFixedExp },
+  quotation:    { title:'عروض الأسعار', sub:'قائمة العملاء وعروض الأسعار', render: renderQuotation },
+  debtors:      { title:'المستحقات (الدائنون)', sub:'متابعة تحصيل الدفعات من العملاء', render: renderDebtors }
 };
 
-/* تسجيل الدخول */
-const AUTH = {
-  togglePass(){
-    const inp = $('login-pass');
-    inp.type = inp.type === 'password' ? 'text' : 'password';
-  },
-  async login(){
-    const name = $('login-name').value.trim();
-    const pass = $('login-pass').value.trim();
-    if(!name || !pass){ alert_('alert-login','err','اكتب الاسم وكلمة المرور'); return; }
-    loading('جاري الدخول...');
-    try{
-      const d = await API.fetch('POST', {action:'login', name, pass});
-      if(d.success){
-        sessionStorage.setItem('erp_user', JSON.stringify(d.user));
-        this.enterApp(d.user);
-      } else {
-        alert_('alert-login','err', d.error || 'بيانات الدخول غير صحيحة');
-      }
-    }catch(e){ alert_('alert-login','err','تعذر الاتصال: '+e.message); }
-    finally{ loaded(); }
-  },
-  enterApp(user){
-    $('login-shell').style.display = 'none';
-    $('app-shell').style.display = 'block';
-    $('sb-username').textContent = user.name;
-    APP.init();
-  },
-  logout(){
-    sessionStorage.removeItem('erp_user');
-    $('app-shell').style.display = 'none';
-    $('login-shell').style.display = 'flex';
-    $('login-name').value=''; $('login-pass').value='';
-  },
-  async changePassword(){
-    const user = JSON.parse(sessionStorage.getItem('erp_user')||'{}');
-    const oldPass = $('pass-old').value.trim();
-    const newPass = $('pass-new').value.trim();
-    if(!oldPass || !newPass){ alert_('alert-pass','err','اكتب كل الخانات'); return; }
-    loading('جاري الحفظ...');
-    try{
-      const d = await API.fetch('POST', {action:'changePassword', name:user.name, oldPass, newPass});
-      if(d.success){ alert_('alert-pass','ok','تم تغيير كلمة المرور'); setTimeout(closePassModal,1200); }
-      else { alert_('alert-pass','err', d.error||'خطأ غير معروف'); }
-    }catch(e){ alert_('alert-pass','err','تعذر الاتصال: '+e.message); }
-    finally{ loaded(); }
-  }
-};
-
-/* التنقل بين الصفحات */
-const PAGE_TITLES = {
-  'pg-dashboard': ['الرئيسية', 'نظرة عامة على النظام'],
-  'pg-employees': ['الموظفين', 'إضافة وتعديل بيانات الموظفين'],
-  'pg-hours':     ['تسجيل ساعات وسهرات', 'تسجيل أيام العمل والسهرات لكل موظف'],
-  'pg-summary':   ['ملخص المشاريع', 'تكلفة العمالة لكل مشروع وموظف'],
-};
-
-document.querySelectorAll('.nav-item').forEach(t=>{
-  t.onclick = () => {
-    document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
-    document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
-    t.classList.add('active');
-    $(t.dataset.page).classList.add('active');
-    const [title, sub] = PAGE_TITLES[t.dataset.page];
-    $('pt-title').textContent = title;
-    $('pt-sub').textContent = sub;
-    if(t.dataset.page === 'pg-summary') SUMMARY.load();
-    if(t.dataset.page === 'pg-dashboard') DASHBOARD.load();
-  };
+document.getElementById('nav').addEventListener('click', e => {
+  const btn = e.target.closest('button'); if (!btn) return; goTo(btn.dataset.page);
 });
+function goTo(page) {
+  document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('active', b.dataset.page === page));
+  document.getElementById('pageTitle').textContent = PAGES[page].title;
+  document.getElementById('pageSub').textContent = PAGES[page].sub;
+  if (!checkApiConfigured()) return;
+  document.getElementById('content').innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  PAGES[page].render();
+}
+function showError(err){ document.getElementById('content').innerHTML = `<div class="panel"><div class="msg err" style="display:block;">حصل خطأ: ${err.message||err}</div></div>`; }
 
-/* الموظفين */
-const EMP = {
-  list: [],
-  async load(){
-    const body = $('emp-body');
-    body.innerHTML = '<tr><td colspan="6" class="empty">جاري التحميل...</td></tr>';
-    try{
-      const d = await API.fetch('GET', {action:'listEmployees'});
-      this.list = d.employees || [];
-      this.renderTable();
-      this.fillSelect();
-    }catch(e){ body.innerHTML = `<tr><td colspan="6" class="empty">تعذر التحميل: ${e.message}</td></tr>`; }
-  },
-  renderTable(){
-    const body = $('emp-body');
-    if(!this.list.length){ body.innerHTML = '<tr><td colspan="6" class="empty">لا يوجد موظفين بعد</td></tr>'; return; }
-    body.innerHTML = '';
-    this.list.forEach(e=>{
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><input type="text" value="${(e['اسم الموظف']||'').replace(/"/g,'&quot;')}" data-f="name"/></td>
-        <td><select data-f="payType">
-              <option value="اسبوعي" ${e['طريقة القبض']==='اسبوعي'?'selected':''}>اسبوعي</option>
-              <option value="شهري" ${e['طريقة القبض']==='شهري'?'selected':''}>شهري</option>
-            </select></td>
-        <td><input type="number" value="${e['اجر الساعة']||0}" data-f="hourlyRate"/></td>
-        <td><input type="number" value="${e['اليومية']||0}" data-f="dailyRate"/></td>
-        <td><input type="text" value="${(e['ملاحظات']||'').replace(/"/g,'&quot;')}" data-f="notes"/></td>
-        <td class="actions">
-          <button class="btn btn-gold btn-sm">حفظ</button>
-          <button class="btn btn-danger btn-sm">حذف</button>
-        </td>`;
-      tr.querySelector('.btn-gold').onclick = () => this.update(e.id, tr);
-      tr.querySelector('.btn-danger').onclick = () => this.del(e.id);
-      body.appendChild(tr);
+/* ================= Dashboard ================= */
+async function renderDashboard() {
+  try {
+    const d = await apiGet('getDashboardData');
+    document.getElementById('content').innerHTML = `
+      <div class="cards">
+        <div class="card"><div class="label">عدد الموظفين</div><div class="value">${d.employeesCount}</div></div>
+        <div class="card"><div class="label">عدد المشاريع</div><div class="value">${d.projectsCount}</div></div>
+        <div class="card"><div class="label">رصيد الخزنة</div><div class="value green">${fmt(d.treasuryBalance)} ج</div></div>
+        <div class="card"><div class="label">إجمالي تكلفة العمالة</div><div class="value gold">${fmt(d.totalLaborCost)} ج</div></div>
+        <div class="card"><div class="label">إجمالي ساعات الشغل</div><div class="value">${fmt(d.totalLaborHours)} س</div></div>
+        <div class="card"><div class="label">تكلفة المنتجات (خامات)</div><div class="value gold">${fmt(d.totalProductsCost)} ج</div></div>
+      </div>
+      <div class="grid2">
+        <div class="panel"><h3>أعلى 5 مشاريع في التكلفة</h3>
+          ${d.topProjectsByCost.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>الساعات</th><th>التكلفة</th></tr></thead>
+          <tbody>${d.topProjectsByCost.map(p=>`<tr><td>${p.project}</td><td>${fmt(p.hours)}</td><td>${fmt(p.cost)} ج</td></tr>`).join('')}</tbody></table></div>`
+          : `<div class="empty">لا يوجد بيانات ساعات مسجلة بعد</div>`}
+        </div>
+        <div class="panel"><h3>آخر سجلات الساعات</h3>
+          ${d.recentHoursEntries.length ? `<div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>الموظف</th><th>المشروع</th><th>التكلفة</th></tr></thead>
+          <tbody>${d.recentHoursEntries.map(l=>`<tr><td>${l.date}</td><td>${l.employee}</td><td>${l.project}</td><td>${fmt(l.cost)} ج</td></tr>`).join('')}</tbody></table></div>`
+          : `<div class="empty">لا يوجد سجلات بعد</div>`}
+        </div>
+      </div>
+      <div class="panel"><h3>آخر حركات الخزنة</h3>
+        ${d.recentTreasuryMoves.length ? `<div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>البيان</th><th>النوع</th><th>المشروع</th><th>المبلغ</th><th>الرصيد بعدها</th></tr></thead>
+        <tbody>${d.recentTreasuryMoves.map(m=>`<tr><td>${m.date}</td><td>${m.desc}</td><td><span class="pill ${m.type==='إيداع'?'dep':'exp'}">${m.type}</span></td><td>${m.project||'—'}</td><td style="color:${m.type==='إيداع'?'var(--green)':'var(--red)'}">${fmt(m.amount)} ج</td><td>${fmt(m.balanceAfter)} ج</td></tr>`).join('')}</tbody></table></div>`
+        : `<div class="empty">مفيش حركات مسجلة</div>`}
+      </div>
+    `;
+  } catch(err){ showError(err); }
+}
+
+/* ================= Employees ================= */
+async function renderEmployees() {
+  try {
+    const { employees } = await apiGet('listEmployees');
+    document.getElementById('content').innerHTML = `
+      <div class="grid2">
+        <div class="panel">
+          <h3>إضافة / تعديل موظف</h3>
+          <form id="empForm">
+            <input type="hidden" id="e_originalName">
+            <div class="field"><label>اسم الموظف</label><input id="e_name" required></div>
+            <div class="form-row">
+              <div class="field"><label>طريقة القبض</label>
+                <select id="e_paymentType"><option value="اسبوعي">اسبوعي</option><option value="شهري">شهري</option></select>
+              </div>
+              <div class="field"><label>اليومية (ج)</label><input type="number" id="e_dailyRate" step="1" min="0"></div>
+            </div>
+            <div class="form-row">
+              <div class="field"><label>أجر الساعة (ج)</label><input type="number" id="e_hourlyRate" step="1" min="0"></div>
+              <div class="field"><label>ملاحظات</label><input id="e_notes"></div>
+            </div>
+            <button type="submit" class="btn btn-primary" id="empSubmitBtn">حفظ الموظف</button>
+            <button type="button" class="btn btn-outline" id="empResetBtn">إضافة جديد</button>
+            <div class="msg" id="empMsg"></div>
+          </form>
+        </div>
+        <div class="panel">
+          <h3>قائمة الموظفين (${employees.length})</h3>
+          <div class="tbl-wrap"><table>
+            <thead><tr><th>الاسم</th><th>طريقة القبض</th><th>اليومية</th><th>أجر الساعة</th><th></th></tr></thead>
+            <tbody>${employees.length ? employees.map(e => `<tr>
+              <td>${e.name}</td><td>${e.paymentType}</td><td>${fmt(e.dailyRate)} ج</td><td>${fmt(e.hourlyRate)} ج</td>
+              <td><button class="btn btn-sm btn-outline" onclick='editEmployee(${JSON.stringify(e).replace(/'/g,"&#39;")})'>تعديل</button>
+                  <button class="btn btn-sm btn-danger" onclick="deleteEmployeeConfirm('${e.name.replace(/'/g,"\\'")}')">حذف</button></td>
+            </tr>`).join('') : `<tr><td colspan="5" class="empty">مفيش موظفين مسجلين في شيت المرتبات</td></tr>`}</tbody>
+          </table></div>
+        </div>
+      </div>
+    `;
+    document.getElementById('empResetBtn').addEventListener('click', () => resetEmployeeForm());
+    document.getElementById('empForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('empSubmitBtn'); const msg = document.getElementById('empMsg');
+      msg.className='msg'; msg.textContent=''; btn.disabled=true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
+      const originalName = document.getElementById('e_originalName').value;
+      const employee = {
+        id: originalName || undefined, name: document.getElementById('e_name').value.trim(),
+        paymentType: document.getElementById('e_paymentType').value,
+        dailyRate: document.getElementById('e_dailyRate').value, hourlyRate: document.getElementById('e_hourlyRate').value,
+        notes: document.getElementById('e_notes').value
+      };
+      try {
+        const res = originalName ? await apiPost('updateEmployee', { employee }) : await apiPost('addEmployee', { employee });
+        msg.className='msg ok'; msg.textContent = 'تم الحفظ بنجاح';
+        renderEmployees();
+      } catch(err){ msg.className='msg err'; msg.textContent = 'خطأ: '+(err.message||err); }
+      finally { btn.disabled=false; btn.textContent='حفظ الموظف'; }
     });
-  },
-  fillSelect(){
-    const sel = $('hr-employee');
-    sel.innerHTML = '<option value="">اختر الموظف</option>';
-    this.list.forEach(e=>{
-      const opt = document.createElement('option');
-      opt.value = e['اسم الموظف']; opt.textContent = e['اسم الموظف'];
-      sel.appendChild(opt);
+  } catch(err){ showError(err); }
+}
+function resetEmployeeForm(){
+  document.getElementById('e_originalName').value='';
+  document.getElementById('empForm').reset();
+}
+function editEmployee(e){
+  document.getElementById('e_originalName').value = e.name;
+  document.getElementById('e_name').value = e.name;
+  document.getElementById('e_paymentType').value = e.paymentType;
+  document.getElementById('e_dailyRate').value = e.dailyRate;
+  document.getElementById('e_hourlyRate').value = e.hourlyRate;
+  document.getElementById('e_notes').value = e.notes || '';
+  window.scrollTo(0,0);
+}
+async function deleteEmployeeConfirm(name){
+  if (!confirm('متأكد إنك عاوز تمسح "'+name+'"؟')) return;
+  try { await apiPost('deleteEmployee', { id: name }); renderEmployees(); } catch(err){ alert('خطأ: '+(err.message||err)); }
+}
+
+/* ================= Log Hours & Evenings ================= */
+async function renderLogHours() {
+  try {
+    const [{employees}, {projects}, recentData] = await Promise.all([
+      apiGet('listEmployees'), apiGet('listProjects'), apiGet('listHoursEntries', { filters:{limit:10} })
+    ]);
+    document.getElementById('content').innerHTML = `
+      <div class="grid2">
+        <div class="panel">
+          <h3>تسجيل جديد</h3>
+          <form id="logForm">
+            <div class="form-row">
+              <div class="field"><label>الموظف</label><select id="f_employee" required><option value="">اختار الموظف</option>${employees.map(e=>`<option value="${e.name}">${e.name}</option>`).join('')}</select></div>
+              <div class="field"><label>المشروع</label><select id="f_project" required><option value="">اختار المشروع</option>${projects.map(p=>`<option value="${p}">${p}</option>`).join('')}</select></div>
+            </div>
+            <div class="form-row">
+              <div class="field"><label>التاريخ</label><input type="date" id="f_date" value="${todayStr()}"></div>
+              <div class="field"><label>ساعات عادية</label><input type="number" id="f_hours" step="0.5" min="0" placeholder="0"></div>
+            </div>
+            <div class="form-row">
+              <div class="field"><label>ساعات سهرة</label><input type="number" id="f_eveningHours" step="0.5" min="0" placeholder="0"></div>
+              <div class="field"><label>مبلغ السهرة (ج)</label><input type="number" id="f_eveningAmount" step="1" min="0" placeholder="0"></div>
+            </div>
+            <div class="field"><label>ملاحظات (اختياري)</label><textarea id="f_notes" rows="2"></textarea></div>
+            <button type="submit" class="btn btn-primary" id="submitBtn">حفظ السجل</button>
+            <div class="msg" id="formMsg"></div>
+          </form>
+        </div>
+        <div class="panel"><h3>آخر 10 سجلات</h3><div id="recentBox"></div></div>
+      </div>
+    `;
+    renderRecentLogs(recentData.entries);
+    document.getElementById('logForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('submitBtn'); const msg = document.getElementById('formMsg');
+      msg.className='msg'; msg.textContent=''; btn.disabled=true; btn.innerHTML='<span class="spinner"></span>جاري الحفظ...';
+      const entry = {
+        employee: document.getElementById('f_employee').value, project: document.getElementById('f_project').value,
+        date: document.getElementById('f_date').value, hours: document.getElementById('f_hours').value,
+        eveningHours: document.getElementById('f_eveningHours').value, eveningAmount: document.getElementById('f_eveningAmount').value,
+        notes: document.getElementById('f_notes').value
+      };
+      try {
+        const res = await apiPost('addHoursEntry', { entry });
+        msg.className='msg ok'; msg.textContent = 'تم الحفظ — التكلفة المحسوبة: '+fmt(res.cost)+' ج';
+        ['f_hours','f_eveningHours','f_eveningAmount','f_notes'].forEach(id => document.getElementById(id).value='');
+        const recent = await apiGet('listHoursEntries', { filters:{limit:10} });
+        renderRecentLogs(recent.entries);
+      } catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); }
+      finally { btn.disabled=false; btn.textContent='حفظ السجل'; }
     });
-  },
-  async add(){
-    const name = $('emp-name').value.trim();
-    if(!name){ alert_('alert-emp','err','اكتب اسم الموظف'); return; }
-    const employee = {
-      name, payType: $('emp-paytype').value,
-      hourlyRate: $('emp-hourly').value, dailyRate: $('emp-daily').value,
-      notes: $('emp-notes').value
-    };
-    loading('جاري الإضافة...');
-    try{
-      const d = await API.fetch('POST', {action:'addEmployee', employee});
-      if(d.success){
-        alert_('alert-emp','ok','تمت الإضافة');
-        $('emp-name').value=''; $('emp-hourly').value=''; $('emp-daily').value=''; $('emp-notes').value='';
-        this.load();
-      } else { alert_('alert-emp','err', d.error||'خطأ غير معروف'); }
-    }catch(e){ alert_('alert-emp','err','تعذر الاتصال: '+e.message); }
-    finally{ loaded(); }
-  },
-  async update(id, tr){
-    const get = f => tr.querySelector(`[data-f="${f}"]`).value;
-    const employee = {
-      id, name: get('name'), payType: get('payType'),
-      hourlyRate: get('hourlyRate'), dailyRate: get('dailyRate'), notes: get('notes')
-    };
-    loading('جاري الحفظ...');
-    try{
-      const d = await API.fetch('POST', {action:'updateEmployee', employee});
-      if(d.success){ alert_('alert-emp','ok','تم الحفظ'); this.load(); }
-      else { alert_('alert-emp','err', d.error||'خطأ غير معروف'); }
-    }catch(e){ alert_('alert-emp','err','تعذر الاتصال: '+e.message); }
-    finally{ loaded(); }
-  },
-  del(id){
-    openConfirm('هل تريد حذف هذا الموظف نهائيًا؟', async () => {
-      loading('جاري الحذف...');
-      try{
-        const d = await API.fetch('POST', {action:'deleteEmployee', id});
-        if(d.success) this.load(); else alert_('alert-emp','err', d.error||'خطأ');
-      }catch(e){ alert_('alert-emp','err', e.message); }
-      finally{ loaded(); }
+  } catch(err){ showError(err); }
+}
+function renderRecentLogs(recent){
+  const box = document.getElementById('recentBox');
+  if (!recent.length){ box.innerHTML = '<div class="empty">لسه مفيش سجلات</div>'; return; }
+  box.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>الموظف</th><th>المشروع</th><th>ساعات</th><th>سهرة</th><th>التكلفة</th><th></th></tr></thead>
+    <tbody>${recent.map(l=>`<tr><td>${l.date}</td><td>${l.employee}</td><td>${l.project}</td><td>${fmt(l.hours)}</td><td>${fmt(l.eveningAmount)} ج</td><td>${fmt(l.cost)} ج</td>
+      <td><button class="btn btn-sm btn-danger" onclick="deleteHoursEntryConfirm('${l.id}')">حذف</button></td></tr>`).join('')}</tbody></table></div>`;
+}
+async function deleteHoursEntryConfirm(id){
+  if (!confirm('متأكد إنك عاوز تمسح السجل ده؟')) return;
+  try { await apiPost('deleteHoursEntry', { id }); renderLogHours(); } catch(err){ alert('خطأ: '+(err.message||err)); }
+}
+
+/* ================= Distribution ================= */
+async function renderDistribution() {
+  try {
+    const [{employees}, {projects}] = await Promise.all([apiGet('listEmployees'), apiGet('listProjects')]);
+    document.getElementById('content').innerHTML = `
+      <div class="panel">
+        <div class="filters">
+          <input type="date" id="filFrom"><span style="color:var(--muted);font-size:12px;">إلى</span><input type="date" id="filTo">
+          <select id="filProject"><option value="">كل المشاريع</option>${projects.map(p=>`<option value="${p}">${p}</option>`).join('')}</select>
+          <select id="filEmployee"><option value="">كل الموظفين</option>${employees.map(e=>`<option value="${e.name}">${e.name}</option>`).join('')}</select>
+          <button class="btn btn-sm btn-outline" id="thisWeekBtn">الأسبوع ده</button>
+          <button class="btn btn-primary" id="applyFilters">فلترة</button>
+        </div>
+      </div>
+      <div id="reportBox"><div class="loading-row">جاري التحميل...</div></div>
+    `;
+    document.getElementById('applyFilters').addEventListener('click', loadDistributionReport);
+    document.getElementById('thisWeekBtn').addEventListener('click', () => {
+      document.getElementById('filFrom').value = weekAgoStr(); document.getElementById('filTo').value = todayStr();
+      loadDistributionReport();
     });
-  }
-};
+    loadDistributionReport();
+  } catch(err){ showError(err); }
+}
+async function loadDistributionReport(){
+  const filters = { from: document.getElementById('filFrom').value, to: document.getElementById('filTo').value, project: document.getElementById('filProject').value, employee: document.getElementById('filEmployee').value };
+  const box = document.getElementById('reportBox'); box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  try {
+    const rep = await apiGet('getDistributionReport', { filters });
+    if (!rep.projects.length){ box.innerHTML = '<div class="panel"><div class="empty">مفيش بيانات في الفترة/الفلتر ده</div></div>'; return; }
+    box.innerHTML = `
+      <div class="cards">
+        <div class="card"><div class="label">إجمالي التكلفة</div><div class="value gold">${fmt(rep.grandCost)} ج</div></div>
+        <div class="card"><div class="label">إجمالي الساعات</div><div class="value">${fmt(rep.grandHours)} س</div></div>
+        <div class="card"><div class="label">عدد السجلات</div><div class="value">${rep.entriesCount}</div></div>
+      </div>
+      ${rep.projects.map(p => `
+        <div class="panel">
+          <h3><span>${p.project} — ${fmt(p.cost)} ج (${fmt(p.hours)} ساعة + ${fmt(p.eveningAmount)} ج سهرات)</span></h3>
+          <div class="tbl-wrap"><table><thead><tr><th>الموظف</th><th>الساعات</th><th>ساعات السهر</th><th>مبلغ السهرات</th><th>عدد المرات</th><th>التكلفة</th></tr></thead>
+          <tbody>${p.employees.map(e => `<tr><td>${e.employee}</td><td>${fmt(e.hours)}</td><td>${fmt(e.eveningHours)}</td><td>${fmt(e.eveningAmount)} ج</td><td>${e.entries}</td><td>${fmt(e.cost)} ج</td></tr>`).join('')}</tbody></table></div>
+        </div>`).join('')}
+    `;
+  } catch(err){ showError(err); }
+}
 
-/* المشاريع */
-const PROJ = {
-  list: [],
-  async load(){
-    try{
-      const d = await API.fetch('GET', {action:'listProjects'});
-      this.list = d.projects || [];
-      const dl = $('project-list');
-      dl.innerHTML = '';
-      this.list.forEach(p=>{
-        const opt = document.createElement('option');
-        opt.value = p['اسم المشروع'];
-        dl.appendChild(opt);
-      });
-    }catch(e){ /* تجاهل */ }
-  }
-};
-
-/* ساعات العمل والسهرات */
-const HOURS = {
-  list: [],
-  async load(){
-    const body = $('hours-body');
-    body.innerHTML = '<tr><td colspan="8" class="empty">جاري التحميل...</td></tr>';
-    try{
-      const d = await API.fetch('GET', {action:'listHoursEntries', filters:{}});
-      this.list = (d.entries||[]).slice(0,30);
-      this.renderTable();
-    }catch(e){ body.innerHTML = `<tr><td colspan="8" class="empty">تعذر التحميل: ${e.message}</td></tr>`; }
-  },
-  renderTable(){
-    const body = $('hours-body');
-    if(!this.list.length){ body.innerHTML = '<tr><td colspan="8" class="empty">لا يوجد سطور بعد</td></tr>'; return; }
-    body.innerHTML = '';
-    this.list.forEach(e=>{
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><input type="date" value="${e['التاريخ']||''}" data-f="date"/></td>
-        <td><input type="text" value="${(e['اسم الموظف']||'').replace(/"/g,'&quot;')}" data-f="employeeName"/></td>
-        <td><input type="text" value="${(e['المشروع']||'').replace(/"/g,'&quot;')}" data-f="projectName"/></td>
-        <td><input type="number" value="${e['عدد الساعات']||0}" data-f="hours"/></td>
-        <td><input type="number" value="${e['عدد الأيام']||0}" data-f="days"/></td>
-        <td><input type="number" value="${e['سهرة']||0}" data-f="extra"/></td>
-        <td class="num">${fmt(e['إجمالي التكلفة'])}</td>
-        <td class="actions">
-          <button class="btn btn-gold btn-sm">حفظ</button>
-          <button class="btn btn-danger btn-sm">حذف</button>
-        </td>`;
-      tr.querySelector('.btn-gold').onclick = () => this.update(e.id, tr);
-      tr.querySelector('.btn-danger').onclick = () => this.del(e.id);
-      body.appendChild(tr);
+/* ================= Treasury / Cash Flow ================= */
+async function renderTreasury() {
+  try {
+    const [summary, movesData] = await Promise.all([apiGet('getTreasurySummary'), apiGet('getTreasuryMoves', { limit:20 })]);
+    document.getElementById('content').innerHTML = `
+      <div class="cards">
+        <div class="card"><div class="label">الرصيد الحالي</div><div class="value green">${fmt(summary.balance)} ج</div></div>
+        <div class="card"><div class="label">رأس المال</div><div class="value">${fmt(summary.capital)} ج</div></div>
+        <div class="card"><div class="label">إجمالي الإيداعات</div><div class="value green">${fmt(summary.totalDeposits)} ج</div></div>
+        <div class="card"><div class="label">إجمالي المصاريف</div><div class="value red">${fmt(summary.totalExpenses)} ج</div></div>
+      </div>
+      <div class="grid2">
+        <div class="panel">
+          <h3>حركة جديدة</h3>
+          <form id="moveForm">
+            <div class="form-row">
+              <div class="field"><label>النوع</label><select id="m_type"><option value="مصروف">مصروف (خارج)</option><option value="إيداع">إيداع (داخل)</option></select></div>
+              <div class="field"><label>المبلغ (ج)</label><input type="number" id="m_amount" step="1" min="0" required></div>
+            </div>
+            <div class="field"><label>البيان</label><input id="m_desc" required placeholder="مثال: مرتب أسبوعي، دفعة عميل..."></div>
+            <div class="form-row">
+              <div class="field"><label>المشروع (اختياري)</label><input id="m_project" placeholder="اسم المشروع لو مرتبطة بيه"></div>
+              <div class="field"><label>التاريخ</label><input type="date" id="m_date" value="${todayStr()}"></div>
+            </div>
+            <button type="submit" class="btn btn-primary" id="moveBtn">حفظ الحركة</button>
+            <div class="msg" id="moveMsg"></div>
+          </form>
+          <hr style="margin:16px 0;border:none;border-top:1px solid var(--border);">
+          <details><summary style="cursor:pointer;font-size:13px;color:var(--muted);font-weight:700;">ضبط رأس المال / رصيد أول المدة</summary>
+            <div style="margin-top:10px;display:flex;gap:8px;">
+              <input type="number" id="capitalInput" placeholder="رأس المال" style="flex:1;padding:9px;border:1px solid var(--border);border-radius:8px;">
+              <button class="btn btn-outline btn-sm" id="setCapitalBtn">حفظ</button>
+            </div>
+          </details>
+        </div>
+        <div class="panel"><h3>آخر الحركات</h3><div id="movesBox"></div></div>
+      </div>
+    `;
+    renderTreasuryMoves(movesData.moves);
+    document.getElementById('moveForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('moveBtn'); const msg = document.getElementById('moveMsg');
+      msg.className='msg'; msg.textContent=''; btn.disabled=true; btn.innerHTML='<span class="spinner"></span>جاري الحفظ...';
+      const move = { type: document.getElementById('m_type').value, amount: document.getElementById('m_amount').value, desc: document.getElementById('m_desc').value, project: document.getElementById('m_project').value, date: document.getElementById('m_date').value };
+      try { await apiPost('addTreasuryMove', { move }); renderTreasury(); }
+      catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); btn.disabled=false; btn.textContent='حفظ الحركة'; }
     });
-  },
-  async add(){
-    const employeeName = $('hr-employee').value;
-    const projectName = $('hr-project').value.trim();
-    if(!employeeName || !projectName){ alert_('alert-hours','err','اختار الموظف واكتب اسم المشروع'); return; }
-    const entry = {
-      employeeName, projectName,
-      date: $('hr-date').value,
-      hours: $('hr-hours').value, days: $('hr-days').value, extra: $('hr-extra').value,
-      notes: $('hr-notes').value
-    };
-    loading('جاري الحفظ...');
-    try{
-      const d = await API.fetch('POST', {action:'addHoursEntry', entry});
-      if(d.success){
-        alert_('alert-hours','ok','تم الحفظ — الإجمالي: '+fmt(d.totalCost));
-        $('hr-hours').value=''; $('hr-days').value=''; $('hr-extra').value=''; $('hr-notes').value='';
-        this.load(); PROJ.load();
-      } else { alert_('alert-hours','err', d.error||'خطأ غير معروف'); }
-    }catch(e){ alert_('alert-hours','err','تعذر الاتصال: '+e.message); }
-    finally{ loaded(); }
-  },
-  async update(id, tr){
-    const get = f => tr.querySelector(`[data-f="${f}"]`).value;
-    const entry = {
-      id, date: get('date'), employeeName: get('employeeName'), projectName: get('projectName'),
-      hours: get('hours'), days: get('days'), extra: get('extra')
-    };
-    loading('جاري الحفظ...');
-    try{
-      const d = await API.fetch('POST', {action:'updateHoursEntry', entry});
-      if(d.success){ alert_('alert-hours','ok','تم الحفظ'); this.load(); }
-      else { alert_('alert-hours','err', d.error||'خطأ غير معروف'); }
-    }catch(e){ alert_('alert-hours','err','تعذر الاتصال: '+e.message); }
-    finally{ loaded(); }
-  },
-  del(id){
-    openConfirm('هل تريد حذف هذا السطر نهائيًا؟', async () => {
-      loading('جاري الحذف...');
-      try{
-        const d = await API.fetch('POST', {action:'deleteHoursEntry', id});
-        if(d.success) this.load(); else alert_('alert-hours','err', d.error||'خطأ');
-      }catch(e){ alert_('alert-hours','err', e.message); }
-      finally{ loaded(); }
+    document.getElementById('setCapitalBtn').addEventListener('click', async () => {
+      const amount = document.getElementById('capitalInput').value;
+      if (!amount) return;
+      try { await apiPost('setTreasuryCapital', { amount }); renderTreasury(); } catch(err){ alert('خطأ: '+(err.message||err)); }
     });
-  }
-};
+  } catch(err){ showError(err); }
+}
+function renderTreasuryMoves(moves){
+  const box = document.getElementById('movesBox');
+  if (!moves.length){ box.innerHTML = '<div class="empty">مفيش حركات مسجلة</div>'; return; }
+  box.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>البيان</th><th>النوع</th><th>المشروع</th><th>المبلغ</th><th>الرصيد بعدها</th><th></th></tr></thead>
+    <tbody>${moves.map(m=>`<tr><td>${m.date}</td><td>${m.desc}</td><td><span class="pill ${m.type==='إيداع'?'dep':'exp'}">${m.type}</span></td><td>${m.project||'—'}</td>
+      <td style="color:${m.type==='إيداع'?'var(--green)':'var(--red)'}">${fmt(m.amount)} ج</td><td>${fmt(m.balanceAfter)} ج</td>
+      <td><button class="btn btn-sm btn-danger" onclick="deleteTreasuryMoveConfirm('${m.id}')">حذف</button></td></tr>`).join('')}</tbody></table></div>`;
+}
+async function deleteTreasuryMoveConfirm(id){
+  if (!confirm('متأكد إنك عاوز تمسح الحركة دي؟ (هيتم إعادة حساب الرصيد تلقائي)')) return;
+  try { await apiPost('deleteTreasuryMove', { id }); renderTreasury(); } catch(err){ alert('خطأ: '+(err.message||err)); }
+}
 
-/* الملخصات */
-const SUMMARY = {
-  async load(){
-    $('proj-summary').innerHTML = '<div class="empty">جاري التحميل...</div>';
-    $('emp-summary').innerHTML = '<div class="empty">جاري التحميل...</div>';
-    try{
-      const [dp, de] = await Promise.all([
-        API.fetch('GET', {action:'getProjectSummary'}),
-        API.fetch('GET', {action:'getEmployeeSummary'})
-      ]);
-      this.renderProjects(dp.summary||[]);
-      this.renderEmployees(de.summary||[]);
-    }catch(e){
-      $('proj-summary').innerHTML = `<div class="empty">تعذر التحميل: ${e.message}</div>`;
-    }
-  },
-  renderProjects(list){
-    const box = $('proj-summary');
-    if(!list.length){ box.innerHTML = '<div class="empty">لا يوجد بيانات بعد</div>'; return; }
-    box.innerHTML = list.map(p => `
-      <div class="proj-bar-row" style="margin-bottom:16px;">
-        <div class="pb-top"><span>${p.project} (${p.entriesCount} سطر)</span><b>${fmt(p.totalCost)} جنيه</b></div>
-        <div class="pb-track"><div class="pb-fill" style="width:100%"></div></div>
-      </div>`).join('');
-  },
-  renderEmployees(list){
-    const box = $('emp-summary');
-    if(!list.length){ box.innerHTML = '<div class="empty">لا يوجد بيانات بعد</div>'; return; }
-    box.innerHTML = list.map(e => `
-      <div class="proj-bar-row" style="margin-bottom:16px;">
-        <div class="pb-top"><span>${e.employee} (${fmt(e.totalHours)} ساعة, ${fmt(e.totalDays)} يوم, ${fmt(e.totalExtra)} سهرات)</span><b>${fmt(e.totalCost)} جنيه</b></div>
-        <div class="pb-track"><div class="pb-fill" style="width:100%"></div></div>
-      </div>`).join('');
-  }
-};
+/* ================= Projects ================= */
+async function renderProjects() {
+  try {
+    const { projects } = await apiGet('listProjectsSummary');
+    document.getElementById('content').innerHTML = `
+      <div class="panel">
+        <h3>ملخص تكلفة المشاريع (${projects.length})</h3>
+        ${projects.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>ساعات العمالة</th><th>تكلفة العمالة</th><th>تكلفة الخامات</th><th>إجمالي التكلفة</th><th></th></tr></thead>
+        <tbody>${projects.map(p => `<tr><td>${p.project}</td><td>${fmt(p.laborHours)}</td><td>${fmt(p.laborCost)} ج</td><td>${fmt(p.materialsCost)} ج</td><td><b>${fmt(p.totalCost)} ج</b></td>
+          <td><button class="btn btn-sm btn-outline" onclick="showProjectDetail('${p.project.replace(/'/g,"\\'")}')">تفاصيل</button></td></tr>`).join('')}</tbody></table></div>`
+        : `<div class="empty">مفيش مشاريع لسه — أضف شيت جديد في ملف "مصاريف المشاريع + الخزنة" باسم المشروع</div>`}
+      </div>
+      <div id="projectDetailBox"></div>
+    `;
+  } catch(err){ showError(err); }
+}
+async function showProjectDetail(name){
+  const box = document.getElementById('projectDetailBox');
+  box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  try {
+    const d = await apiGet('getProjectFullSummary', { name });
+    box.innerHTML = `
+      <div class="panel">
+        <h3>تفاصيل مشروع: ${d.project}</h3>
+        <div class="cards">
+          <div class="card"><div class="label">تكلفة العمالة</div><div class="value gold">${fmt(d.laborCost)} ج</div></div>
+          <div class="card"><div class="label">ساعات العمالة</div><div class="value">${fmt(d.laborHours)} س</div></div>
+          <div class="card"><div class="label">تكلفة الخامات</div><div class="value gold">${fmt(d.materialsCost)} ج</div></div>
+          <div class="card"><div class="label">إجمالي التكلفة</div><div class="value green">${fmt(d.totalCost)} ج</div></div>
+          ${d.financials ? `<div class="card"><div class="label">الإيرادات المسجلة</div><div class="value green">${fmt(d.financials.revenue)} ج</div></div>` : ''}
+        </div>
+        <h3 style="margin-top:6px;">آخر سجلات الساعات على المشروع</h3>
+        ${d.recentHours.length ? `<div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>الموظف</th><th>ساعات</th><th>سهرة</th><th>التكلفة</th></tr></thead>
+        <tbody>${d.recentHours.map(h=>`<tr><td>${h.date}</td><td>${h.employee}</td><td>${fmt(h.hours)}</td><td>${fmt(h.eveningAmount)} ج</td><td>${fmt(h.cost)} ج</td></tr>`).join('')}</tbody></table></div>`
+        : `<div class="empty">مفيش سجلات ساعات على المشروع ده</div>`}
+      </div>
+    `;
+  } catch(err){ box.innerHTML = `<div class="panel"><div class="msg err" style="display:block;">خطأ: ${err.message||err}</div></div>`; }
+}
 
-/* لوحة التحكم */
-const DASHBOARD = {
-  async load(){
-    $('dash-kpis').innerHTML = '<div class="empty">جاري التحميل...</div>';
-    $('dash-top-projects').innerHTML = '<div class="empty">جاري التحميل...</div>';
-    $('dash-recent').innerHTML = '<tr><td colspan="4" class="empty">جاري التحميل...</td></tr>';
-    try{
-      const d = await API.fetch('GET', {action:'getDashboardStats'});
-      this.renderKpis(d.stats);
-      this.renderTopProjects(d.stats.topProjects || []);
-      this.renderRecent(d.stats.recentEntries || []);
-    }catch(e){
-      $('dash-kpis').innerHTML = `<div class="empty">تعذر التحميل: ${e.message}</div>`;
-    }
-  },
-  renderKpis(s){
-    const cards = [
-      { lbl:'عدد الموظفين', val: fmt(s.employeesCount), cls:'' },
-      { lbl:'عدد المشاريع', val: fmt(s.projectsCount), cls:'' },
-      { lbl:'مشاريع فيها حركة تكلفة', val: fmt(s.activeProjectsCount), cls:'' },
-      { lbl:'إجمالي التكلفة الكلي', val: fmt(s.totalCost)+' ج', cls:'gold' },
-      { lbl:'تكلفة الشهر الحالي', val: fmt(s.costThisMonth)+' ج', cls:'gold' },
-      { lbl:'إجمالي الساعات المسجلة', val: fmt(s.totalHours), cls:'' },
-      { lbl:'إجمالي أيام العمل', val: fmt(s.totalDays), cls:'' },
-      { lbl:'إجمالي مبالغ السهرات', val: fmt(s.totalExtra)+' ج', cls:'' },
-      { lbl:'إجمالي المصاريف الثابتة الشهرية', val: fmt(s.totalFixedMonthly)+' ج', cls:'red' },
-    ];
-    $('dash-kpis').innerHTML = cards.map(c => `
-      <div class="kpi">
-        <div class="kpi-lbl">${c.lbl}</div>
-        <div class="kpi-val ${c.cls}">${c.val}</div>
-      </div>`).join('');
-  },
-  renderTopProjects(list){
-    const box = $('dash-top-projects');
-    if(!list.length){ box.innerHTML = '<div class="empty">لا يوجد بيانات بعد</div>'; return; }
-    const max = Math.max(...list.map(p => p.totalCost)) || 1;
-    box.innerHTML = list.map(p => `
-      <div class="proj-bar-row">
-        <div class="pb-top"><span>${p.project}</span><b>${fmt(p.totalCost)} ج</b></div>
-        <div class="pb-track"><div class="pb-fill" style="width:${(p.totalCost/max*100).toFixed(0)}%"></div></div>
-      </div>`).join('');
-  },
-  renderRecent(list){
-    const body = $('dash-recent');
-    if(!list.length){ body.innerHTML = '<tr><td colspan="4" class="empty">لا يوجد حركات بعد</td></tr>'; return; }
-    body.innerHTML = list.map(e => `
-      <tr>
-        <td>${e['التاريخ']||''}</td>
-        <td>${e['اسم الموظف']||''}</td>
-        <td>${e['المشروع']||''}</td>
-        <td class="num">${fmt(e['إجمالي التكلفة'])}</td>
-      </tr>`).join('');
-  }
-};
+/* ================= Product Costing ================= */
+let materialRows = [], laborRows = [];
+async function renderProducts() {
+  try {
+    const [{projects}, {employees}, {products}] = await Promise.all([apiGet('listProjects'), apiGet('listEmployees'), apiGet('listProducts', {filters:{}})]);
+    materialRows = [{name:'',qty:'',unit:'',unitPrice:''}]; laborRows=[{employee:'',hours:''}];
+    document.getElementById('content').innerHTML = `
+      <div class="grid2">
+        <div class="panel">
+          <h3>منتج جديد</h3>
+          <form id="prodForm">
+            <div class="form-row">
+              <div class="field"><label>اسم المنتج</label><input id="p_name" required placeholder="مثال: دولاب غرفة نوم"></div>
+              <div class="field"><label>المشروع</label><select id="p_project" required><option value="">اختار المشروع</option>${projects.map(pr=>`<option value="${pr}">${pr}</option>`).join('')}</select></div>
+            </div>
+            <label style="font-size:12px;font-weight:700;color:var(--muted);">المواد الخام</label>
+            <div id="materialsBox"></div>
+            <button type="button" class="btn btn-outline btn-sm dyn-add" id="addMaterialBtn">+ إضافة مادة</button>
+            <label style="font-size:12px;font-weight:700;color:var(--muted);margin-top:14px;display:block;">العمالة (الموظف + عدد الساعات)</label>
+            <div id="laborBox"></div>
+            <button type="button" class="btn btn-outline btn-sm dyn-add" id="addLaborBtn">+ إضافة عامل</button>
+            <div class="field" style="margin-top:14px;"><label>ملاحظات</label><textarea id="p_notes" rows="2"></textarea></div>
+            <div id="prodTotals" class="subtotal-line"><span>التكلفة الإجمالية المتوقعة</span><b>0 ج</b></div>
+            <button type="submit" class="btn btn-primary" id="prodBtn">حفظ المنتج</button>
+            <div class="msg" id="prodMsg"></div>
+          </form>
+        </div>
+        <div class="panel">
+          <h3>المنتجات المسجلة (${products.length})</h3>
+          <div class="filters"><select id="prodFilterProject"><option value="">كل المشاريع</option>${projects.map(pr=>`<option value="${pr}">${pr}</option>`).join('')}</select></div>
+          <div id="productsListBox"></div>
+        </div>
+      </div>
+    `;
+    const empOptions = employees.map(e=>`<option value="${e.name}">${e.name} — ${fmt(e.hourlyRate)} ج/س</option>`).join('');
+    window._empOptionsHtml = empOptions;
+    renderDynRows(); renderProductsList(products);
+    document.getElementById('addMaterialBtn').addEventListener('click', () => { materialRows.push({name:'',qty:'',unit:'',unitPrice:''}); renderDynRows(); });
+    document.getElementById('addLaborBtn').addEventListener('click', () => { laborRows.push({employee:'',hours:''}); renderDynRows(); });
+    document.getElementById('prodFilterProject').addEventListener('change', async (e) => {
+      const list = await apiGet('listProducts', { filters:{project:e.target.value} }); renderProductsList(list.products);
+    });
+    document.getElementById('prodForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('prodBtn'); const msg = document.getElementById('prodMsg');
+      msg.className='msg'; msg.textContent=''; btn.disabled=true; btn.innerHTML='<span class="spinner"></span>جاري الحفظ...';
+      const product = {
+        name: document.getElementById('p_name').value.trim(), project: document.getElementById('p_project').value,
+        materials: materialRows.filter(m=>m.name), labor: laborRows.filter(l=>l.employee && l.hours),
+        notes: document.getElementById('p_notes').value
+      };
+      try {
+        const res = await apiPost('addProduct', { product });
+        msg.className='msg ok'; msg.textContent = 'تم الحفظ — التكلفة الإجمالية: '+fmt(res.totalCost)+' ج';
+        renderProducts();
+      } catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); btn.disabled=false; btn.textContent='حفظ المنتج'; }
+    });
+  } catch(err){ showError(err); }
+}
+function renderDynRows(){
+  document.getElementById('materialsBox').innerHTML = materialRows.map((m,i) => `
+    <div class="dyn-row">
+      <input placeholder="اسم المادة" value="${m.name}" oninput="materialRows[${i}].name=this.value; updateProdTotal();">
+      <input type="number" placeholder="الكمية" value="${m.qty}" oninput="materialRows[${i}].qty=this.value; updateProdTotal();">
+      <input placeholder="الوحدة" value="${m.unit}" oninput="materialRows[${i}].unit=this.value;">
+      <input type="number" placeholder="سعر الوحدة" value="${m.unitPrice}" oninput="materialRows[${i}].unitPrice=this.value; updateProdTotal();">
+      <button type="button" class="btn btn-sm btn-danger" onclick="materialRows.splice(${i},1); renderDynRows();">✕</button>
+    </div>`).join('');
+  document.getElementById('laborBox').innerHTML = laborRows.map((l,i) => `
+    <div class="dyn-row labor">
+      <select onchange="laborRows[${i}].employee=this.value; updateProdTotal();"><option value="">اختار الموظف</option>${(window._empOptionsHtml||'').replace(`value="${l.employee}"`, `value="${l.employee}" selected`)}</select>
+      <input type="number" placeholder="ساعات" value="${l.hours}" oninput="laborRows[${i}].hours=this.value; updateProdTotal();">
+      <span></span>
+      <button type="button" class="btn btn-sm btn-danger" onclick="laborRows.splice(${i},1); renderDynRows();">✕</button>
+    </div>`).join('');
+  updateProdTotal();
+}
+async function updateProdTotal(){
+  const matTotal = materialRows.reduce((s,m)=>s+(Number(m.qty)||0)*(Number(m.unitPrice)||0),0);
+  document.querySelector('#prodTotals b').textContent = fmt(matTotal) + ' ج (خامات — العمالة بتتحسب وقت الحفظ)';
+}
+function renderProductsList(products){
+  const box = document.getElementById('productsListBox');
+  if (!products.length){ box.innerHTML = '<div class="empty">مفيش منتجات مسجلة</div>'; return; }
+  box.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>المنتج</th><th>المشروع</th><th>خامات</th><th>عمالة</th><th>الإجمالي</th><th></th></tr></thead>
+    <tbody>${products.map(p=>`<tr><td>${p.name}</td><td>${p.project}</td><td>${fmt(p.materialsCost)} ج</td><td>${fmt(p.laborCost)} ج</td><td><b>${fmt(p.totalCost)} ج</b></td>
+      <td><button class="btn btn-sm btn-danger" onclick="deleteProductConfirm('${p.id}')">حذف</button></td></tr>`).join('')}</tbody></table></div>`;
+}
+async function deleteProductConfirm(id){
+  if (!confirm('متأكد إنك عاوز تمسح المنتج ده؟')) return;
+  try { await apiPost('deleteProduct', { id }); renderProducts(); } catch(err){ alert('خطأ: '+(err.message||err)); }
+}
 
-/* تهيئة التطبيق بعد الدخول */
-const APP = {
-  init(){
-    $('hr-date').value = new Date().toISOString().slice(0,10);
-    DASHBOARD.load();
-    EMP.load();
-    PROJ.load();
-    HOURS.load();
-  }
-};
+/* ================= Fixed Expenses ================= */
+async function renderFixedExp() {
+  try {
+    const [{items}, dist] = await Promise.all([apiGet('listFixedExpenses'), apiGet('getFixedExpensesDistribution', {basis:'labor'})]);
+    document.getElementById('content').innerHTML = `
+      <div class="grid2">
+        <div class="panel">
+          <h3>إضافة مصروف ثابت</h3>
+          <form id="fxForm">
+            <div class="field"><label>اسم المصروف</label><input id="fx_name" required placeholder="مثال: إيجار المصنع"></div>
+            <div class="field"><label>المبلغ الشهري (ج)</label><input type="number" id="fx_amount" step="1" min="0" required></div>
+            <div class="field"><label>ملاحظات</label><input id="fx_notes"></div>
+            <button type="submit" class="btn btn-primary" id="fxBtn">حفظ</button>
+            <div class="msg" id="fxMsg"></div>
+          </form>
+          <h3 style="margin-top:18px;">القائمة</h3>
+          <div class="tbl-wrap"><table><thead><tr><th>الاسم</th><th>المبلغ الشهري</th><th></th></tr></thead>
+          <tbody>${items.length ? items.map(i=>`<tr><td>${i.name}</td><td>${fmt(i.amount)} ج</td><td><button class="btn btn-sm btn-danger" onclick="deleteFixedExpConfirm('${i.id}')">حذف</button></td></tr>`).join('') : `<tr><td colspan="3" class="empty">مفيش مصاريف ثابتة مسجلة</td></tr>`}</tbody></table></div>
+        </div>
+        <div class="panel">
+          <h3>توزيع المصاريف الثابتة على المشاريع</h3>
+          <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">بيتوزع نسبيًا على حسب تكلفة عمالة كل مشروع (لو مفيش عمالة مسجلة، بيتوزع بالتساوي).</p>
+          ${dist.distribution.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>النسبة</th><th>المبلغ المخصص</th></tr></thead>
+          <tbody>${dist.distribution.map(d=>`<tr><td>${d.project}</td><td>${(d.weight*100).toFixed(1)}%</td><td>${fmt(d.allocated)} ج</td></tr>`).join('')}</tbody></table></div>`
+          : `<div class="empty">أضف مصاريف ثابتة ومشاريع الأول عشان يظهر التوزيع</div>`}
+        </div>
+      </div>
+    `;
+    document.getElementById('fxForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('fxBtn'); const msg = document.getElementById('fxMsg');
+      msg.className='msg'; msg.textContent=''; btn.disabled=true; btn.innerHTML='<span class="spinner"></span>جاري الحفظ...';
+      const item = { name: document.getElementById('fx_name').value.trim(), amount: document.getElementById('fx_amount').value, notes: document.getElementById('fx_notes').value };
+      try { await apiPost('addFixedExpense', { item }); renderFixedExp(); }
+      catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); btn.disabled=false; btn.textContent='حفظ'; }
+    });
+  } catch(err){ showError(err); }
+}
+async function deleteFixedExpConfirm(id){
+  if (!confirm('متأكد؟')) return;
+  try { await apiPost('deleteFixedExpense', { id }); renderFixedExp(); } catch(err){ alert('خطأ: '+(err.message||err)); }
+}
 
-/* نقطة البداية: هل فيه جلسة دخول محفوظة؟ */
-window.onload = () => {
-  const raw = sessionStorage.getItem('erp_user');
-  if(raw){
-    try{
-      const user = JSON.parse(raw);
-      AUTH.enterApp(user);
-      return;
-    }catch(e){ sessionStorage.removeItem('erp_user'); }
-  }
-  $('login-shell').style.display = 'flex';
-};
+/* ================= Quotation ================= */
+async function renderQuotation() {
+  try {
+    const { customers } = await apiGet('quoteListCustomers');
+    document.getElementById('content').innerHTML = `
+      <div class="panel">
+        <h3>عميل جديد</h3>
+        <form id="qNewForm" class="form-row3">
+          <input id="q_name" placeholder="اسم العميل" required>
+          <input id="q_phone" placeholder="الهاتف">
+          <input id="q_engineer" placeholder="موجه إلى (مهندس)">
+        </form>
+        <div class="form-row" style="margin-top:10px;">
+          <input id="q_address" placeholder="العنوان / المشروع">
+          <button class="btn btn-primary" id="qCreateBtn" form="qNewForm">إنشاء عميل جديد</button>
+        </div>
+        <div class="msg" id="qMsg"></div>
+      </div>
+      <div class="panel">
+        <h3>قائمة العملاء (${customers.length})</h3>
+        ${customers.length ? `<div class="tbl-wrap"><table><thead><tr><th>الاسم</th><th>الهاتف</th><th>موجه إلى</th><th>العنوان</th><th>التاريخ</th><th></th></tr></thead>
+        <tbody>${customers.map(c=>`<tr><td>${c.name}</td><td>${c.phone||'—'}</td><td>${c.engineer||'—'}</td><td>${c.address||'—'}</td><td>${c.date||'—'}</td>
+          <td><button class="btn btn-sm btn-danger" onclick="deleteQuoteCustomerConfirm('${c.name.replace(/'/g,"\\'")}')">حذف</button></td></tr>`).join('')}</tbody></table></div>`
+        : `<div class="empty">مفيش عملاء لسه</div>`}
+        <p style="font-size:12px;color:var(--muted);margin-top:10px;">✏️ تفاصيل بنود عرض السعر (المنتجات/الأسعار/الخصم) بتتحرر مباشرة في شيت العميل نفسه داخل ملف الكوتيشن.</p>
+      </div>
+    `;
+    document.getElementById('qNewForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('qMsg'); msg.className='msg'; msg.textContent='';
+      try {
+        await apiPost('quoteCreateCustomer', { name: document.getElementById('q_name').value.trim(), phone: document.getElementById('q_phone').value, engineer: document.getElementById('q_engineer').value, address: document.getElementById('q_address').value });
+        msg.className='msg ok'; msg.textContent='تم إنشاء العميل'; renderQuotation();
+      } catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); }
+    });
+  } catch(err){ showError(err); }
+}
+async function deleteQuoteCustomerConfirm(name){
+  if (!confirm('متأكد إنك عاوز تمسح "'+name+'"؟')) return;
+  try { await apiPost('quoteDeleteCustomer', { name }); renderQuotation(); } catch(err){ alert('خطأ: '+(err.message||err)); }
+}
+
+/* ================= Debtors / Payment Statement ================= */
+async function renderDebtors() {
+  try {
+    const { customers } = await apiGet('payListCustomers');
+    const totalDue = customers.reduce((s,c)=>s+(c.total-c.received),0);
+    document.getElementById('content').innerHTML = `
+      <div class="cards">
+        <div class="card"><div class="label">عدد العملاء</div><div class="value">${customers.length}</div></div>
+        <div class="card"><div class="label">إجمالي المستحقات (المتبقي)</div><div class="value red">${fmt(totalDue)} ج</div></div>
+      </div>
+      <div class="panel">
+        <h3>العملاء والمستحقات</h3>
+        ${customers.length ? `<div class="tbl-wrap"><table><thead><tr><th>العميل</th><th>الإجمالي</th><th>المستلم</th><th>الباقي</th><th>الحالة</th><th></th></tr></thead>
+        <tbody>${customers.map(c=>`<tr><td>${c.name}</td><td>${fmt(c.total)} ج</td><td>${fmt(c.received)} ج</td><td style="color:${(c.total-c.received)>0.01?'var(--red)':'var(--green)'}">${fmt(c.total-c.received)} ج</td>
+          <td>${c.completed?'<span class="pill dep">مكتمل</span>':'<span class="pill exp">جاري</span>'}</td>
+          <td><button class="btn btn-sm btn-danger" onclick="deleteDebtorConfirm('${c.name.replace(/'/g,"\\'")}')">حذف</button></td></tr>`).join('')}</tbody></table></div>`
+        : `<div class="empty">مفيش عملاء مسجلين</div>`}
+        <p style="font-size:12px;color:var(--muted);margin-top:10px;">✏️ تسجيل الدفعات الجديدة بيتم مباشرة من شيت العميل في ملف "الدائنون / المستحقات".</p>
+      </div>
+    `;
+  } catch(err){ showError(err); }
+}
+async function deleteDebtorConfirm(name){
+  if (!confirm('متأكد إنك عاوز تمسح "'+name+'"؟')) return;
+  try { await apiPost('payDeleteCustomer', { name }); renderDebtors(); } catch(err){ alert('خطأ: '+(err.message||err)); }
+}
+
+/* ================= Init ================= */
+if (checkApiConfigured()) renderDashboard();
 </script>
 </body>
 </html>
