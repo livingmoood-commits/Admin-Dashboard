@@ -702,9 +702,14 @@ async function loadDistributionReport(){
 }
 
 /* ================= Treasury / Cash Flow ================= */
+let _treasuryMoves = [];
+let _editingMoveId = null;
+
 async function renderTreasury() {
   try {
     const [summary, movesData] = await Promise.all([apiGet('getTreasurySummary'), apiGet('getTreasuryMoves', {})]);
+    _treasuryMoves = movesData.moves;
+    _editingMoveId = null;
     document.getElementById('content').innerHTML = `
       <div class="cards">
         <div class="card"><div class="label">الرصيد الحالي</div><div class="value green">${fmt(summary.balance)} ج</div></div>
@@ -713,7 +718,7 @@ async function renderTreasury() {
         <div class="card"><div class="label">إجمالي المصاريف</div><div class="value red">${fmt(summary.totalExpenses)} ج</div></div>
       </div>
       <div class="panel">
-        <h3>حركة جديدة</h3>
+        <h3 id="moveFormTitle">حركة جديدة</h3>
         <form id="moveForm">
           <div class="form-row3">
             <div class="field"><label>النوع</label><select id="m_type"><option value="مصروف">مصروف (خارج)</option><option value="إيداع">إيداع (داخل)</option></select></div>
@@ -724,7 +729,10 @@ async function renderTreasury() {
             <div class="field"><label>البيان</label><input id="m_desc" required placeholder="مثال: مرتب أسبوعي، دفعة عميل..."></div>
             <div class="field"><label>المشروع (اختياري)</label><input id="m_project" placeholder="اسم المشروع لو مرتبطة بيه"></div>
           </div>
-          <button type="submit" class="btn btn-primary" id="moveBtn">حفظ الحركة</button>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button type="submit" class="btn btn-primary" id="moveBtn">حفظ الحركة</button>
+            <button type="button" class="btn btn-outline btn-sm" id="cancelEditBtn" style="display:none;">إلغاء التعديل</button>
+          </div>
           <div class="msg" id="moveMsg"></div>
         </form>
         <hr style="margin:16px 0;border:none;border-top:1px solid var(--border);">
@@ -737,15 +745,24 @@ async function renderTreasury() {
       </div>
       <div class="panel"><h3>الحركات</h3><div id="movesBox"></div></div>
     `;
-    renderTreasuryMoves(movesData.moves);
+    renderTreasuryMoves(_treasuryMoves);
     document.getElementById('moveForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const btn = document.getElementById('moveBtn'); const msg = document.getElementById('moveMsg');
-      msg.className='msg'; msg.textContent=''; btn.disabled=true; btn.innerHTML='<span class="spinner"></span>جاري الحفظ...';
+      msg.className='msg'; msg.textContent=''; btn.disabled=true;
       const move = { type: document.getElementById('m_type').value, amount: document.getElementById('m_amount').value, desc: document.getElementById('m_desc').value, project: document.getElementById('m_project').value, date: document.getElementById('m_date').value };
-      try { await apiPost('addTreasuryMove', { move }); renderTreasury(); }
-      catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); btn.disabled=false; btn.textContent='حفظ الحركة'; }
+      try {
+        if (_editingMoveId) {
+          btn.innerHTML='<span class="spinner"></span>جاري التحديث...';
+          await apiPost('updateTreasuryMove', { id: _editingMoveId, move });
+        } else {
+          btn.innerHTML='<span class="spinner"></span>جاري الحفظ...';
+          await apiPost('addTreasuryMove', { move });
+        }
+        renderTreasury();
+      } catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); btn.disabled=false; btn.textContent=_editingMoveId?'تحديث الحركة':'حفظ الحركة'; }
     });
+    document.getElementById('cancelEditBtn').addEventListener('click', () => cancelMoveEdit());
     document.getElementById('setCapitalBtn').addEventListener('click', async () => {
       const amount = document.getElementById('capitalInput').value;
       if (!amount) return;
@@ -759,7 +776,30 @@ function renderTreasuryMoves(moves){
   box.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>البيان</th><th>النوع</th><th>المشروع</th><th>المبلغ</th><th>الرصيد بعدها</th><th></th></tr></thead>
     <tbody>${moves.map(m=>`<tr><td>${m.date}</td><td>${m.desc}</td><td><span class="pill ${m.type==='إيداع'?'dep':'exp'}">${m.type}</span></td><td>${m.project||'—'}</td>
       <td style="color:${m.type==='إيداع'?'var(--green)':'var(--red)'}">${fmt(m.amount)} ج</td><td>${fmt(m.balanceAfter)} ج</td>
-      <td><button class="btn btn-sm btn-danger" onclick="deleteTreasuryMoveConfirm('${m.id}')">حذف</button></td></tr>`).join('')}</tbody></table></div>`;
+      <td style="white-space:nowrap;"><button class="btn btn-sm btn-outline" onclick="editTreasuryMove('${m.id}')">تعديل</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteTreasuryMoveConfirm('${m.id}')">حذف</button></td></tr>`).join('')}</tbody></table></div>`;
+}
+function editTreasuryMove(id){
+  const m = _treasuryMoves.find(x => String(x.id) === String(id));
+  if (!m) return;
+  _editingMoveId = id;
+  document.getElementById('moveFormTitle').textContent = 'تعديل الحركة';
+  document.getElementById('m_type').value = m.type;
+  document.getElementById('m_amount').value = m.amount;
+  document.getElementById('m_date').value = m.date;
+  document.getElementById('m_desc').value = m.desc;
+  document.getElementById('m_project').value = m.project || '';
+  document.getElementById('moveBtn').textContent = 'تحديث الحركة';
+  document.getElementById('cancelEditBtn').style.display = 'inline-block';
+  document.getElementById('moveForm').scrollIntoView({ behavior:'smooth', block:'start' });
+}
+function cancelMoveEdit(){
+  _editingMoveId = null;
+  document.getElementById('moveFormTitle').textContent = 'حركة جديدة';
+  document.getElementById('moveForm').reset();
+  document.getElementById('m_date').value = todayStr();
+  document.getElementById('moveBtn').textContent = 'حفظ الحركة';
+  document.getElementById('cancelEditBtn').style.display = 'none';
 }
 async function deleteTreasuryMoveConfirm(id){
   if (!confirm('متأكد إنك عاوز تمسح الحركة دي؟ (هيتم إعادة حساب الرصيد تلقائي)')) return;
