@@ -20,10 +20,10 @@
   body{ font-family:'Cairo',sans-serif; background:var(--cream); color:var(--dark); display:flex; min-height:100vh; overflow-x:hidden; }
   .mono{ font-family:'IBM Plex Mono', monospace; direction:ltr; }
 
-  .sidebar{ width:235px; background:var(--dark); color:#f0e6d8; flex-shrink:0; display:flex; flex-direction:column; padding:22px 0; position:sticky; top:0; height:100vh; overflow-y:auto; overflow-x:hidden; transition:transform .35s var(--bounce), width .3s var(--bounce); }
+  .sidebar{ width:235px; background:var(--dark); color:#f0e6d8; flex-shrink:0; display:flex; flex-direction:column; padding:22px 0; position:sticky; top:0; height:100vh; overflow-y:auto; transition:transform .35s var(--bounce), width .3s var(--bounce); }
 
   /* ===== Sidebar collapse (desktop) ===== */
-  .sidebar-toggle{ position:absolute; top:18px; left:-14px; width:28px; height:28px; border-radius:50%; background:var(--gold); color:var(--dark); border:2px solid var(--dark); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:14px; font-weight:800; line-height:1; z-index:5; transition:transform .3s var(--bounce), background .2s, color .2s; }
+  .sidebar-toggle{ position:absolute; top:14px; left:10px; width:28px; height:28px; border-radius:50%; background:var(--gold); color:var(--dark); border:2px solid var(--dark); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:14px; font-weight:800; line-height:1; z-index:5; transition:transform .3s var(--bounce), background .2s, color .2s; }
   .sidebar-toggle:hover{ background:var(--gold-dim); color:#fff; }
   .sidebar-toggle:active{ transform:scale(.88); }
   .sidebar.collapsed .sidebar-toggle{ transform:rotate(180deg); }
