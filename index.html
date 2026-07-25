@@ -141,6 +141,11 @@
   @keyframes msgIn{ from{ opacity:0; transform:translateY(-6px); } to{ opacity:1; transform:translateY(0); } }
 
   .filters{ display:flex; gap:9px; flex-wrap:wrap; margin-bottom:16px; align-items:center; }
+  .moves-filter{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .moves-filter button{ all:unset; cursor:pointer; padding:8px 16px; border-radius:20px; font-size:12.5px; font-weight:700; color:var(--muted); background:var(--cream); border:1px solid var(--border); transition:background .2s, color .2s, border-color .2s, transform .2s var(--bounce); }
+  .moves-filter button:hover{ border-color:var(--gold); color:var(--dark); }
+  .moves-filter button.active{ background:var(--dark); color:#fff; border-color:var(--dark); }
+  .moves-filter button:active{ transform:scale(.94); }
   .filters select, .filters input{ padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:13px; font-family:inherit; }
   .pill{ display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; }
   .pill.dep{ background:#e6f4ea; color:var(--green); } .pill.exp{ background:#fbe2e2; color:var(--red); }
@@ -777,6 +782,7 @@ async function loadDistributionReport(){
 /* ================= Treasury / Cash Flow ================= */
 let _treasuryMoves = [];
 let _editingMoveId = null;
+let _movesFilter = 'all';
 
 async function renderTreasury(token) {
   try {
@@ -784,6 +790,7 @@ async function renderTreasury(token) {
     if (isStaleNav(token)) return;
     _treasuryMoves = movesData.moves;
     _editingMoveId = null;
+    _movesFilter = 'all';
     document.getElementById('content').innerHTML = `
       <div class="cards">
         <div class="card"><div class="label">الرصيد الحالي</div><div class="value green">${fmt(summary.balance)} ج</div></div>
@@ -817,9 +824,21 @@ async function renderTreasury(token) {
           </div>
         </details>
       </div>
-      <div class="panel"><h3>الحركات</h3><div id="movesBox"></div></div>
+      <div class="panel"><h3>الحركات</h3>
+        <div class="moves-filter" id="movesFilter">
+          <button type="button" data-filter="all" class="active">حركة الخزنة (الكل)</button>
+          <button type="button" data-filter="expense">مصاريف</button>
+          <button type="button" data-filter="deposit">إيداعات</button>
+        </div>
+        <div id="movesBox"></div>
+      </div>
     `;
-    renderTreasuryMoves(_treasuryMoves);
+    renderMovesFiltered();
+    document.getElementById('movesFilter').addEventListener('click', e => {
+      const btn = e.target.closest('button'); if (!btn) return;
+      _movesFilter = btn.dataset.filter;
+      renderMovesFiltered();
+    });
     document.getElementById('moveForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const btn = document.getElementById('moveBtn'); const msg = document.getElementById('moveMsg');
@@ -843,6 +862,13 @@ async function renderTreasury(token) {
       try { await apiPost('setTreasuryCapital', { amount }); renderTreasury(); } catch(err){ alert('خطأ: '+(err.message||err)); }
     });
   } catch(err){ showError(err); }
+}
+function renderMovesFiltered(){
+  document.querySelectorAll('#movesFilter button').forEach(b => b.classList.toggle('active', b.dataset.filter === _movesFilter));
+  const filtered = _movesFilter === 'expense' ? _treasuryMoves.filter(m => m.type !== 'إيداع')
+                  : _movesFilter === 'deposit' ? _treasuryMoves.filter(m => m.type === 'إيداع')
+                  : _treasuryMoves;
+  renderTreasuryMoves(filtered);
 }
 function renderTreasuryMoves(moves){
   const box = document.getElementById('movesBox');
