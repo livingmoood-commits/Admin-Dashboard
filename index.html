@@ -173,6 +173,25 @@
   .q-confirm-btns{ display:flex; gap:10px; justify-content:center; }
 
   @media(max-width:760px){ .q-banner{ flex-direction:column; align-items:stretch; } }
+
+  /* ===== Debtors / Payment Statement — extras shared with q-* classes above ===== */
+  .q-clist .ci-progress{ font-size:11px; color:var(--muted); margin-top:4px; display:flex; gap:10px; flex-wrap:wrap; }
+  .q-clist .ci-progress b{ color:var(--green); }
+  .q-clist .ci-done{ background:var(--green); color:#fff; font-size:10px; padding:3px 9px; border-radius:20px; font-weight:700; margin-right:6px; }
+  .q-grand-bar.remaining .amt{ color:#ff8a80; }
+  .q-grand-bar.remaining.done .amt{ color:#8fd19e; }
+  .p-complete-box{ display:flex; align-items:center; justify-content:space-between; gap:14px; background:var(--cream); border:1.5px dashed var(--border); border-radius:6px; padding:12px 16px; margin-bottom:16px; flex-wrap:wrap; }
+  .p-complete-box label{ display:flex; align-items:center; gap:10px; font-weight:700; font-size:13px; cursor:pointer; }
+  .p-complete-box input[type=checkbox]{ width:20px; height:20px; cursor:pointer; }
+  .p-complete-msg{ font-size:12px; color:var(--green); font-weight:700; display:none; }
+  .p-complete-msg.show{ display:block; }
+
+  /* ===== Login menu (logout / change password) ===== */
+  .user-menu{ padding:0 14px; margin-top:auto; padding-top:14px; }
+  .user-menu-btn{ all:unset; cursor:pointer; width:100%; display:flex; align-items:center; gap:9px; padding:10px 12px; border-radius:8px; font-size:12.5px; color:#cbbfae; font-family:inherit; box-sizing:border-box; }
+  .user-menu-btn:hover{ background:var(--dark2); color:#fff; }
+  #changePassModal{ display:none; position:fixed; inset:0; background:rgba(30,26,21,.65); z-index:960; justify-content:center; align-items:center; }
+  #changePassModal.open{ display:flex; }
 </style>
 </head>
 <body>
@@ -214,6 +233,10 @@
     <button data-page="quotation"><span class="icon">&#128221;</span><span class="label">عروض الأسعار</span></button>
     <button data-page="debtors"><span class="icon">&#128184;</span><span class="label">المستحقات (الدائنون)</span></button>
   </div>
+  <div class="user-menu">
+    <button class="user-menu-btn" onclick="openChangePassModal()"><span class="icon">&#128273;</span><span class="label">تغيير كلمة السر</span></button>
+    <button class="user-menu-btn" onclick="logout()"><span class="icon">&#128682;</span><span class="label">تسجيل خروج</span></button>
+  </div>
 </div>
 
 <div class="main">
@@ -226,6 +249,21 @@
   </div>
   <div id="content"><div class="loading-row">جاري التحميل...</div></div>
 </div>
+</div>
+
+<div id="changePassModal">
+  <div class="q-confirm-card">
+    <h3>تغيير كلمة السر</h3>
+    <p>هتتغير كلمة السر بتاعتك في نظام Living Mood ERP</p>
+    <div class="field" style="margin-bottom:12px;"><input type="password" id="cp-old" placeholder="كلمة السر الحالية" autocomplete="current-password"></div>
+    <div class="field" style="margin-bottom:12px;"><input type="password" id="cp-new" placeholder="كلمة السر الجديدة" autocomplete="new-password"></div>
+    <div class="field" style="margin-bottom:16px;"><input type="password" id="cp-confirm" placeholder="تأكيد كلمة السر الجديدة" autocomplete="new-password"></div>
+    <div class="msg" id="cpStatus" style="margin-bottom:14px;"></div>
+    <div class="q-confirm-btns">
+      <button class="btn btn-primary" id="cpSaveBtn" onclick="submitChangePassword()">حفظ</button>
+      <button class="btn btn-outline" onclick="closeChangePassModal()">إلغاء</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -849,7 +887,7 @@ function qCreateQuote(){
     const m = document.getElementById('qCreateMsg'); m.className='msg err'; m.textContent='برجاء إدخال موجه إلى أو العنوان'; return;
   }
   const name = [eng, adr].filter(Boolean).join(' - ');
-  QSTATE = { subpage:'editor', customer:{ name, engineer:eng, address:adr, phone:'' }, rows:[qNewRow()], discount:{percent:0,amount:0}, dollar:dlr };
+  QSTATE = { subpage:'editor', customer:{ name, engineer:eng, address:adr }, rows:[qNewRow()], discount:{percent:0,amount:0}, dollar:dlr };
   qSaveSession();
   qRenderEditor();
 }
@@ -1181,31 +1219,398 @@ async function qSendMailNow(){
   finally { btn.disabled = false; }
 }
 
-/* ================= Debtors / Payment Statement ================= */
-async function renderDebtors() {
+/* ================= Debtors / Payment Statement — full app (Home → متابعة دفعات → معاينة/طباعة/إيميل) ================= */
+const P_ORDINALS = ['الأولى','الثانية','الثالثة','الرابعة','الخامسة','السادسة','السابعة','الثامنة','التاسعة','العاشرة',
+  'الحادية عشر','الثانية عشر','الثالثة عشر','الرابعة عشر','الخامسة عشر','السادسة عشر','السابعة عشر','الثامنة عشر','التاسعة عشر','العشرون'];
+function pOrdinalName(i){ return 'الدفعة ' + (P_ORDINALS[i] || ('رقم ' + (i+1))); }
+function pNewRow(idx){ return { _id:Math.random(), name: pOrdinalName(idx), amount:0, date:'' }; }
+const pToISO = d => { if(!d) return ''; const p=(d||'').split('/'); return p.length===3 ? `${p[2]}-${p[1]}-${p[0]}` : ''; };
+const pToEnGB = iso => { if(!iso) return ''; const p=iso.split('-'); return p.length===3 ? `${p[2]}/${p[1]}/${p[0]}` : ''; };
+function pTodayEnGB(){ return pToEnGB(new Date().toISOString().slice(0,10)); }
+
+let PSTATE = { subpage:'home', customer:null, rows:[] };
+
+function pSaveSession(){ try { sessionStorage.setItem('lm_paySession', JSON.stringify(PSTATE)); } catch(e){} }
+function pRestoreSession(){
+  try {
+    const raw = sessionStorage.getItem('lm_paySession');
+    if (!raw) return false;
+    const s = JSON.parse(raw);
+    if (!s || !s.customer || (s.subpage !== 'editor' && s.subpage !== 'preview')) return false;
+    PSTATE = s;
+    PSTATE.rows = (PSTATE.rows && PSTATE.rows.length) ? PSTATE.rows.map(r => ({...r, _id:Math.random()})) : [pNewRow(0)];
+    return true;
+  } catch(e){ return false; }
+}
+
+async function renderDebtors(){
+  if (pRestoreSession()) return PSTATE.subpage === 'preview' ? pRenderPreview() : pRenderEditor();
+  PSTATE = { subpage:'home', customer:null, rows:[] };
+  return pRenderHome();
+}
+
+async function pRenderHome(){
   try {
     const { customers } = await apiGet('payListCustomers');
-    const totalDue = customers.reduce((s,c)=>s+(c.total-c.received),0);
+    const sorted = [...customers].sort((a,b) => String(b.date||'').localeCompare(String(a.date||'')));
     document.getElementById('content').innerHTML = `
-      <div class="cards">
-        <div class="card"><div class="label">عدد العملاء</div><div class="value">${customers.length}</div></div>
-        <div class="card"><div class="label">إجمالي المستحقات (المتبقي)</div><div class="value red">${fmt(totalDue)} ج</div></div>
+      <div class="panel">
+        <h3>إنشاء سجل دفعات جديد</h3>
+        <div class="msg" id="pCreateMsg"></div>
+        <form class="form-row3" onsubmit="event.preventDefault(); pCreateRecord();">
+          <div class="field"><label>موجه إلى (Engineer)</label><input type="text" id="p_engineer"></div>
+          <div class="field"><label>العنوان / المشروع</label><input type="text" id="p_address"></div>
+          <div class="field"><label>المبلغ الإجمالي</label><input type="text" inputmode="numeric" id="p_total" placeholder="0" onkeypress="return /[0-9.]/.test(event.key)"></div>
+        </form>
+        <div style="margin-top:16px;display:flex;justify-content:flex-end;">
+          <button class="btn btn-primary" onclick="pCreateRecord()">✦ إنشاء وبدء المتابعة</button>
+        </div>
       </div>
       <div class="panel">
-        <h3>العملاء والمستحقات</h3>
-        ${customers.length ? `<div class="tbl-wrap"><table><thead><tr><th>العميل</th><th>الإجمالي</th><th>المستلم</th><th>الباقي</th><th>الحالة</th><th></th></tr></thead>
-        <tbody>${customers.map(c=>`<tr><td>${c.name}</td><td>${fmt(c.total)} ج</td><td>${fmt(c.received)} ج</td><td style="color:${(c.total-c.received)>0.01?'var(--red)':'var(--green)'}">${fmt(c.total-c.received)} ج</td>
-          <td>${c.completed?'<span class="pill dep">مكتمل</span>':'<span class="pill exp">جاري</span>'}</td>
-          <td><button class="btn btn-sm btn-danger" onclick="deleteDebtorConfirm('${c.name.replace(/'/g,"\\'")}')">حذف</button></td></tr>`).join('')}</tbody></table></div>`
-        : `<div class="empty">مفيش عملاء مسجلين</div>`}
-        <p style="font-size:12px;color:var(--muted);margin-top:10px;">✏️ تسجيل الدفعات الجديدة بيتم مباشرة من شيت العميل في ملف "الدائنون / المستحقات".</p>
+        <h3>السجلات السابقة (${customers.length})</h3>
+        <div class="q-clist">
+        ${sorted.length ? sorted.map(c => {
+          const remaining = (Number(c.total)||0) - (Number(c.received)||0);
+          const pct = c.total > 0 ? Math.min(100, (Number(c.received)||0)/c.total*100) : 0;
+          return `
+          <div class="c-item">
+            <div class="ci-info" onclick='pOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
+              <div class="ci-name">${c.completed ? '<span class="ci-done">مكتمل</span>' : ''}${qEsc(c.engineer || c.name)}</div>
+              <div class="ci-meta">${qEsc(c.address || '')}</div>
+              <div class="ci-progress">
+                <span>آخر دفعة: <b>${qEsc(c.lastPayment || '—')}</b></span>
+                <span>الإجمالي: <b>${fmt(c.total)}</b></span>
+                <span>المستلم: <b>${fmt(c.received)}</b></span>
+                <span>الباقي: <b style="color:${Math.abs(remaining)<=0.01?'var(--green)':'var(--red)'};">${fmt(remaining)}</b></span>
+                <span>النسبة: <b>${pct.toFixed(0)}%</b></span>
+              </div>
+            </div>
+            <div class="ci-actions">
+              <button class="ci-badge" onclick='pOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>فتح ←</button>
+              <button class="btn btn-sm btn-danger" onclick="pDeleteCustomer('${c.name.replace(/'/g,"\\'")}')">🗑 حذف</button>
+            </div>
+          </div>`;
+        }).join('') : `<div class="empty">مفيش سجلات لسه</div>`}
+        </div>
       </div>
     `;
   } catch(err){ showError(err); }
 }
-async function deleteDebtorConfirm(name){
-  if (!confirm('متأكد إنك عاوز تمسح "'+name+'"؟')) return;
-  try { await apiPost('payDeleteCustomer', { name }); renderDebtors(); } catch(err){ alert('خطأ: '+(err.message||err)); }
+
+function pCreateRecord(){
+  const eng = document.getElementById('p_engineer').value.trim();
+  const adr = document.getElementById('p_address').value.trim();
+  const total = qNum(document.getElementById('p_total').value);
+  if (!eng && !adr) {
+    const m = document.getElementById('pCreateMsg'); m.className='msg err'; m.textContent='برجاء إدخال موجه إلى أو العنوان'; return;
+  }
+  const name = [eng, adr].filter(Boolean).join(' - ');
+  PSTATE = { subpage:'editor', customer:{ name, engineer:eng, address:adr, total, completed:false, date: pTodayEnGB() }, rows:[pNewRow(0)] };
+  pSaveSession();
+  pRenderEditor();
+}
+
+async function pOpenCustomer(c){
+  PSTATE.customer = c;
+  document.getElementById('content').innerHTML = '<div class="loading-row">جاري تحميل السجل...</div>';
+  try {
+    const d = await apiGet('payGetCashFlow', { name: c.name });
+    PSTATE.rows = (d.rows || []).map(r => ({...r, _id:Math.random()}));
+    if (!PSTATE.rows.length) PSTATE.rows = [pNewRow(0)];
+    PSTATE.customer.completed = !!d.completed;
+    PSTATE.subpage = 'editor';
+    pSaveSession();
+    pRenderEditor();
+  } catch(err){
+    PSTATE.rows = [pNewRow(0)]; PSTATE.subpage = 'editor'; pSaveSession(); pRenderEditor();
+  }
+}
+
+async function pDeleteCustomer(name){
+  if (!confirm('هل تريد حذف سجل "'+name+'" نهائياً؟')) return;
+  try { await apiPost('payDeleteCustomer', { name }); pRenderHome(); } catch(err){ alert('خطأ: '+(err.message||err)); }
+}
+
+function pGoHome(){ try{ sessionStorage.removeItem('lm_paySession'); }catch(e){} PSTATE = { subpage:'home', customer:null, rows:[] }; pRenderHome(); }
+function pGoEditor(){ PSTATE.subpage = 'editor'; pSaveSession(); pRenderEditor(); }
+
+/* ---- row helpers ---- */
+function pReceived(){ return PSTATE.rows.reduce((s,r) => s + qNum(r.amount), 0); }
+function pAddRow(){ PSTATE.rows.push(pNewRow(PSTATE.rows.length)); pRenderRows(); pSaveSession(); }
+function pDelRow(id){ PSTATE.rows = PSTATE.rows.filter(r => r._id !== id); pRenderRows(); pSaveSession(); }
+function pSetField(id, f, v){ const r = PSTATE.rows.find(r => r._id === id); if (r) r[f] = v; pSaveSession(); }
+function pSetAmount(id, v){
+  const r = PSTATE.rows.find(r => r._id === id); if (!r) return;
+  const val = qNum(v); r.amount = val;
+  if (val > 0 && !r.date) r.date = pTodayEnGB();
+  else if (val <= 0) r.date = '';
+  pRenderRows(); pSaveSession();
+}
+function pSetDate(id, isoVal){ const r = PSTATE.rows.find(r => r._id === id); if (!r) return; r.date = pToEnGB(isoVal); pRenderRows(); pSaveSession(); }
+
+function pRefreshTotals(){
+  const total = qNum(document.getElementById('p-b-total').value);
+  const received = pReceived();
+  const remaining = total - received;
+  const totalEl = document.getElementById('p-total-amt'); if (totalEl) totalEl.textContent = fmt(total) + ' جنيه';
+  const recEl = document.getElementById('p-received-amt'); if (recEl) recEl.textContent = fmt(received) + ' جنيه';
+  const remEl = document.getElementById('p-remaining-amt'); if (remEl) remEl.textContent = fmt(remaining) + ' جنيه';
+  const bar = document.getElementById('p-remaining-bar'); if (bar) bar.classList.toggle('done', Math.abs(remaining) <= 0.01);
+}
+
+function pRenderRows(){
+  const tb = document.getElementById('p-body'); if (!tb) return;
+  const total = qNum(document.getElementById('p-b-total').value);
+  let cumulative = 0;
+  tb.innerHTML = PSTATE.rows.map((r,i) => {
+    const amt = qNum(r.amount); let pct = '';
+    if (amt > 0) { cumulative += amt; pct = total > 0 ? Math.min(100, (cumulative/total)*100) : 0; }
+    return `
+    <tr>
+      <td style="text-align:center;color:var(--muted);font-size:11px;">${i+1}</td>
+      <td><input type="text" value="${qEsc(r.name)}" onchange="pSetField(${r._id},'name',this.value)" placeholder="${qEsc(pOrdinalName(i))}"></td>
+      <td><input type="text" class="ltr-num" inputmode="numeric" value="${r.amount||''}" onchange="pSetAmount(${r._id},this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
+      <td class="num-cell">${pct!==''?pct.toFixed(0)+'%':'—'}</td>
+      <td><input type="date" value="${pToISO(r.date)}" onchange="pSetDate(${r._id},this.value)" style="direction:ltr;width:132px;"></td>
+      <td><button class="btn btn-sm btn-danger" onclick="pDelRow(${r._id})">✕</button></td>
+    </tr>`;
+  }).join('');
+  pRefreshTotals();
+}
+
+function pRenderEditor(){
+  PSTATE.subpage = 'editor'; pSaveSession();
+  const c = PSTATE.customer || {};
+  document.getElementById('content').innerHTML = `
+    <div class="q-steps">
+      <div class="step done" onclick="pGoHome()">← الرئيسية</div>
+      <div class="step active">متابعة الدفعات</div>
+      <div class="step">معاينة وطباعة</div>
+    </div>
+    <div class="panel" style="padding:18px 22px;">
+      <div class="q-banner">
+        <div class="q-info-box">
+          <div class="q-info-row"><label>موجه إلى:</label><input type="text" id="p-b-engineer" value="${qEsc(c.engineer)}"
+            oninput="PSTATE.customer.engineer=this.value; PSTATE.customer.name=[PSTATE.customer.engineer,PSTATE.customer.address].filter(Boolean).join(' - '); pSaveSession();"></div>
+          <div class="q-info-row"><label>العنوان / المشروع:</label><input type="text" id="p-b-address" value="${qEsc(c.address)}"
+            oninput="PSTATE.customer.address=this.value; PSTATE.customer.name=[PSTATE.customer.engineer,PSTATE.customer.address].filter(Boolean).join(' - '); pSaveSession();"></div>
+        </div>
+        <div class="q-info-box">
+          <div class="q-info-row"><label>الإجمالي الكلي:</label><input type="text" inputmode="numeric" id="p-b-total" value="${c.total||0}" onkeypress="return /[0-9.]/.test(event.key)" oninput="pRenderRows(); pSaveSession();"></div>
+          <div class="q-info-row"><label>تاريخ استلام المشروع:</label><input type="date" id="p-b-date" value="${pToISO(c.date)}" oninput="PSTATE.customer.date=pToEnGB(this.value); pSaveSession();"></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>جدول الدفعات</h3>
+      <div class="msg" id="pSaveMsg"></div>
+      <div class="q-wrap">
+        <table class="q-tbl">
+          <thead><tr>
+            <th style="width:30px;">#</th><th>اسم الدفعة</th><th style="width:120px;">المبلغ</th>
+            <th style="width:90px;">النسبة من الإجمالي</th><th style="width:120px;">تاريخ الدفع</th><th style="width:36px;"></th>
+          </tr></thead>
+          <tbody id="p-body"></tbody>
+        </table>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="pAddRow()" style="margin-bottom:18px;">+ إضافة دفعة</button>
+
+      <div class="q-grand-bar"><span>الإجمالي الكلي</span><span class="amt" id="p-total-amt">0 جنيه</span></div>
+      <div class="q-grand-bar"><span>إجمالي المستلم</span><span class="amt" id="p-received-amt">0 جنيه</span></div>
+      <div class="q-grand-bar remaining" id="p-remaining-bar"><span>الباقي</span><span class="amt" id="p-remaining-amt">0 جنيه</span></div>
+
+      <div class="p-complete-box">
+        <label><input type="checkbox" id="p-chk-complete" ${c.completed?'checked':''} onchange="pToggleComplete(this)"> إتمام الدفع بالكامل</label>
+        <span class="p-complete-msg ${c.completed?'show':''}" id="p-complete-msg">✔ تم استلام كامل المبلغ</span>
+      </div>
+
+      <div class="action-bar" style="display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end;">
+        <button class="btn btn-outline" onclick="pGoHome()">← رجوع</button>
+        <button class="btn btn-dark" id="pSaveBtn" onclick="pSaveCashFlow()">💾 حفظ في الشيت</button>
+        <button class="btn btn-primary" onclick="pRenderPreview()">👁 معاينة وطباعة</button>
+      </div>
+    </div>
+  `;
+  pRenderRows();
+}
+
+function pToggleComplete(cb){
+  const total = qNum(document.getElementById('p-b-total').value);
+  const received = pReceived();
+  const remaining = total - received;
+  if (cb.checked && Math.abs(remaining) > 0.01) {
+    alert('⚠️ لم يتم الدفع بالكامل بعد! الباقي: ' + fmt(remaining) + ' جنيه');
+    cb.checked = false; return;
+  }
+  document.getElementById('p-complete-msg').classList.toggle('show', cb.checked);
+  if (PSTATE.customer) PSTATE.customer.completed = cb.checked;
+  pSaveSession();
+}
+
+async function pSaveCashFlow(){
+  const btn = document.getElementById('pSaveBtn'); const msg = document.getElementById('pSaveMsg');
+  PSTATE.customer.total = qNum(document.getElementById('p-b-total').value);
+  PSTATE.customer.completed = document.getElementById('p-chk-complete').checked;
+  PSTATE.customer.date = pToEnGB(document.getElementById('p-b-date').value);
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
+  try {
+    const d = await apiPost('paySaveCashFlow', { customer: PSTATE.customer, rows: PSTATE.rows, received: pReceived() });
+    d.success !== false
+      ? (msg.className='msg ok', msg.textContent='✔ تم الحفظ في Google Sheets بنجاح')
+      : (msg.className='msg err', msg.textContent='خطأ: ' + (d.error || 'غير معروف'));
+  } catch(err){ msg.className='msg err'; msg.textContent='تعذر الاتصال: ' + (err.message||err); }
+  finally { btn.disabled = false; btn.textContent = '💾 حفظ في الشيت'; }
+}
+
+/* ---- Preview / PDF / Print / Email ---- */
+function pBuildPdfHtml(){
+  const c = PSTATE.customer || {};
+  const date = new Date().toLocaleDateString('en-GB');
+  const notes = [
+    'هذا العرض يوضح حالة المدفوعات الخاصة بالمشروع حتى تاريخ آخر تحديث.',
+    'أي تعديل في قيمة الإجمالي أو الدفعات يجب أن يُحدَّث فورًا في هذا السجل.'
+  ].map(l => `<div style="margin-bottom:6px;">• ${l}</div>`).join('');
+  const total = qNum(c.total);
+  let cumulative = 0, tbody = '';
+  PSTATE.rows.forEach((r,i) => {
+    const amt = qNum(r.amount); let pct = '';
+    if (amt > 0) { cumulative += amt; pct = total > 0 ? Math.min(100, (cumulative/total)*100) : 0; }
+    const bg = i % 2 === 0 ? '#ffffff' : '#faf8f5';
+    tbody += `<tr style="background:${bg};border-bottom:1px solid #D9D0C4;">
+      <td style="padding:8px 7px;text-align:center;color:#6B5E4E;font-size:11px;">${i+1}</td>
+      <td style="padding:8px 7px;">${qEsc(r.name)}</td>
+      <td style="padding:6px 4px;direction:ltr;text-align:left;font-weight:700;font-size:11px;">${fmt(amt)}</td>
+      <td style="padding:6px 4px;text-align:center;font-size:11px;">${pct!==''?pct.toFixed(0)+'%':'—'}</td>
+      <td style="padding:6px 4px;text-align:center;font-size:11px;">${qEsc(r.date)||'—'}</td>
+    </tr>`;
+  });
+  const received = pReceived(); const remaining = total - received;
+  return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;} body{font-family:'Cairo','Arial',sans-serif;direction:rtl;color:#1E1A15;background:#fff;}
+    @page{size:A4;margin:14mm 12mm;} @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+    .brand-block{text-align:center;padding-bottom:14px;border-bottom:2px solid #B8975A;margin-bottom:16px;}
+    .brand-title{font-family:'Playfair Display',Georgia,serif;font-size:38px;letter-spacing:5px;color:#1E1A15;direction:ltr;}
+    .brand-title span{color:#B8975A;} .brand-sub{font-size:9px;letter-spacing:3px;color:#6B5E4E;text-transform:uppercase;margin-top:4px;direction:ltr;}
+    .client-box{background:#F3EFEA;border-right:4px solid #B8975A;padding:12px 16px;margin-bottom:6px;text-align:right;}
+    .client-row{display:flex;align-items:baseline;gap:8px;margin-bottom:6px;}
+    .client-lbl{font-size:11px;color:#6B5E4E;font-weight:700;white-space:nowrap;} .client-val{font-size:14px;font-weight:700;}
+    .date-row{font-size:12px;color:#6B5E4E;direction:ltr;text-align:left;margin-bottom:14px;}
+    table.items{width:100%;min-width:600px;border-collapse:collapse;font-size:13px;margin-bottom:14px;}
+    .items-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+    @media print{ .items-wrap{overflow:visible!important;} table.items{min-width:0!important;width:100%!important;font-size:10px!important;}
+      table.items thead th, table.items tbody td, table.items tfoot td{padding:4px 3px!important;} }
+    table.items thead tr{background:#2C5F3A;color:#fff;} table.items thead th{padding:6px 4px;text-align:right;font-weight:600;white-space:nowrap;font-size:11px;}
+    table.items thead th.ltr{direction:ltr;text-align:left;} table.items thead th.center{text-align:center;}
+    table.items tbody td{padding:6px 4px;vertical-align:top;font-size:11px;}
+    table.items tfoot tr{background:#1E1A15;color:#D4B483;} table.items tfoot td{padding:9px 7px;font-weight:700;font-size:13px;}
+    table.items tfoot td.ltr{direction:ltr;text-align:left;}
+    .summary-bar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;}
+    .summary-cell{flex:1;min-width:140px;background:#F3EFEA;border:1px solid #D9D0C4;border-radius:6px;padding:10px 14px;}
+    .summary-cell .lbl{font-size:10px;color:#6B5E4E;font-weight:700;} .summary-cell .val{font-size:16px;font-weight:700;margin-top:4px;direction:ltr;text-align:left;}
+    .summary-cell.remaining .val{color:${Math.abs(remaining)<=0.01 ? '#2C5F3A' : '#dc3545'};}
+    .notes-box{background:#F3EFEA;border:1px solid #D9D0C4;border-radius:5px;padding:13px 16px;font-size:12px;color:#6B5E4E;line-height:2.1;margin-bottom:16px;text-align:right;}
+    .footer{text-align:center;font-size:13px;color:#B8975A;font-family:'Playfair Display',Georgia,serif;letter-spacing:1px;direction:ltr;}
+  </style></head>
+  <body><div style="padding:24px 28px;">
+    <div class="brand-block"><div class="brand-title">Living <span>Mood</span></div><div class="brand-sub">Payment Statement</div></div>
+    <div class="date-row"><strong>التاريخ:</strong> ${date}</div>
+    <div class="client-box">
+      ${c.engineer ? `<div class="client-row"><span class="client-lbl">موجه إلى:</span><span class="client-val">${qEsc(c.engineer)}</span></div>` : ''}
+      ${c.address ? `<div class="client-row"><span class="client-lbl">العنوان / المشروع:</span><span class="client-val">${qEsc(c.address)}</span></div>` : ''}
+      ${c.date ? `<div class="client-row"><span class="client-lbl">تاريخ استلام المشروع:</span><span class="client-val">${qEsc(c.date)}</span></div>` : ''}
+    </div>
+    <br/>
+    <div class="items-wrap"><table class="items">
+      <thead><tr><th style="width:6%;">#</th><th>اسم الدفعة</th><th class="ltr" style="width:18%;">المبلغ</th><th class="center" style="width:14%;">النسبة من الإجمالي</th><th class="center" style="width:16%;">تاريخ الدفع</th></tr></thead>
+      <tbody>${tbody}</tbody>
+      <tfoot><tr><td colspan="2" style="text-align:right;">الإجمالي الكلي</td><td class="ltr">${fmt(total)}</td><td colspan="2"></td></tr></tfoot>
+    </table></div>
+    <div class="summary-bar">
+      <div class="summary-cell"><div class="lbl">الإجمالي الكلي</div><div class="val">${fmt(total)}</div></div>
+      <div class="summary-cell"><div class="lbl">إجمالي المستلم</div><div class="val">${fmt(received)}</div></div>
+      <div class="summary-cell remaining"><div class="lbl">الباقي</div><div class="val">${fmt(remaining)}</div></div>
+    </div>
+    <div class="notes-box">${notes}</div>
+    <p style="text-align:center;font-size:13px;color:#6B5E4E;margin-bottom:0;">نحن سعداء بالعمل معكم، ونتطلع إلى استكمال الأعمال معًا على خير.</p>
+    <br/><div class="footer">Thank you — Living Mood</div>
+  </div></body></html>`;
+}
+
+function pRenderPreview(){
+  PSTATE.subpage = 'preview'; pSaveSession();
+  document.getElementById('content').innerHTML = `
+    <div class="q-steps">
+      <div class="step done" onclick="pGoHome()">← الرئيسية</div>
+      <div class="step done" onclick="pGoEditor()">متابعة الدفعات</div>
+      <div class="step active">معاينة وطباعة</div>
+    </div>
+    <div class="panel" style="padding:12px 16px;margin-bottom:0;">
+      <div class="action-bar" style="display:flex;flex-wrap:wrap;gap:10px;">
+        <button class="btn btn-outline" onclick="pGoEditor()">← تعديل</button>
+        <button class="btn btn-dark" onclick="pOpenMailPrompt()">✉ إرسال بالإيميل</button>
+        <button class="btn btn-primary" onclick="pPrintPreview()">⬇ تحميل وطباعة PDF</button>
+      </div>
+    </div>
+    <div class="q-preview-box"><iframe id="pPreviewFrame" class="q-preview-frame"></iframe></div>
+
+    <div id="pMailModal">
+      <div class="q-confirm-card">
+        <h3>إرسال كشف الدفعات بالإيميل</h3>
+        <p>اكتب إيميل العميل أو المهندس لإرسال كشف الـ Payment Statement</p>
+        <div class="field" style="margin-bottom:16px;"><input type="email" id="pMailTo" placeholder="example@email.com" style="direction:ltr;text-align:left;"></div>
+        <div class="msg" id="pMailStatus" style="margin-bottom:14px;"></div>
+        <div class="q-confirm-btns">
+          <button class="btn btn-primary" id="pMailSendBtn" onclick="pSendMailNow()">إرسال</button>
+          <button class="btn btn-outline" onclick="pCloseMailModal()">إلغاء</button>
+        </div>
+      </div>
+    </div>
+  `;
+  const frame = document.getElementById('pPreviewFrame');
+  frame.addEventListener('load', () => {
+    try { frame.style.height = (frame.contentDocument.documentElement.scrollHeight + 20) + 'px'; } catch(e){ frame.style.height = '1200px'; }
+  });
+  frame.srcdoc = pBuildPdfHtml();
+}
+
+function pPrintPreview(){
+  const frame = document.getElementById('pPreviewFrame');
+  if (!frame || !frame.contentWindow) return;
+  frame.contentWindow.focus();
+  frame.contentWindow.print();
+}
+
+function pOpenMailPrompt(){
+  document.getElementById('pMailTo').value = '';
+  document.getElementById('pMailStatus').style.display = 'none';
+  document.getElementById('pMailModal').classList.add('open');
+}
+function pCloseMailModal(){ document.getElementById('pMailModal').classList.remove('open'); }
+
+async function pSendMailNow(){
+  const to = document.getElementById('pMailTo').value.trim();
+  const statusEl = document.getElementById('pMailStatus');
+  const inputEl = document.getElementById('pMailTo');
+  const show = (type, msg) => { statusEl.className = 'msg ' + (type === 'ok' ? 'ok' : 'err'); statusEl.textContent = msg; statusEl.style.display = 'block'; };
+  inputEl.style.borderColor = '';
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!to || !emailRegex.test(to)) { inputEl.style.borderColor = '#c0392b'; show('err', '⚠ من فضلك اكتب إيميل صحيح'); inputEl.focus(); return; }
+  const hasValidRow = PSTATE.rows.some(r => qNum(r.amount) > 0);
+  if (!hasValidRow) { show('err', '⚠ السجل فاضي، من فضلك أضف دفعات قبل الإرسال'); return; }
+  if (!PSTATE.customer || (!PSTATE.customer.engineer && !PSTATE.customer.address)) { show('err', '⚠ بيانات العميل ناقصة، رجّع وعدّل قبل الإرسال'); return; }
+  const btn = document.getElementById('pMailSendBtn'); btn.disabled = true; show('ok', '⏳ جاري الإرسال...');
+  try {
+    const d = await apiPost('paySendEmailCashFlow', {
+      to, subject: 'Payment Statement - Living Mood',
+      rows: PSTATE.rows, customer: PSTATE.customer, total: qNum(PSTATE.customer.total), received: pReceived()
+    });
+    if (d.success !== false) { show('ok', '✔ تم إرسال كشف الدفعات بنجاح'); setTimeout(pCloseMailModal, 1800); }
+    else { inputEl.style.borderColor = '#c0392b'; show('err', '✕ ' + (d.error || 'حدث خطأ غير متوقع')); }
+  } catch(err){ show('err', '✕ تعذر الاتصال بالسيرفر: ' + (err.message||err)); }
+  finally { btn.disabled = false; }
 }
 
 /* ================= Login ================= */
@@ -1219,6 +1624,8 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الدخول...';
   try {
     await apiGet('login', { name, pass }); // apiGet بيرمي Error لو data.error موجودة
+    localStorage.setItem('lm_loggedIn', '1');
+    localStorage.setItem('lm_userName', name);
     document.getElementById('loginWrap').style.display = 'none';
     document.getElementById('appRoot').style.display = 'block';
     goTo(sessionStorage.getItem('lm_currentPage') || 'dashboard');
@@ -1228,8 +1635,58 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
   }
 });
 
+/* ================= Logout / Change Password ================= */
+function logout(){
+  if (!confirm('هل تريد تسجيل الخروج؟')) return;
+  localStorage.removeItem('lm_loggedIn');
+  localStorage.removeItem('lm_userName');
+  sessionStorage.clear();
+  document.getElementById('appRoot').style.display = 'none';
+  document.getElementById('loginWrap').style.display = 'flex';
+  document.getElementById('l_name').value = '';
+  document.getElementById('l_pass').value = '';
+  const loginMsg = document.getElementById('loginMsg'); loginMsg.className='msg'; loginMsg.textContent='';
+  const loginBtn = document.getElementById('loginBtn'); loginBtn.disabled = false; loginBtn.textContent = 'دخول';
+  document.getElementById('l_name').focus();
+}
+
+function openChangePassModal(){
+  document.getElementById('cp-old').value = '';
+  document.getElementById('cp-new').value = '';
+  document.getElementById('cp-confirm').value = '';
+  document.getElementById('cpStatus').style.display = 'none';
+  document.getElementById('changePassModal').classList.add('open');
+}
+function closeChangePassModal(){ document.getElementById('changePassModal').classList.remove('open'); }
+
+async function submitChangePassword(){
+  const oldPass = document.getElementById('cp-old').value.trim();
+  const newPass = document.getElementById('cp-new').value.trim();
+  const confirmPass = document.getElementById('cp-confirm').value.trim();
+  const statusEl = document.getElementById('cpStatus');
+  const show = (type, msg) => { statusEl.className = 'msg ' + (type === 'ok' ? 'ok' : 'err'); statusEl.textContent = msg; statusEl.style.display = 'block'; };
+  if (!oldPass || !newPass || !confirmPass) { show('err', 'من فضلك اكتب كل الحقول'); return; }
+  if (newPass !== confirmPass) { show('err', 'كلمة السر الجديدة والتأكيد مش متطابقين'); return; }
+  if (newPass.length < 4) { show('err', 'كلمة السر الجديدة قصيرة أوي (4 حروف/أرقام على الأقل)'); return; }
+  const name = localStorage.getItem('lm_userName') || '';
+  if (!name) { show('err', 'حصل خطأ، برجاء تسجيل الخروج والدخول تاني'); return; }
+  const btn = document.getElementById('cpSaveBtn'); btn.disabled = true; show('ok', '⏳ جاري الحفظ...');
+  try {
+    const d = await apiPost('changePassword', { name, oldPass, newPass });
+    if (d.success) { show('ok', '✔ اتغيرت كلمة السر بنجاح'); setTimeout(closeChangePassModal, 1500); }
+    else { show('err', '✕ ' + (d.error || 'حصل خطأ غير متوقع')); }
+  } catch(err){ show('err', '✕ تعذر الاتصال بالسيرفر: ' + (err.message||err)); }
+  finally { btn.disabled = false; }
+}
+
 /* ================= Init ================= */
-document.getElementById('l_name').focus();
+if (localStorage.getItem('lm_loggedIn') === '1') {
+  document.getElementById('loginWrap').style.display = 'none';
+  document.getElementById('appRoot').style.display = 'block';
+  goTo(sessionStorage.getItem('lm_currentPage') || 'dashboard');
+} else {
+  document.getElementById('l_name').focus();
+}
 </script>
 </body>
 </html>
