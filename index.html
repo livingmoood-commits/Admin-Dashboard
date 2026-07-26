@@ -200,6 +200,8 @@
   .q-info-row input{ flex:1; border:1px solid var(--border); border-radius:5px; padding:6px 9px; background:#fff; font-family:inherit; font-size:14px; font-weight:700; color:var(--dark); min-width:140px; }
   .q-dollar-inline{ display:flex; align-items:center; gap:8px; }
   .q-dollar-inline input{ width:80px; padding:7px 9px; font-size:14px; font-weight:700; border:1px solid var(--border); border-radius:5px; }
+  .q-dollar-inline input[type="date"]{ width:140px; direction:ltr; text-align:center; }
+  .q-side-col{ display:flex; flex-direction:column; gap:10px; align-items:flex-start; }
 
   .q-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; margin-bottom:14px; }
   table.q-tbl{ width:100%; border-collapse:collapse; font-size:13px; min-width:760px; }
@@ -207,7 +209,8 @@
   .q-tbl thead th{ padding:9px 8px; font-weight:600; text-align:right; white-space:nowrap; }
   .q-tbl tbody tr{ border-bottom:1px solid var(--border); }
   .q-tbl tbody tr:hover{ background:#faf7f3; }
-  .q-tbl td{ padding:7px 6px; vertical-align:top; }
+  .q-tbl td{ padding:7px 6px; vertical-align:middle; }
+  .q-tbl td:has(textarea){ vertical-align:top; }
   .q-tbl td input, .q-tbl td textarea{ background:#fff; border:1.5px solid var(--border); border-radius:5px; font-family:inherit; font-size:13px; color:var(--dark); width:100%; padding:5px 7px; outline:none; direction:rtl; text-align:right; }
   .q-tbl td input.ltr-num{ direction:ltr; text-align:left; }
   .q-tbl td input:focus, .q-tbl td textarea:focus{ border-color:var(--gold); }
@@ -260,6 +263,9 @@
   .q-clist .ci-progress{ font-size:11px; color:var(--muted); margin-top:4px; display:flex; gap:10px; flex-wrap:wrap; }
   .q-clist .ci-progress b{ color:var(--green); }
   .q-clist .ci-done{ background:var(--green); color:#fff; font-size:10px; padding:3px 9px; border-radius:20px; font-weight:700; margin-right:6px; }
+  .q-clist .c-item.is-completed{ background:#eef7f0; border-color:#bcdec6; border-inline-start:4px solid var(--green); }
+  .q-clist .c-item.is-completed:hover{ background:#e3f2e7; }
+  .q-clist .ci-done-tag{ display:inline-flex; align-items:center; gap:3px; color:var(--green); font-size:11.5px; font-weight:700; white-space:nowrap; }
   .q-grand-bar.remaining .amt{ color:#ff8a80; }
   .q-grand-bar.remaining.done .amt{ color:#8fd19e; }
   .p-complete-box{ display:flex; align-items:center; justify-content:space-between; gap:14px; background:var(--cream); border:1.5px dashed var(--border); border-radius:6px; padding:12px 16px; margin-bottom:16px; flex-wrap:wrap; }
@@ -1136,6 +1142,14 @@ let QSTATE = { subpage:'home', customer:null, rows:[], discount:{percent:0,amoun
 const qEsc = s => (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const qNum = v => parseFloat((v+'').replace(/,/g,'')) || 0;
 function qNewRow(){ return { _id:Math.random(), category:'', unit:'', description:'', qty:1, price:0, notes:'' }; }
+// بيبني اسم ملف نظيف للـ PDF من اسم المشروع/العميل (بيشيل رموز ممنوعة في أسماء الملفات)
+function pdfFileTitle(prefix, name){
+  const clean = String(name || '').trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim();
+  return clean ? `${prefix} - ${clean}` : prefix;
+}
+// تحويل تاريخ الكوتيشن (صيغة d-M-yyyy أو d/M/yyyy) لصيغة ISO يفهمها input[type=date] والعكس
+function qDateToISO(d){ if(!d) return ''; const p=String(d).trim().split(/[-\/]/); return p.length===3 ? `${p[2]}-${String(p[1]).padStart(2,'0')}-${String(p[0]).padStart(2,'0')}` : ''; }
+function qDateFromISO(iso){ if(!iso) return ''; const p=iso.split('-'); return p.length===3 ? `${Number(p[2])}-${Number(p[1])}-${p[0]}` : ''; }
 function qPopulateCategoryList(){
   const dl = document.getElementById('q-cat-list');
   if (dl) dl.innerHTML = QCFG.categories.map(c => `<option value="${qEsc(c)}"></option>`).join('');
@@ -1310,6 +1324,7 @@ function qRenderRows(){
 function qRenderEditor(){
   QSTATE.subpage = 'editor'; qSaveSession();
   const c = QSTATE.customer || {};
+  if (QSTATE.customer && !c.date) c.date = qDateFromISO(todayStr());
   document.getElementById('content').innerHTML = `
     <div class="q-steps">
       <div class="step done" onclick="qGoHome()">← الرئيسية</div>
@@ -1324,10 +1339,17 @@ function qRenderEditor(){
           <div class="q-info-row"><label>العنوان / المشروع:</label><input type="text" id="q-b-address" value="${qEsc(c.address)}"
             oninput="QSTATE.customer.address=this.value; qSaveSession();"></div>
         </div>
-        <div class="q-dollar-inline">
-          <span style="font-size:12px;color:var(--muted);font-weight:600;">سعر الدولار:</span>
-          <input type="number" id="q-b-dollar" value="${qEsc(QSTATE.dollar)}" min="1" oninput="QSTATE.dollar=this.value; qSaveSession();">
-          <span style="font-size:12px;color:var(--muted);">جنيه</span>
+        <div class="q-side-col">
+          <div class="q-dollar-inline">
+            <span style="font-size:12px;color:var(--muted);font-weight:600;">سعر الدولار:</span>
+            <input type="number" id="q-b-dollar" value="${qEsc(QSTATE.dollar)}" min="1" oninput="QSTATE.dollar=this.value; qSaveSession();">
+            <span style="font-size:12px;color:var(--muted);">جنيه</span>
+          </div>
+          <div class="q-dollar-inline">
+            <span style="font-size:12px;color:var(--muted);font-weight:600;">تاريخ الكوتيشن:</span>
+            <input type="date" id="q-b-date" value="${qDateToISO(c.date) || todayStr()}"
+              oninput="QSTATE.customer.date=qDateFromISO(this.value); qSaveSession();">
+          </div>
         </div>
       </div>
     </div>
@@ -1417,6 +1439,7 @@ function qBuildPdfHtml(){
     </tr>`;
   });
   return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"/>
+  <title>${qEsc(pdfFileTitle('Quotation', c.address || c.name))}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet"/>
   <style>
@@ -1607,9 +1630,9 @@ async function pRenderHome(token){
           const remaining = (Number(c.total)||0) - (Number(c.received)||0);
           const pct = c.total > 0 ? Math.min(100, (Number(c.received)||0)/c.total*100) : 0;
           return `
-          <div class="c-item">
+          <div class="c-item ${c.completed ? 'is-completed' : ''}">
             <div class="ci-info" onclick='pOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
-              <div class="ci-name">${c.completed ? '<span class="ci-done">مكتمل</span>' : ''}${qEsc(c.engineer || c.name)}</div>
+              <div class="ci-name">${qEsc(c.engineer || c.name)}</div>
               <div class="ci-meta">${qEsc(c.address || '')}</div>
               <div class="ci-progress">
                 <span>آخر دفعة: <b>${qEsc(c.lastPayment || '—')}</b></span>
@@ -1620,6 +1643,7 @@ async function pRenderHome(token){
               </div>
             </div>
             <div class="ci-actions">
+              ${c.completed ? '<span class="ci-done-tag">✓ مكتمل</span>' : ''}
               <button class="ci-badge" onclick='pOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>فتح ←</button>
               <button class="btn btn-sm btn-danger" onclick="pDeleteCustomer('${c.name.replace(/'/g,"\\'")}')">🗑 حذف</button>
             </div>
@@ -1820,6 +1844,7 @@ function pBuildPdfHtml(){
   });
   const received = pReceived(); const remaining = total - received;
   return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"/>
+  <title>${qEsc(pdfFileTitle('Payment Statement', c.address || c.name))}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet"/>
   <style>
