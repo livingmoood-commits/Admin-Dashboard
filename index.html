@@ -1299,9 +1299,9 @@ function qRenderEditor(){
       <div class="q-banner">
         <div class="q-info-box">
           <div class="q-info-row"><label>موجه إلى:</label><input type="text" id="q-b-engineer" value="${qEsc(c.engineer)}"
-            oninput="QSTATE.customer.engineer=this.value; QSTATE.customer.name=[QSTATE.customer.engineer,QSTATE.customer.address].filter(Boolean).join(' - '); qSaveSession();"></div>
+            oninput="QSTATE.customer.engineer=this.value; qSaveSession();"></div>
           <div class="q-info-row"><label>العنوان / المشروع:</label><input type="text" id="q-b-address" value="${qEsc(c.address)}"
-            oninput="QSTATE.customer.address=this.value; QSTATE.customer.name=[QSTATE.customer.engineer,QSTATE.customer.address].filter(Boolean).join(' - '); qSaveSession();"></div>
+            oninput="QSTATE.customer.address=this.value; qSaveSession();"></div>
         </div>
         <div class="q-dollar-inline">
           <span style="font-size:12px;color:var(--muted);font-weight:600;">سعر الدولار:</span>
@@ -1496,6 +1496,15 @@ function qOpenMailPrompt(){
 }
 function qCloseMailModal(){ document.getElementById('qMailModal').classList.remove('open'); }
 
+/* رسالة خطأ واضحة بالعربي لو المشكلة صلاحيات Apps Script (UrlFetchApp) — مشتركة بين الكوتيشن والدائنون */
+function friendlyMailError(raw){
+  raw = raw || 'حدث خطأ غير متوقع، حاول تاني';
+  if(/external_request|UrlFetchApp|ليس لديك إذن|authorization/i.test(raw)){
+    return 'السكريبت محتاج إعادة تفويض صلاحية الاتصال الخارجي (external_request) من مالك مشروع Apps Script. افتح محرر Apps Script → شغّل أي فانكشن يدويًا → وافق على كل الصلاحيات المطلوبة → أعد نشر الـ Web App (Deploy → Manage deployments → Edit → New version).';
+  }
+  return raw;
+}
+
 async function qSendMailNow(){
   const to = document.getElementById('qMailTo').value.trim();
   const statusEl = document.getElementById('qMailStatus');
@@ -1516,8 +1525,8 @@ async function qSendMailNow(){
       customer: QSTATE.customer, subtotal: qGrand(), discount: QSTATE.discount, grandTotal: qNetTotal(), dollar: dlr
     });
     if (d.success !== false) { show('ok', '✔ تم إرسال عرض السعر بنجاح'); setTimeout(qCloseMailModal, 1800); }
-    else { inputEl.style.borderColor = '#c0392b'; show('err', '✕ ' + (d.error || 'حدث خطأ غير متوقع')); }
-  } catch(err){ show('err', '✕ تعذر الاتصال بالسيرفر: ' + (err.message||err)); }
+    else { inputEl.style.borderColor = '#c0392b'; show('err', '✕ ' + friendlyMailError(d.error)); }
+  } catch(err){ show('err', '✕ تعذر الاتصال بالسيرفر: ' + friendlyMailError(err.message||String(err))); }
   finally { btn.disabled = false; }
 }
 
@@ -1695,9 +1704,9 @@ function pRenderEditor(){
       <div class="q-banner">
         <div class="q-info-box">
           <div class="q-info-row"><label>موجه إلى:</label><input type="text" id="p-b-engineer" value="${qEsc(c.engineer)}"
-            oninput="PSTATE.customer.engineer=this.value; PSTATE.customer.name=[PSTATE.customer.engineer,PSTATE.customer.address].filter(Boolean).join(' - '); pSaveSession();"></div>
+            oninput="PSTATE.customer.engineer=this.value; pSaveSession();"></div>
           <div class="q-info-row"><label>العنوان / المشروع:</label><input type="text" id="p-b-address" value="${qEsc(c.address)}"
-            oninput="PSTATE.customer.address=this.value; PSTATE.customer.name=[PSTATE.customer.engineer,PSTATE.customer.address].filter(Boolean).join(' - '); pSaveSession();"></div>
+            oninput="PSTATE.customer.address=this.value; pSaveSession();"></div>
         </div>
         <div class="q-info-box">
           <div class="q-info-row"><label>الإجمالي الكلي:</label><input type="text" inputmode="numeric" id="p-b-total" value="${c.total||0}" onkeypress="return /[0-9.]/.test(event.key)" oninput="pRenderRows(); pSaveSession();"></div>
@@ -1912,8 +1921,8 @@ async function pSendMailNow(){
       rows: PSTATE.rows, customer: PSTATE.customer, total: qNum(PSTATE.customer.total), received: pReceived()
     });
     if (d.success !== false) { show('ok', '✔ تم إرسال كشف الدفعات بنجاح'); setTimeout(pCloseMailModal, 1800); }
-    else { inputEl.style.borderColor = '#c0392b'; show('err', '✕ ' + (d.error || 'حدث خطأ غير متوقع')); }
-  } catch(err){ show('err', '✕ تعذر الاتصال بالسيرفر: ' + (err.message||err)); }
+    else { inputEl.style.borderColor = '#c0392b'; show('err', '✕ ' + friendlyMailError(d.error)); }
+  } catch(err){ show('err', '✕ تعذر الاتصال بالسيرفر: ' + friendlyMailError(err.message||String(err))); }
   finally { btn.disabled = false; }
 }
 
