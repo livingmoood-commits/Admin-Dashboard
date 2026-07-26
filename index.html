@@ -250,11 +250,13 @@
 
   #qMailModal{ display:none; position:fixed; inset:0; background:rgba(30,26,21,.65); z-index:950; justify-content:center; align-items:center; }
   #qMailModal.open{ display:flex; }
-  .q-confirm-card{ background:#fff; border-radius:14px; padding:28px 24px; width:min(360px,92vw); box-shadow:0 20px 60px rgba(30,26,21,.3); text-align:center; }
+  .q-confirm-card{ background:#fff; border-radius:14px; padding:28px 16px; width:min(420px,94vw); box-shadow:0 20px 60px rgba(30,26,21,.3); text-align:center; }
   #qMailModal.open .q-confirm-card, #changePassModal.open .q-confirm-card{ animation:modalPop .4s var(--bounce); }
   @keyframes modalPop{ from{ opacity:0; transform:scale(.82); } to{ opacity:1; transform:scale(1); } }
   .q-confirm-card h3{ font-size:17px; margin-bottom:10px; }
   .q-confirm-card p{ font-size:13px; color:var(--muted); margin-bottom:18px; line-height:1.7; }
+  .q-confirm-card .field input{ width:100%; box-sizing:border-box; padding:11px 10px; font-size:14px; border:1.5px solid var(--border); border-radius:7px; font-family:inherit; }
+  .q-confirm-card .field input:focus{ outline:none; border-color:var(--gold); box-shadow:0 0 0 3px rgba(184,151,90,.18); }
   .q-confirm-btns{ display:flex; gap:10px; justify-content:center; }
 
   @media(max-width:760px){ .q-banner{ flex-direction:column; align-items:stretch; } }
@@ -1315,7 +1317,7 @@ function qRenderRows(){
       <td><input type="text" class="ltr-num" inputmode="numeric" value="${r.qty}" onchange="qSetNumField(${r._id},'qty',this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
       <td><input type="text" class="ltr-num" inputmode="numeric" value="${r.price}" onchange="qSetNumField(${r._id},'price',this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
       <td class="num-cell">${fmt(qTot(r))}</td>
-      <td><textarea placeholder="ملاحظة..." style="min-height:52px;" onchange="qSetField(${r._id},'notes',this.value)">${qEsc(r.notes)}</textarea></td>
+      <td><textarea placeholder="ملاحظة..." onchange="qSetField(${r._id},'notes',this.value)">${qEsc(r.notes)}</textarea></td>
       <td><button class="btn btn-sm btn-danger" onclick="qDelRow(${r._id})">✕</button></td>
     </tr>`).join('');
   qRefreshTotals();
@@ -1359,7 +1361,7 @@ function qRenderEditor(){
       <div class="q-wrap">
         <table class="q-tbl">
           <thead><tr>
-            <th style="width:30px;">#</th><th style="width:110px;">النموذج</th><th style="width:80px;">الوحدة</th>
+            <th style="width:30px;">#</th><th style="width:110px;">النموذج</th><th style="width:130px;">الوحدة</th>
             <th>المطلوب تنفيذه</th><th style="width:60px;">عدد</th><th style="width:90px;">السعر</th>
             <th style="width:100px;">الإجمالي</th><th style="width:130px;">ملاحظات</th><th style="width:36px;"></th>
           </tr></thead>
