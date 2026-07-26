@@ -162,10 +162,15 @@
   @keyframes contentIn{ from{ opacity:0; transform:translateY(14px) scale(.98); } to{ opacity:1; transform:translateY(0) scale(1); } }
 
   .dyn-row{ display:grid; grid-template-columns:2fr 1fr 1fr 1fr auto; gap:8px; margin-bottom:8px; align-items:center; }
-  .dyn-row.labor{ grid-template-columns:2fr 1fr 1fr auto; }
+  .dyn-row.material{ grid-template-columns:2fr 1fr 1fr 1fr auto auto; }
+  .dyn-row.labor{ grid-template-columns:2fr 1fr auto auto auto; }
   .dyn-add{ margin-top:4px; }
+  .dyn-row-cost{ font-size:12px; font-weight:700; color:var(--gold-dim); text-align:center; white-space:nowrap; padding:0 2px; }
+  .evening-row{ display:grid; grid-template-columns:1fr 1fr auto; gap:8px; margin:-2px 0 10px 0; padding-inline-start:14px; border-inline-start:2px solid var(--border); }
+  .evening-row input{ background:#fff8ec; }
   .subtotal-line{ display:flex; justify-content:space-between; font-size:13.5px; padding:8px 4px; border-top:1px dashed var(--border); margin-top:6px; }
   .subtotal-line b{ color:var(--dark); }
+  .subtotal-line.grand{ border-top:2px solid var(--gold); margin-top:10px; padding-top:10px; font-size:14.5px; font-weight:700; }
   .quick-links{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;}
   .setup-note{ background:#fff8e6; border:1px solid #f0dca0; color:#7a5e12; padding:12px 16px; border-radius:8px; font-size:13px; margin-bottom:18px; }
 
@@ -998,7 +1003,7 @@ async function renderProducts(token) {
   try {
     const [{projects}, {employees}, {products}] = await Promise.all([apiGet('listProjects'), apiGet('listEmployees'), apiGet('listProducts', {filters:{}})]);
     if (isStaleNav(token)) return;
-    materialRows = [{name:'',qty:'',unit:'',unitPrice:''}]; laborRows=[{employee:'',hours:''}];
+    materialRows = [{name:'',qty:'',unit:'',unitPrice:''}]; laborRows=[{employee:'',hours:'',eveningHours:'',eveningAmount:'',showEvening:false}];
     document.getElementById('content').innerHTML = `
       <div class="grid2">
         <div class="panel">
@@ -1015,7 +1020,11 @@ async function renderProducts(token) {
             <div id="laborBox"></div>
             <button type="button" class="btn btn-outline btn-sm dyn-add" id="addLaborBtn">+ إضافة عامل</button>
             <div class="field" style="margin-top:14px;"><label>ملاحظات</label><textarea id="p_notes" rows="2"></textarea></div>
-            <div id="prodTotals" class="subtotal-line"><span>التكلفة الإجمالية المتوقعة</span><b>0 ج</b></div>
+            <div id="prodTotals">
+              <div class="subtotal-line"><span>إجمالي الخامات</span><b id="totMat">0 ج</b></div>
+              <div class="subtotal-line"><span>إجمالي العمالة (ساعات + سهرات)</span><b id="totLabor">0 ج</b></div>
+              <div class="subtotal-line grand"><span>التكلفة الإجمالية المتوقعة</span><b id="totGrand">0 ج</b></div>
+            </div>
             <button type="submit" class="btn btn-primary" id="prodBtn">حفظ المنتج</button>
             <div class="msg" id="prodMsg"></div>
           </form>
@@ -1029,9 +1038,11 @@ async function renderProducts(token) {
     `;
     const empOptions = employees.map(e=>`<option value="${e.name}">${e.name} — ${fmt(e.hourlyRate)} ج/س</option>`).join('');
     window._empOptionsHtml = empOptions;
+    const empRateMap = {}; employees.forEach(e=>{ empRateMap[e.name] = Number(e.hourlyRate)||0; });
+    window._empRateMap = empRateMap;
     renderDynRows(); renderProductsList(products);
     document.getElementById('addMaterialBtn').addEventListener('click', () => { materialRows.push({name:'',qty:'',unit:'',unitPrice:''}); renderDynRows(); });
-    document.getElementById('addLaborBtn').addEventListener('click', () => { laborRows.push({employee:'',hours:''}); renderDynRows(); });
+    document.getElementById('addLaborBtn').addEventListener('click', () => { laborRows.push({employee:'',hours:'',eveningHours:'',eveningAmount:'',showEvening:false}); renderDynRows(); });
     document.getElementById('prodFilterProject').addEventListener('change', async (e) => {
       const list = await apiGet('listProducts', { filters:{project:e.target.value} }); renderProductsList(list.products);
     });
@@ -1041,12 +1052,16 @@ async function renderProducts(token) {
       msg.className='msg'; msg.textContent=''; btn.disabled=true; btn.innerHTML='<span class="spinner"></span>جاري الحفظ...';
       const product = {
         name: document.getElementById('p_name').value.trim(), project: document.getElementById('p_project').value,
-        materials: materialRows.filter(m=>m.name), labor: laborRows.filter(l=>l.employee && l.hours),
+        materials: materialRows.filter(m=>m.name),
+        labor: laborRows.filter(l=>l.employee && (l.hours || l.eveningAmount)).map(l=>({
+          employee: l.employee, hours: l.hours, eveningHours: l.eveningHours, eveningAmount: l.eveningAmount
+        })),
         notes: document.getElementById('p_notes').value
       };
       try {
         const res = await apiPost('addProduct', { product });
-        msg.className='msg ok'; msg.textContent = 'تم الحفظ — التكلفة الإجمالية: '+fmt(res.totalCost)+' ج';
+        msg.className='msg ok';
+        msg.textContent = 'تم الحفظ — خامات: '+fmt(res.materialsCost)+' ج + عمالة: '+fmt(res.laborCost)+' ج = الإجمالي: '+fmt(res.totalCost)+' ج';
         renderProducts();
       } catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); btn.disabled=false; btn.textContent='حفظ المنتج'; }
     });
@@ -1054,25 +1069,53 @@ async function renderProducts(token) {
 }
 function renderDynRows(){
   document.getElementById('materialsBox').innerHTML = materialRows.map((m,i) => `
-    <div class="dyn-row">
+    <div class="dyn-row material">
       <input placeholder="اسم المادة" value="${m.name}" oninput="materialRows[${i}].name=this.value; updateProdTotal();">
       <input type="number" placeholder="الكمية" value="${m.qty}" oninput="materialRows[${i}].qty=this.value; updateProdTotal();">
       <input placeholder="الوحدة" value="${m.unit}" oninput="materialRows[${i}].unit=this.value;">
       <input type="number" placeholder="سعر الوحدة" value="${m.unitPrice}" oninput="materialRows[${i}].unitPrice=this.value; updateProdTotal();">
+      <span class="dyn-row-cost" id="matCost-${i}">—</span>
       <button type="button" class="btn btn-sm btn-danger" onclick="materialRows.splice(${i},1); renderDynRows();">✕</button>
     </div>`).join('');
   document.getElementById('laborBox').innerHTML = laborRows.map((l,i) => `
     <div class="dyn-row labor">
       <select onchange="laborRows[${i}].employee=this.value; updateProdTotal();"><option value="">اختار الموظف</option>${(window._empOptionsHtml||'').replace(`value="${l.employee}"`, `value="${l.employee}" selected`)}</select>
       <input type="number" placeholder="ساعات" value="${l.hours}" oninput="laborRows[${i}].hours=this.value; updateProdTotal();">
-      <span></span>
+      <span class="dyn-row-cost" id="laborCost-${i}">—</span>
+      <button type="button" class="btn btn-sm btn-outline" onclick="laborRows[${i}].showEvening=!laborRows[${i}].showEvening; renderDynRows();">${l.showEvening ? '− سهرة' : '+ سهرة'}</button>
       <button type="button" class="btn btn-sm btn-danger" onclick="laborRows.splice(${i},1); renderDynRows();">✕</button>
-    </div>`).join('');
+    </div>
+    ${l.showEvening ? `
+    <div class="evening-row">
+      <input type="number" step="0.5" min="0" placeholder="ساعات السهرة (للسجل فقط)" value="${l.eveningHours}" oninput="laborRows[${i}].eveningHours=this.value; updateProdTotal();">
+      <input type="number" step="1" min="0" placeholder="مبلغ السهرة (ج)" value="${l.eveningAmount}" oninput="laborRows[${i}].eveningAmount=this.value; updateProdTotal();">
+      <button type="button" class="btn btn-sm btn-danger" onclick="laborRows[${i}].showEvening=false; laborRows[${i}].eveningHours=''; laborRows[${i}].eveningAmount=''; renderDynRows();">✕</button>
+    </div>` : ''}`).join('');
   updateProdTotal();
 }
-async function updateProdTotal(){
-  const matTotal = materialRows.reduce((s,m)=>s+(Number(m.qty)||0)*(Number(m.unitPrice)||0),0);
-  document.querySelector('#prodTotals b').textContent = fmt(matTotal) + ' ج (خامات — العمالة بتتحسب وقت الحفظ)';
+function updateProdTotal(){
+  let matTotal = 0;
+  materialRows.forEach((m,i) => {
+    const cost = (Number(m.qty)||0) * (Number(m.unitPrice)||0);
+    matTotal += cost;
+    const el = document.getElementById('matCost-'+i);
+    if (el) el.textContent = cost ? fmt(cost)+' ج' : '—';
+  });
+  const rateMap = window._empRateMap || {};
+  let laborTotal = 0;
+  laborRows.forEach((l,i) => {
+    const rate = rateMap[l.employee] || 0;
+    const hours = Number(l.hours) || 0;
+    const eveningAmount = Number(l.eveningAmount) || 0;
+    const cost = (hours * rate) + eveningAmount;
+    laborTotal += cost;
+    const el = document.getElementById('laborCost-'+i);
+    if (el) el.textContent = cost ? fmt(cost)+' ج' : '—';
+  });
+  const grand = matTotal + laborTotal;
+  const totMat = document.getElementById('totMat'); if (totMat) totMat.textContent = fmt(matTotal) + ' ج';
+  const totLabor = document.getElementById('totLabor'); if (totLabor) totLabor.textContent = fmt(laborTotal) + ' ج';
+  const totGrand = document.getElementById('totGrand'); if (totGrand) totGrand.textContent = fmt(grand) + ' ج';
 }
 function renderProductsList(products){
   const box = document.getElementById('productsListBox');
@@ -1140,6 +1183,7 @@ const QCFG = {
   ]
 };
 let QSTATE = { subpage:'home', customer:null, rows:[], discount:{percent:0,amount:0}, dollar:QCFG.defaultDollar };
+let _qActionToken = 0; // بيتزود كل ما نبدأ عملية async جوه صفحة الكوتيشن — لو المستخدم غيّر الصفحة أو بدأ عملية تانية قبل ما القديمة تخلص، بنلغي كتابة النتيجة القديمة فوق الشاشة
 
 const qEsc = s => (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const qNum = v => parseFloat((v+'').replace(/,/g,'')) || 0;
@@ -1181,9 +1225,11 @@ async function renderQuotation(token){
 }
 
 async function qRenderHome(token){
+  document.getElementById('content').innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  const myTok = ++_qActionToken;
   try {
     const { customers } = await apiGet('quoteListCustomers');
-    if (isStaleNav(token)) return;
+    if (isStaleNav(token) || _qActionToken !== myTok) return;
     document.getElementById('content').innerHTML = `
       <div class="panel">
         <h3>إنشاء كوتيشن جديد</h3>
@@ -1234,8 +1280,10 @@ function qCreateQuote(){
 async function qOpenCustomer(c){
   QSTATE.customer = c;
   document.getElementById('content').innerHTML = '<div class="loading-row">جاري تحميل الكوتيشن...</div>';
+  const navSnap = _navToken; const myTok = ++_qActionToken;
   try {
     const d = await apiGet('quoteGetQuotation', { name: c.name });
+    if (_navToken !== navSnap || _qActionToken !== myTok) return; // المستخدم غيّر الصفحة/فتح حاجة تانية قبل ما الطلب يخلص
     QSTATE.rows = (d.rows || []).map(r => ({...r, _id:Math.random()}));
     if (!QSTATE.rows.length) QSTATE.rows = [qNewRow()];
     QSTATE.discount = d.discount || {percent:0, amount:0};
@@ -1244,6 +1292,7 @@ async function qOpenCustomer(c){
     qSaveSession();
     qRenderEditor();
   } catch(err){
+    if (_navToken !== navSnap || _qActionToken !== myTok) return;
     QSTATE.rows = [qNewRow()]; QSTATE.discount = {percent:0,amount:0}; QSTATE.subpage = 'editor';
     qSaveSession(); qRenderEditor();
   }
@@ -1251,7 +1300,12 @@ async function qOpenCustomer(c){
 
 async function qDeleteCustomer(name){
   if (!confirm('هل تريد حذف كوتيشن "'+name+'" نهائياً؟')) return;
-  try { await apiPost('quoteDeleteCustomer', { name }); qRenderHome(); } catch(err){ alert('خطأ: '+(err.message||err)); }
+  const navSnap = _navToken; const myTok = ++_qActionToken;
+  try {
+    await apiPost('quoteDeleteCustomer', { name });
+    if (_navToken !== navSnap || _qActionToken !== myTok) return;
+    qRenderHome();
+  } catch(err){ alert('خطأ: '+(err.message||err)); }
 }
 
 function qGoHome(){ try{ sessionStorage.removeItem('lm_quoteSession'); }catch(e){} QSTATE = { subpage:'home', customer:null, rows:[], discount:{percent:0,amount:0}, dollar:QCFG.defaultDollar }; qRenderHome(); }
@@ -1583,15 +1637,23 @@ async function qSendMailNow(){
 }
 
 /* ================= Debtors / Payment Statement — full app (Home → متابعة دفعات → معاينة/طباعة/إيميل) ================= */
-const P_ORDINALS = ['الأولى','الثانية','الثالثة','الرابعة','الخامسة','السادسة','السابعة','الثامنة','التاسعة','العاشرة',
+function pOrdinalName(i){ return 'الدفعة (' + (i+1) + ')'; }
+const P_OLD_ORDINALS = ['الأولى','الثانية','الثالثة','الرابعة','الخامسة','السادسة','السابعة','الثامنة','التاسعة','العاشرة',
   'الحادية عشر','الثانية عشر','الثالثة عشر','الرابعة عشر','الخامسة عشر','السادسة عشر','السابعة عشر','الثامنة عشر','التاسعة عشر','العشرون'];
-function pOrdinalName(i){ return 'الدفعة ' + (P_ORDINALS[i] || ('رقم ' + (i+1))); }
-function pNewRow(idx){ return { _id:Math.random(), name: pOrdinalName(idx), amount:0, date:'' }; }
+// بيحول أي اسم دفعة اتحط تلقائي بالصيغة القديمة (كلام أو "رقم N") للصيغة الجديدة "(N)" — وبيسيب أي اسم كتبه المستخدم يدويًا زي ما هو
+function pMigrateRowName(name, idx){
+  const s = String(name||'').trim();
+  if (!s) return pOrdinalName(idx);
+  const isOldAuto = P_OLD_ORDINALS.some(o => s === 'الدفعة ' + o) || /^الدفعة رقم\s*\d+$/.test(s);
+  return isOldAuto ? pOrdinalName(idx) : s;
+}
+function pNewRow(idx){ return { _id:Math.random(), name: pOrdinalName(idx), amount:0, date:'', method:'' }; }
 const pToISO = d => { if(!d) return ''; const p=(d||'').split('/'); return p.length===3 ? `${p[2]}-${p[1]}-${p[0]}` : ''; };
 const pToEnGB = iso => { if(!iso) return ''; const p=iso.split('-'); return p.length===3 ? `${p[2]}/${p[1]}/${p[0]}` : ''; };
 function pTodayEnGB(){ return pToEnGB(new Date().toISOString().slice(0,10)); }
 
 let PSTATE = { subpage:'home', customer:null, rows:[] };
+let _pActionToken = 0; // نفس فكرة _qActionToken بس لصفحة الـ Payment Statements
 
 function pSaveSession(){ try { sessionStorage.setItem('lm_paySession', JSON.stringify(PSTATE)); } catch(e){} }
 function pRestoreSession(){
@@ -1601,7 +1663,7 @@ function pRestoreSession(){
     const s = JSON.parse(raw);
     if (!s || !s.customer || (s.subpage !== 'editor' && s.subpage !== 'preview')) return false;
     PSTATE = s;
-    PSTATE.rows = (PSTATE.rows && PSTATE.rows.length) ? PSTATE.rows.map(r => ({...r, _id:Math.random()})) : [pNewRow(0)];
+    PSTATE.rows = (PSTATE.rows && PSTATE.rows.length) ? PSTATE.rows.map((r,i) => ({...r, name: pMigrateRowName(r.name, i), _id:Math.random()})) : [pNewRow(0)];
     return true;
   } catch(e){ return false; }
 }
@@ -1614,10 +1676,14 @@ async function renderDebtors(token){
 
 async function pRenderHome(token){
   document.getElementById('content').innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  const myTok = ++_pActionToken;
   try {
     const { customers } = await apiGet('payListCustomers');
-    if (isStaleNav(token)) return;
-    const sorted = [...customers].sort((a,b) => String(b.date||'').localeCompare(String(a.date||'')));
+    if (isStaleNav(token) || _pActionToken !== myTok) return;
+    const sorted = [...customers].sort((a,b) => {
+      if (!!a.completed !== !!b.completed) return a.completed ? 1 : -1; // المكتمل ينزل تحت
+      return String(b.date||'').localeCompare(String(a.date||'')); // الأحدث فوق داخل كل مجموعة
+    });
     document.getElementById('content').innerHTML = `
       <div class="panel">
         <h3>إنشاء سجل دفعات جديد</h3>
@@ -1679,22 +1745,30 @@ function pCreateRecord(){
 async function pOpenCustomer(c){
   PSTATE.customer = c;
   document.getElementById('content').innerHTML = '<div class="loading-row">جاري تحميل السجل...</div>';
+  const navSnap = _navToken; const myTok = ++_pActionToken;
   try {
     const d = await apiGet('payGetCashFlow', { name: c.name });
-    PSTATE.rows = (d.rows || []).map(r => ({...r, _id:Math.random()}));
+    if (_navToken !== navSnap || _pActionToken !== myTok) return; // المستخدم غيّر الصفحة/فتح حاجة تانية قبل ما الطلب يخلص
+    PSTATE.rows = (d.rows || []).map((r,i) => ({...r, name: pMigrateRowName(r.name, i), _id:Math.random()}));
     if (!PSTATE.rows.length) PSTATE.rows = [pNewRow(0)];
     PSTATE.customer.completed = !!d.completed;
     PSTATE.subpage = 'editor';
     pSaveSession();
     pRenderEditor();
   } catch(err){
+    if (_navToken !== navSnap || _pActionToken !== myTok) return;
     PSTATE.rows = [pNewRow(0)]; PSTATE.subpage = 'editor'; pSaveSession(); pRenderEditor();
   }
 }
 
 async function pDeleteCustomer(name){
   if (!confirm('هل تريد حذف سجل "'+name+'" نهائياً؟')) return;
-  try { await apiPost('payDeleteCustomer', { name }); pRenderHome(); } catch(err){ alert('خطأ: '+(err.message||err)); }
+  const navSnap = _navToken; const myTok = ++_pActionToken;
+  try {
+    await apiPost('payDeleteCustomer', { name });
+    if (_navToken !== navSnap || _pActionToken !== myTok) return;
+    pRenderHome();
+  } catch(err){ alert('خطأ: '+(err.message||err)); }
 }
 
 function pGoHome(){ try{ sessionStorage.removeItem('lm_paySession'); }catch(e){} PSTATE = { subpage:'home', customer:null, rows:[] }; pRenderHome(); }
@@ -1738,6 +1812,7 @@ function pRenderRows(){
       <td><input type="text" class="ltr-num" inputmode="numeric" value="${r.amount||''}" onchange="pSetAmount(${r._id},this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
       <td class="num-cell">${pct!==''?pct.toFixed(0)+'%':'—'}</td>
       <td><input type="date" value="${pToISO(r.date)}" onchange="pSetDate(${r._id},this.value)" style="direction:ltr;width:132px;"></td>
+      <td><input type="text" value="${qEsc(r.method||'')}" onchange="pSetField(${r._id},'method',this.value)" placeholder="اختياري"></td>
       <td><button class="btn btn-sm btn-danger" onclick="pDelRow(${r._id})">✕</button></td>
     </tr>`;
   }).join('');
@@ -1774,7 +1849,8 @@ function pRenderEditor(){
         <table class="q-tbl">
           <thead><tr>
             <th style="width:30px;">#</th><th>اسم الدفعة</th><th style="width:120px;">المبلغ</th>
-            <th style="width:90px;">النسبة من الإجمالي</th><th style="width:120px;">تاريخ الدفع</th><th style="width:36px;"></th>
+            <th style="width:90px;">النسبة من الإجمالي</th><th style="width:120px;">تاريخ الدفع</th>
+            <th style="width:130px;">طريقة الدفع <span style="font-weight:400;color:var(--muted);">(اختياري)</span></th><th style="width:36px;"></th>
           </tr></thead>
           <tbody id="p-body"></tbody>
         </table>
@@ -1848,6 +1924,7 @@ function pBuildPdfHtml(){
       <td style="padding:6px 4px;direction:ltr;text-align:left;font-weight:700;font-size:11px;">${fmt(amt)}</td>
       <td style="padding:6px 4px;text-align:center;font-size:11px;">${pct!==''?pct.toFixed(0)+'%':'—'}</td>
       <td style="padding:6px 4px;text-align:center;font-size:11px;">${qEsc(r.date)||'—'}</td>
+      <td style="padding:6px 4px;text-align:center;font-size:11px;">${qEsc(r.method)||'—'}</td>
     </tr>`;
   });
   const received = pReceived(); const remaining = total - received;
@@ -1891,9 +1968,9 @@ function pBuildPdfHtml(){
     </div>
     <br/>
     <div class="items-wrap"><table class="items">
-      <thead><tr><th style="width:6%;">#</th><th>اسم الدفعة</th><th class="ltr" style="width:18%;">المبلغ</th><th class="center" style="width:14%;">النسبة من الإجمالي</th><th class="center" style="width:16%;">تاريخ الدفع</th></tr></thead>
+      <thead><tr><th style="width:6%;">#</th><th>اسم الدفعة</th><th class="ltr" style="width:15%;">المبلغ</th><th class="center" style="width:12%;">النسبة من الإجمالي</th><th class="center" style="width:14%;">تاريخ الدفع</th><th class="center" style="width:14%;">طريقة الدفع</th></tr></thead>
       <tbody>${tbody}</tbody>
-      <tfoot><tr><td colspan="2" style="text-align:right;">الإجمالي الكلي</td><td class="ltr">${fmt(total)}</td><td colspan="2"></td></tr></tfoot>
+      <tfoot><tr><td colspan="2" style="text-align:right;">الإجمالي الكلي</td><td class="ltr">${fmt(total)}</td><td colspan="3"></td></tr></tfoot>
     </table></div>
     <div class="summary-bar">
       <div class="summary-cell"><div class="lbl">الإجمالي الكلي</div><div class="val">${fmt(total)}</div></div>
