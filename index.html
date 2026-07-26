@@ -422,6 +422,7 @@ async function apiPost(action, payload) {
 }
 function fmt(n){ return (Number(n)||0).toLocaleString('en-US', {maximumFractionDigits:0}); }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
+function yesterdayStr(){ const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0,10); }
 function weekAgoStr(){ const d=new Date(); d.setDate(d.getDate()-7); return d.toISOString().slice(0,10); }
 // بيحدّد لو الخطأ سببه فصل النت (مش مشكلة في السيرفر أو في الداتا) — بيغطي رسائل
 // الفشل المختلفة اللي كل متصفح بيرميها لما مفيش اتصال (كروم/إيدج، فايرفوكس، سفاري)
@@ -974,7 +975,7 @@ async function deleteTreasuryMoveConfirm(id){
  * المبلغ | التاريخ | المشروع الموجه. مفيش لمس مباشر لشيت "الخزنة" من هنا، عشان
  * لو فيه مزامنة تلقائية موجودة أصلاً بتاخد من الشيت ده وتحدّث الخزنة، منعملش خصم مرتين. ================= */
 let DSTATE = { rows: [] };
-function dNewRow(){ return { _id: Math.random(), desc: '', amount: '', project: '', date: todayStr() }; }
+function dNewRow(){ return { _id: Math.random(), desc: '', amount: '', project: '', date: yesterdayStr() }; }
 function dTotal(){ return DSTATE.rows.reduce((s, r) => s + qNum(r.amount), 0); }
 
 async function renderDailyExpenses(token) {
@@ -994,7 +995,7 @@ async function renderDailyExpenses(token) {
         </div>
         <div class="tbl-wrap tbl-wrap-scroll">
           <table>
-            <thead><tr><th style="width:26px;">#</th><th>وصف المصروف</th><th style="width:110px;">المبلغ</th><th style="width:150px;">التاريخ</th><th style="width:170px;">المشروع الموجه</th><th></th></tr></thead>
+            <thead><tr><th style="width:26px;">#</th><th style="width:150px;">التاريخ</th><th>وصف المصروف</th><th style="width:110px;">المبلغ</th><th style="width:170px;">المشروع الموجه</th><th></th></tr></thead>
             <tbody id="d-body"></tbody>
           </table>
         </div>
@@ -1020,10 +1021,10 @@ function dRenderRows(){
   tb.innerHTML = DSTATE.rows.map((r, i) => `
     <tr>
       <td style="text-align:center;color:var(--muted);font-size:11px;">${i + 1}</td>
-      <td><input type="text" value="${qEsc(r.desc)}" onchange="dSetField(${r._id},'desc',this.value)" placeholder="مثال: فطار، بنزين، مسامير..."></td>
-      <td><input type="text" class="ltr-num" inputmode="numeric" value="${r.amount || ''}" onchange="dSetField(${r._id},'amount',this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
-      <td><input type="date" value="${r.date}" onchange="dSetField(${r._id},'date',this.value)" style="direction:ltr;width:132px;"></td>
-      <td><input type="text" list="d-project-list" value="${qEsc(r.project)}" onchange="dSetField(${r._id},'project',this.value)" placeholder="مصروفات عامة"></td>
+      <td><input type="date" autocomplete="off" name="d-date-${r._id}" value="${r.date}" onchange="dSetField(${r._id},'date',this.value)" style="direction:ltr;width:132px;"></td>
+      <td><input type="text" autocomplete="off" name="d-desc-${r._id}" value="${qEsc(r.desc)}" onchange="dSetField(${r._id},'desc',this.value)" placeholder="مثال: فطار، بنزين، مسامير..."></td>
+      <td><input type="text" autocomplete="off" name="d-amount-${r._id}" class="ltr-num" inputmode="numeric" value="${r.amount || ''}" onchange="dSetField(${r._id},'amount',this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
+      <td><input type="text" autocomplete="off" name="d-project-${r._id}" list="d-project-list" value="${qEsc(r.project)}" onchange="dSetField(${r._id},'project',this.value)" placeholder="مصروفات عامة"></td>
       <td><button class="btn btn-sm btn-danger" onclick="dDelRow(${r._id})">✕</button></td>
     </tr>`).join('');
   document.getElementById('d-total').textContent = fmt(dTotal());
