@@ -423,6 +423,18 @@ async function apiPost(action, payload) {
 function fmt(n){ return (Number(n)||0).toLocaleString('en-US', {maximumFractionDigits:0}); }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function weekAgoStr(){ const d=new Date(); d.setDate(d.getDate()-7); return d.toISOString().slice(0,10); }
+// بيحدّد لو الخطأ سببه فصل النت (مش مشكلة في السيرفر أو في الداتا) — بيغطي رسائل
+// الفشل المختلفة اللي كل متصفح بيرميها لما مفيش اتصال (كروم/إيدج، فايرفوكس، سفاري)
+function _isNetworkError(msg){
+  return !navigator.onLine || /Failed to fetch|NetworkError|Load failed|ERR_INTERNET_DISCONNECTED|ERR_NETWORK/i.test(String(msg || ''));
+}
+// أول ما النت يقطع: بنلوّن شارة "متصل" باللون الأحمر ونغيّر النص.
+// أول ما النت يرجع: بنعمل reload تلقائي كامل للصفحة، عشان كل حاجة تتحمّل تاني من الأول بشكل نضيف.
+window.addEventListener('offline', () => {
+  const b = document.getElementById('liveBadge');
+  if (b) { b.textContent = 'مفيش اتصال بالإنترنت'; b.style.background = '#fbe2e2'; b.style.color = '#c0392b'; }
+});
+window.addEventListener('online', () => { location.reload(); });
 // الأسبوع عندنا بيبدأ السبت وينتهي الخميس (الجمعة أجازة) — بيرجع {from, to} لأقرب سبت وخميس اللي بعده
 function currentWeekRange(){
   const now = new Date();
@@ -452,7 +464,7 @@ const PAGES = {
   logHours:     { title:'ساعات وسهرات', sub:'سجّل شغل أي صنايعي على أي مشروع', render: renderLogHours },
   distribution: { title:'توزيع تكلفة المرتبات', sub:'مين شغل فين، وكام ساعة، وسهر إمتى', render: renderDistribution },
   treasury:     { title:'الخزنة — Cash Flow', sub:'الرصيد الحالي، الداخل والخارج، الإيداعات والمصاريف', render: renderTreasury },
-  dailyExpenses:{ title:'مصاريف يومية', sub:'سجّل كل مصاريف اليوم سطر سطر — بتتحسب أوتوماتيك في الخزنة', render: renderDailyExpenses },
+  dailyExpenses:{ title:'مصاريف يومية', sub:'سجّل كل مصاريف اليوم سطر سطر — بتتسجل في شيت اليوم بتاعك مباشرة', render: renderDailyExpenses },
   projects:     { title:'المشاريع', sub:'تكلفة كل مشروع بالتفصيل', render: renderProjects },
   products:     { title:'تكلفة المنتجات', sub:'خامات + عمالة لكل منتج، بتتحمّل على المشروع', render: renderProducts },
   fixedExp:     { title:'المصاريف الثابتة', sub:'إيجار / كهرباء / إلخ — وطريقة توزيعها على المشاريع', render: renderFixedExp },
@@ -508,7 +520,21 @@ function goTo(page) {
   PAGES[page].render(token);
 }
 function isStaleNav(token){ return token !== undefined && token !== _navToken; }
-function showError(err){ document.getElementById('content').innerHTML = `<div class="panel"><div class="msg err" style="display:block;">حصل خطأ: ${err.message||err}</div></div>`; }
+function showError(err){
+  const msg = (err && err.message) || String(err);
+  if (_isNetworkError(msg)) {
+    document.getElementById('content').innerHTML = `<div class="panel"><div class="msg err" style="display:block;">
+      ⚠️ السبب مفيش اتصال بالإنترنت دلوقتي. هتترفريش الصفحة تلقائيًا أول ما النت يرجع.
+    </div></div>`;
+    // بعض الأجهزة بتاخد وقت تبعت حدث "online" فعليًا حتى بعد ما النت يرجع، فبنعمل
+    // فحص احتياطي كل 3 ثواني: أول ما navigator.onLine يبقى true تاني، نعمل reload.
+    if (!window._netRetryTimer) {
+      window._netRetryTimer = setInterval(() => { if (navigator.onLine) { clearInterval(window._netRetryTimer); location.reload(); } }, 3000);
+    }
+    return;
+  }
+  document.getElementById('content').innerHTML = `<div class="panel"><div class="msg err" style="display:block;">حصل خطأ: ${msg}</div></div>`;
+}
 
 /* ================= Dashboard ================= */
 async function renderDashboard(token) {
@@ -942,9 +968,11 @@ async function deleteTreasuryMoveConfirm(id){
   try { await apiPost('deleteTreasuryMove', { id }); renderTreasury(); } catch(err){ alert('خطأ: '+(err.message||err)); }
 }
 
-/* ================= مصاريف يومية — إدخال سريع سطر لكل مصروف (زي شيت "مصاريف يوميه")
- * كل سطر بيتسجل كـ "مصروف" في نفس شيت "الخزنة" عن طريق addTreasuryMove، يعني بيتخصم
- * فعليًا من رصيد الخزنة أول ما تحفظ — مفيش شيت جديد ولا تعديل في الباك إند. ================= */
+/* ================= مصاريف يومية — إدخال سريع سطر لكل مصروف
+ * كل سطر بيتسجل في نفس الشيت الحقيقي بتاع "📋 المصاريف" (ملف مستقل بره الداشبورد،
+ * فيه شيت لكل يوم بيتعمل تلقائي بسكريبت تاني) — بنفس الأعمدة بالظبط: وصف المصاريف |
+ * المبلغ | التاريخ | المشروع الموجه. مفيش لمس مباشر لشيت "الخزنة" من هنا، عشان
+ * لو فيه مزامنة تلقائية موجودة أصلاً بتاخد من الشيت ده وتحدّث الخزنة، منعملش خصم مرتين. ================= */
 let DSTATE = { rows: [] };
 function dNewRow(){ return { _id: Math.random(), desc: '', amount: '', project: '', date: todayStr() }; }
 function dTotal(){ return DSTATE.rows.reduce((s, r) => s + qNum(r.amount), 0); }
@@ -953,7 +981,7 @@ async function renderDailyExpenses(token) {
   try {
     const [{ projects }, todayLog] = await Promise.all([
       apiGet('listProjects'),
-      apiGet('getTreasuryMoves', { filters: { type: 'مصروف', from: todayStr(), to: todayStr() } })
+      apiGet('getDailyExpenses', { date: todayStr() })
     ]);
     if (isStaleNav(token)) return;
     DSTATE.rows = [dNewRow(), dNewRow(), dNewRow()];
@@ -972,17 +1000,17 @@ async function renderDailyExpenses(token) {
         </div>
         <div style="display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap;">
           <button type="button" class="btn btn-outline btn-sm" id="d-add-row">+ إضافة سطر</button>
-          <button type="button" class="btn btn-primary" id="d-save-all">حفظ في الخزنة</button>
+          <button type="button" class="btn btn-primary" id="d-save-all">حفظ</button>
           <div class="msg" id="d-msg"></div>
         </div>
       </div>
       <div class="panel">
-        <h3>مصاريف اليوم المسجلة فعليًا في الخزنة (${todayStr()})</h3>
+        <h3>مصاريف اليوم المسجلة فعليًا في الشيت (${todayStr()})</h3>
         <div id="d-today-box"></div>
       </div>
     `;
     dRenderRows();
-    dRenderTodayLog(todayLog.moves || []);
+    dRenderTodayLog(todayLog.rows || []);
     document.getElementById('d-add-row').addEventListener('click', () => { DSTATE.rows.push(dNewRow()); dRenderRows(); });
     document.getElementById('d-save-all').addEventListener('click', dSaveAll);
   } catch(err){ showError(err); }
@@ -1018,27 +1046,27 @@ async function dSaveAll(){
   let saved = 0, total = 0;
   try {
     for (const r of valid) {
-      const move = { type: 'مصروف', amount: qNum(r.amount), desc: String(r.desc).trim(), project: String(r.project || '').trim() || 'مصروفات عامة', date: r.date || todayStr() };
-      await apiPost('addTreasuryMove', { move });
+      const row = { desc: String(r.desc).trim(), amount: qNum(r.amount), project: String(r.project || '').trim() || 'مصروفات عامة', date: r.date || todayStr() };
+      await apiPost('addDailyExpenseRow', { row });
       saved++; total += qNum(r.amount);
     }
-    msg.className = 'msg ok'; msg.textContent = `✔ اتسجل ${saved} مصروف بإجمالي ${fmt(total)} ج في الخزنة`;
-    const todayLog = await apiGet('getTreasuryMoves', { filters: { type: 'مصروف', from: todayStr(), to: todayStr() } });
-    dRenderTodayLog(todayLog.moves || []);
+    msg.className = 'msg ok'; msg.textContent = `✔ اتسجل ${saved} مصروف بإجمالي ${fmt(total)} ج`;
+    const todayLog = await apiGet('getDailyExpenses', { date: todayStr() });
+    dRenderTodayLog(todayLog.rows || []);
     DSTATE.rows = [dNewRow(), dNewRow(), dNewRow()];
     dRenderRows();
   } catch(err){
     msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err) + (saved ? ` (اتسجل ${saved} قبل ما يحصل الخطأ)` : '');
   } finally { btn.disabled = false; }
 }
-function dRenderTodayLog(moves){
+function dRenderTodayLog(rows){
   const box = document.getElementById('d-today-box'); if (!box) return;
-  if (!moves.length){ box.innerHTML = '<div class="empty">لسه مفيش مصاريف مسجلة النهاردة</div>'; return; }
-  const total = moves.reduce((s, m) => s + (Number(m.amount) || 0), 0);
+  if (!rows.length){ box.innerHTML = '<div class="empty">لسه مفيش مصاريف مسجلة النهاردة</div>'; return; }
+  const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
   box.innerHTML = `
     <div style="margin-bottom:10px;font-size:13px;color:var(--muted);font-weight:700;">إجمالي مصاريف اليوم: <span style="color:var(--red);">${fmt(total)} ج</span></div>
-    <div class="tbl-wrap tbl-wrap-scroll"><table><thead><tr><th>البيان</th><th>المبلغ</th><th>المشروع</th></tr></thead>
-    <tbody>${moves.map(m => `<tr><td>${qEsc(m.desc)}</td><td style="color:var(--red)">${fmt(m.amount)} ج</td><td>${qEsc(m.project || '—')}</td></tr>`).join('')}</tbody></table></div>`;
+    <div class="tbl-wrap tbl-wrap-scroll"><table><thead><tr><th>البيان</th><th>المبلغ</th><th>التاريخ</th><th>المشروع</th></tr></thead>
+    <tbody>${rows.map(r => `<tr><td>${qEsc(r.desc)}</td><td style="color:var(--red)">${fmt(r.amount)} ج</td><td>${qEsc(r.date || '—')}</td><td>${qEsc(r.project || '—')}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
 /* ================= Projects ================= */
@@ -2210,7 +2238,9 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     document.getElementById('appRoot').style.display = 'flex';
     goTo(sessionStorage.getItem('lm_currentPage') || 'dashboard');
   } catch (err) {
-    msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err);
+    const m = err.message || String(err);
+    msg.className = 'msg err';
+    msg.textContent = _isNetworkError(m) ? '⚠️ مفيش اتصال بالإنترنت — تأكد من النت وحاول تاني' : 'خطأ: ' + m;
     btn.disabled = false; btn.textContent = 'دخول';
   }
 });
