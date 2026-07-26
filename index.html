@@ -781,14 +781,16 @@ async function loadDistributionReport(){
 
 /* ================= Treasury / Cash Flow ================= */
 let _treasuryMoves = [];
+let _deposits = [];
 let _editingMoveId = null;
 let _movesFilter = 'all';
 
 async function renderTreasury(token) {
   try {
-    const [summary, movesData] = await Promise.all([apiGet('getTreasurySummary'), apiGet('getTreasuryMoves', {})]);
+    const [summary, movesData, depositsData] = await Promise.all([apiGet('getTreasurySummary'), apiGet('getTreasuryMoves', {}), apiGet('getDeposits', {})]);
     if (isStaleNav(token)) return;
     _treasuryMoves = movesData.moves;
+    _deposits = depositsData.moves || [];
     _editingMoveId = null;
     _movesFilter = 'all';
     document.getElementById('content').innerHTML = `
@@ -832,8 +834,13 @@ async function renderTreasury(token) {
         </div>
         <div id="movesBox"></div>
       </div>
+      <div class="panel">
+        <h3>الإيداعات (شيت "ايداعات" — قراءة فقط)</h3>
+        <div id="depositsBox"></div>
+      </div>
     `;
     renderMovesFiltered();
+    renderDepositsBox();
     document.getElementById('movesFilter').addEventListener('click', e => {
       const btn = e.target.closest('button'); if (!btn) return;
       _movesFilter = btn.dataset.filter;
@@ -878,6 +885,19 @@ function renderTreasuryMoves(moves){
       <td style="color:${m.type==='إيداع'?'var(--green)':'var(--red)'}">${fmt(m.amount)} ج</td><td>${fmt(m.balanceAfter)} ج</td>
       <td style="white-space:nowrap;"><button class="btn btn-sm btn-outline" onclick="editTreasuryMove('${m.id}')">تعديل</button>
       <button class="btn btn-sm btn-danger" onclick="deleteTreasuryMoveConfirm('${m.id}')">حذف</button></td></tr>`).join('')}</tbody></table></div>`;
+}
+/* شيت "ايداعات" منفصل عن شيت "الخزنة" — قراءة فقط، من غير أي أزرار تعديل/حذف
+ * لأن الشيت ده مصدره سكريبت تاني بره الداشبورد ده. */
+function renderDepositsBox(){
+  const box = document.getElementById('depositsBox');
+  if (!box) return;
+  const deposits = _deposits || [];
+  if (!deposits.length){ box.innerHTML = '<div class="empty">مفيش إيداعات مسجلة في الشيت ده</div>'; return; }
+  const total = deposits.reduce((s,m)=>s+(Number(m.amount)||0),0);
+  box.innerHTML = `
+    <div style="margin-bottom:10px;font-size:13px;color:var(--muted);font-weight:700;">إجمالي الإيداعات في الشيت: <span style="color:var(--green);">${fmt(total)} ج</span></div>
+    <div class="tbl-wrap tbl-wrap-scroll"><table><thead><tr><th>التاريخ</th><th>البيان</th><th>المشروع</th><th>المبلغ</th></tr></thead>
+    <tbody>${deposits.map(m=>`<tr><td>${m.date}</td><td>${m.desc}</td><td>${m.project||'—'}</td><td style="color:var(--green)">${fmt(m.amount)} ج</td></tr>`).join('')}</tbody></table></div>`;
 }
 function editTreasuryMove(id){
   const m = _treasuryMoves.find(x => String(x.id) === String(id));
