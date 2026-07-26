@@ -347,8 +347,8 @@
     <button data-page="products"><span class="icon">&#128736;&#65039;</span><span class="label">تكلفة المنتجات</span></button>
     <button data-page="fixedExp"><span class="icon">&#128203;</span><span class="label">المصاريف الثابتة</span></button>
     <div class="sep"></div>
-    <button data-page="quotation"><span class="icon">&#128221;</span><span class="label">عروض الأسعار</span></button>
-    <button data-page="debtors"><span class="icon">&#128184;</span><span class="label">المستحقات (الدائنون)</span></button>
+    <button data-page="quotation"><span class="icon">&#128221;</span><span class="label">Quotations</span></button>
+    <button data-page="debtors"><span class="icon">&#128184;</span><span class="label">Payment Statements</span></button>
   </div>
   <div class="user-menu">
     <button class="user-menu-btn" onclick="openChangePassModal()"><span class="icon">&#128273;</span><span class="label">تغيير كلمة السر</span></button>
@@ -449,8 +449,8 @@ const PAGES = {
   projects:     { title:'المشاريع', sub:'تكلفة كل مشروع بالتفصيل', render: renderProjects },
   products:     { title:'تكلفة المنتجات', sub:'خامات + عمالة لكل منتج، بتتحمّل على المشروع', render: renderProducts },
   fixedExp:     { title:'المصاريف الثابتة', sub:'إيجار / كهرباء / إلخ — وطريقة توزيعها على المشاريع', render: renderFixedExp },
-  quotation:    { title:'عروض الأسعار', sub:'قائمة العملاء وعروض الأسعار', render: renderQuotation },
-  debtors:      { title:'المستحقات (الدائنون)', sub:'متابعة تحصيل الدفعات من العملاء', render: renderDebtors }
+  quotation:    { title:'Quotations', sub:'قائمة العملاء وعروض الأسعار', render: renderQuotation },
+  debtors:      { title:'Payment Statements', sub:'متابعة تحصيل الدفعات من العملاء', render: renderDebtors }
 };
 
 /* ================= Sidebar (mobile off-canvas + desktop collapse) ================= */
@@ -1531,8 +1531,14 @@ function qRenderPreview(){
 function qPrintPreview(){
   const frame = document.getElementById('qPreviewFrame');
   if (!frame || !frame.contentWindow) return;
+  const c = QSTATE.customer || {};
+  const originalTitle = document.title;
+  document.title = pdfFileTitle('Quotation', c.address || c.name);
+  const restore = () => { document.title = originalTitle; window.removeEventListener('afterprint', restore); };
+  window.addEventListener('afterprint', restore);
   frame.contentWindow.focus();
   frame.contentWindow.print();
+  setTimeout(restore, 3000); // fallback لو afterprint ما اتطلقتش لأي سبب
 }
 
 function qOpenMailPrompt(){
@@ -1940,8 +1946,14 @@ function pRenderPreview(){
 function pPrintPreview(){
   const frame = document.getElementById('pPreviewFrame');
   if (!frame || !frame.contentWindow) return;
+  const c = PSTATE.customer || {};
+  const originalTitle = document.title;
+  document.title = pdfFileTitle('Payment Statement', c.address || c.name);
+  const restore = () => { document.title = originalTitle; window.removeEventListener('afterprint', restore); };
+  window.addEventListener('afterprint', restore);
   frame.contentWindow.focus();
   frame.contentWindow.print();
+  setTimeout(restore, 3000); // fallback لو afterprint ما اتطلقتش لأي سبب
 }
 
 function pOpenMailPrompt(){
