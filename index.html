@@ -348,6 +348,7 @@
     <button data-page="distribution"><span class="icon">&#128202;</span><span class="label">توزيع تكلفة المرتبات</span></button>
     <div class="sep"></div>
     <button data-page="treasury"><span class="icon">&#128176;</span><span class="label">الخزنة (Cash Flow)</span></button>
+    <button data-page="dailyExpenses"><span class="icon">&#128221;</span><span class="label">مصاريف يومية</span></button>
     <button data-page="projects"><span class="icon">&#128188;</span><span class="label">المشاريع</span></button>
     <button data-page="products"><span class="icon">&#128736;&#65039;</span><span class="label">تكلفة المنتجات</span></button>
     <button data-page="fixedExp"><span class="icon">&#128203;</span><span class="label">المصاريف الثابتة</span></button>
@@ -451,6 +452,7 @@ const PAGES = {
   logHours:     { title:'ساعات وسهرات', sub:'سجّل شغل أي صنايعي على أي مشروع', render: renderLogHours },
   distribution: { title:'توزيع تكلفة المرتبات', sub:'مين شغل فين، وكام ساعة، وسهر إمتى', render: renderDistribution },
   treasury:     { title:'الخزنة — Cash Flow', sub:'الرصيد الحالي، الداخل والخارج، الإيداعات والمصاريف', render: renderTreasury },
+  dailyExpenses:{ title:'مصاريف يومية', sub:'سجّل كل مصاريف اليوم سطر سطر — بتتحسب أوتوماتيك في الخزنة', render: renderDailyExpenses },
   projects:     { title:'المشاريع', sub:'تكلفة كل مشروع بالتفصيل', render: renderProjects },
   products:     { title:'تكلفة المنتجات', sub:'خامات + عمالة لكل منتج، بتتحمّل على المشروع', render: renderProducts },
   fixedExp:     { title:'المصاريف الثابتة', sub:'إيجار / كهرباء / إلخ — وطريقة توزيعها على المشاريع', render: renderFixedExp },
@@ -938,6 +940,105 @@ function cancelMoveEdit(){
 async function deleteTreasuryMoveConfirm(id){
   if (!confirm('متأكد إنك عاوز تمسح الحركة دي؟ (هيتم إعادة حساب الرصيد تلقائي)')) return;
   try { await apiPost('deleteTreasuryMove', { id }); renderTreasury(); } catch(err){ alert('خطأ: '+(err.message||err)); }
+}
+
+/* ================= مصاريف يومية — إدخال سريع سطر لكل مصروف (زي شيت "مصاريف يوميه")
+ * كل سطر بيتسجل كـ "مصروف" في نفس شيت "الخزنة" عن طريق addTreasuryMove، يعني بيتخصم
+ * فعليًا من رصيد الخزنة أول ما تحفظ — مفيش شيت جديد ولا تعديل في الباك إند. ================= */
+let DSTATE = { rows: [] };
+function dNewRow(){ return { _id: Math.random(), desc: '', amount: '', project: '', date: todayStr() }; }
+function dTotal(){ return DSTATE.rows.reduce((s, r) => s + qNum(r.amount), 0); }
+
+async function renderDailyExpenses(token) {
+  try {
+    const [{ projects }, todayLog] = await Promise.all([
+      apiGet('listProjects'),
+      apiGet('getTreasuryMoves', { filters: { type: 'مصروف', from: todayStr(), to: todayStr() } })
+    ]);
+    if (isStaleNav(token)) return;
+    DSTATE.rows = [dNewRow(), dNewRow(), dNewRow()];
+    document.getElementById('content').innerHTML = `
+      <datalist id="d-project-list">${projects.map(p => `<option value="${qEsc(p)}"></option>`).join('')}<option value="مصروفات عامة"></option></datalist>
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+          <h3 style="margin:0;">مصاريف اليوم — سطر لكل مصروف</h3>
+          <div style="font-weight:800;font-size:15px;">الإجمالي: <span id="d-total" style="color:var(--red);">0</span> ج</div>
+        </div>
+        <div class="tbl-wrap tbl-wrap-scroll">
+          <table>
+            <thead><tr><th style="width:26px;">#</th><th>وصف المصروف</th><th style="width:110px;">المبلغ</th><th style="width:150px;">التاريخ</th><th style="width:170px;">المشروع الموجه</th><th></th></tr></thead>
+            <tbody id="d-body"></tbody>
+          </table>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap;">
+          <button type="button" class="btn btn-outline btn-sm" id="d-add-row">+ إضافة سطر</button>
+          <button type="button" class="btn btn-primary" id="d-save-all">حفظ في الخزنة</button>
+          <div class="msg" id="d-msg"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>مصاريف اليوم المسجلة فعليًا في الخزنة (${todayStr()})</h3>
+        <div id="d-today-box"></div>
+      </div>
+    `;
+    dRenderRows();
+    dRenderTodayLog(todayLog.moves || []);
+    document.getElementById('d-add-row').addEventListener('click', () => { DSTATE.rows.push(dNewRow()); dRenderRows(); });
+    document.getElementById('d-save-all').addEventListener('click', dSaveAll);
+  } catch(err){ showError(err); }
+}
+function dRenderRows(){
+  const tb = document.getElementById('d-body'); if (!tb) return;
+  tb.innerHTML = DSTATE.rows.map((r, i) => `
+    <tr>
+      <td style="text-align:center;color:var(--muted);font-size:11px;">${i + 1}</td>
+      <td><input type="text" value="${qEsc(r.desc)}" onchange="dSetField(${r._id},'desc',this.value)" placeholder="مثال: فطار، بنزين، مسامير..."></td>
+      <td><input type="text" class="ltr-num" inputmode="numeric" value="${r.amount || ''}" onchange="dSetField(${r._id},'amount',this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
+      <td><input type="date" value="${r.date}" onchange="dSetField(${r._id},'date',this.value)" style="direction:ltr;width:132px;"></td>
+      <td><input type="text" list="d-project-list" value="${qEsc(r.project)}" onchange="dSetField(${r._id},'project',this.value)" placeholder="مصروفات عامة"></td>
+      <td><button class="btn btn-sm btn-danger" onclick="dDelRow(${r._id})">✕</button></td>
+    </tr>`).join('');
+  document.getElementById('d-total').textContent = fmt(dTotal());
+}
+function dSetField(id, f, v){
+  const r = DSTATE.rows.find(r => r._id === id); if (!r) return;
+  r[f] = f === 'amount' ? qNum(v) : v;
+  dRenderRows();
+}
+function dDelRow(id){
+  DSTATE.rows = DSTATE.rows.filter(r => r._id !== id);
+  if (!DSTATE.rows.length) DSTATE.rows = [dNewRow()];
+  dRenderRows();
+}
+async function dSaveAll(){
+  const valid = DSTATE.rows.filter(r => String(r.desc).trim() && qNum(r.amount) > 0);
+  const msg = document.getElementById('d-msg'); const btn = document.getElementById('d-save-all');
+  if (!valid.length){ msg.className = 'msg err'; msg.textContent = 'من فضلك اكتب وصف ومبلغ لسطر واحد على الأقل'; return; }
+  btn.disabled = true; msg.className = 'msg'; msg.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
+  let saved = 0, total = 0;
+  try {
+    for (const r of valid) {
+      const move = { type: 'مصروف', amount: qNum(r.amount), desc: String(r.desc).trim(), project: String(r.project || '').trim() || 'مصروفات عامة', date: r.date || todayStr() };
+      await apiPost('addTreasuryMove', { move });
+      saved++; total += qNum(r.amount);
+    }
+    msg.className = 'msg ok'; msg.textContent = `✔ اتسجل ${saved} مصروف بإجمالي ${fmt(total)} ج في الخزنة`;
+    const todayLog = await apiGet('getTreasuryMoves', { filters: { type: 'مصروف', from: todayStr(), to: todayStr() } });
+    dRenderTodayLog(todayLog.moves || []);
+    DSTATE.rows = [dNewRow(), dNewRow(), dNewRow()];
+    dRenderRows();
+  } catch(err){
+    msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err) + (saved ? ` (اتسجل ${saved} قبل ما يحصل الخطأ)` : '');
+  } finally { btn.disabled = false; }
+}
+function dRenderTodayLog(moves){
+  const box = document.getElementById('d-today-box'); if (!box) return;
+  if (!moves.length){ box.innerHTML = '<div class="empty">لسه مفيش مصاريف مسجلة النهاردة</div>'; return; }
+  const total = moves.reduce((s, m) => s + (Number(m.amount) || 0), 0);
+  box.innerHTML = `
+    <div style="margin-bottom:10px;font-size:13px;color:var(--muted);font-weight:700;">إجمالي مصاريف اليوم: <span style="color:var(--red);">${fmt(total)} ج</span></div>
+    <div class="tbl-wrap tbl-wrap-scroll"><table><thead><tr><th>البيان</th><th>المبلغ</th><th>المشروع</th></tr></thead>
+    <tbody>${moves.map(m => `<tr><td>${qEsc(m.desc)}</td><td style="color:var(--red)">${fmt(m.amount)} ج</td><td>${qEsc(m.project || '—')}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
 /* ================= Projects ================= */
