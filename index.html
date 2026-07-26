@@ -1637,14 +1637,43 @@ async function qSendMailNow(){
 }
 
 /* ================= Debtors / Payment Statement — full app (Home → متابعة دفعات → معاينة/طباعة/إيميل) ================= */
-function pOrdinalName(i){ return 'الدفعة (' + (i+1) + ')'; }
+/* ── تحويل رقم لصيغة الترتيب العربي المؤنث (الأولى، الثانية عشر، الحادية والعشرون، الثلاثون...) بلا حد أقصى عمليًا ── */
+function arabicOrdinalFem(n){
+  const units      = ['', 'الأولى','الثانية','الثالثة','الرابعة','الخامسة','السادسة','السابعة','الثامنة','التاسعة'];
+  const compUnits  = ['', 'الحادية','الثانية','الثالثة','الرابعة','الخامسة','السادسة','السابعة','الثامنة','التاسعة']; // زي units إلا الواحد بيتغير جوه الأعداد المركبة
+  const tensWords  = ['', '', 'العشرون','الثلاثون','الأربعون','الخمسون','الستون','السبعون','الثمانون','التسعون'];
+  const hundreds   = ['', 'المئة','مئتان','ثلاثمئة','أربعمئة','خمسمئة','ستمئة','سبعمئة','ثمانمئة','تسعمئة'];
+
+  function twoDigits(n){ // 1..99
+    if (n === 0) return '';
+    if (n < 10) return units[n];
+    if (n === 10) return 'العاشرة';
+    if (n < 20) return compUnits[n - 10] + ' عشر';
+    const t = Math.floor(n / 10), u = n % 10;
+    return u === 0 ? tensWords[t] : (compUnits[u] + ' و' + tensWords[t]);
+  }
+  function threeDigits(n){ // 1..999
+    const h = Math.floor(n / 100), rem = n % 100;
+    if (h === 0) return twoDigits(rem);
+    const hWord = hundreds[h];
+    return rem === 0 ? hWord : (hWord + ' و' + twoDigits(rem));
+  }
+
+  if (n <= 0) return '';
+  if (n < 1000) return threeDigits(n);
+  return 'رقم ' + n; // لأعداد كبيرة جدًا (نادر الحدوث) بنرجع لصياغة رقمية واضحة بدل صياغة معقدة
+}
+function pOrdinalName(i){ const n = i + 1; return 'الدفعة ' + arabicOrdinalFem(n) + ' (' + n + ')'; }
 const P_OLD_ORDINALS = ['الأولى','الثانية','الثالثة','الرابعة','الخامسة','السادسة','السابعة','الثامنة','التاسعة','العاشرة',
   'الحادية عشر','الثانية عشر','الثالثة عشر','الرابعة عشر','الخامسة عشر','السادسة عشر','السابعة عشر','الثامنة عشر','التاسعة عشر','العشرون'];
-// بيحول أي اسم دفعة اتحط تلقائي بالصيغة القديمة (كلام أو "رقم N") للصيغة الجديدة "(N)" — وبيسيب أي اسم كتبه المستخدم يدويًا زي ما هو
+// بيحول أي اسم دفعة اتحط تلقائي بأي صيغة قديمة (كلام، أو "رقم N"، أو "(N)") للصيغة الحالية — وبيسيب أي اسم كتبه المستخدم يدويًا زي ما هو
 function pMigrateRowName(name, idx){
   const s = String(name||'').trim();
   if (!s) return pOrdinalName(idx);
-  const isOldAuto = P_OLD_ORDINALS.some(o => s === 'الدفعة ' + o) || /^الدفعة رقم\s*\d+$/.test(s);
+  const isOldAuto = P_OLD_ORDINALS.some(o => s === 'الدفعة ' + o)
+    || /^الدفعة رقم\s*\d+$/.test(s)
+    || /^الدفعة\s*\(\d+\)$/.test(s)
+    || /^الدفعة\s+.+\s+\(\d+\)$/.test(s);
   return isOldAuto ? pOrdinalName(idx) : s;
 }
 function pNewRow(idx){ return { _id:Math.random(), name: pOrdinalName(idx), amount:0, date:'', method:'' }; }
