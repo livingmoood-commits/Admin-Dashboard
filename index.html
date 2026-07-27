@@ -275,11 +275,11 @@
   .q-clist .ci-done-tag{ display:inline-flex; align-items:center; gap:3px; color:var(--green); font-size:11.5px; font-weight:700; white-space:nowrap; }
   .q-grand-bar.remaining .amt{ color:#ff8a80; }
   .q-grand-bar.remaining.done .amt{ color:#8fd19e; }
-  .p-complete-box{ display:flex; align-items:center; justify-content:space-between; gap:14px; background:var(--cream); border:1.5px dashed var(--border); border-radius:6px; padding:12px 16px; margin-bottom:16px; flex-wrap:wrap; }
-  .p-complete-box label{ display:flex; align-items:center; gap:10px; font-weight:700; font-size:13px; cursor:pointer; }
-  .p-complete-box input[type=checkbox]{ width:20px; height:20px; cursor:pointer; }
-  .p-complete-msg{ font-size:12px; color:var(--green); font-weight:700; display:none; }
+  .p-complete-box{ display:flex; align-items:center; justify-content:space-between; gap:14px; background:var(--cream); border:1.5px dashed var(--border); border-radius:6px; padding:12px 16px; margin-bottom:16px; flex-wrap:wrap; transition:background .25s, border-color .25s; }
+  .p-complete-box.complete{ background:#eef7f0; border:1.5px solid var(--green); }
+  .p-complete-msg{ font-size:13px; color:var(--green); font-weight:800; display:none; }
   .p-complete-msg.show{ display:block; }
+  .p-incomplete-msg{ font-size:12px; color:var(--muted); font-weight:600; }
 
   /* ===== Login menu (logout / change password) ===== */
   .user-menu{ padding:0 14px; margin-top:auto; padding-top:14px; }
@@ -1955,6 +1955,14 @@ function pRefreshTotals(){
   const recEl = document.getElementById('p-received-amt'); if (recEl) recEl.textContent = fmt(received) + ' جنيه';
   const remEl = document.getElementById('p-remaining-amt'); if (remEl) remEl.textContent = fmt(remaining) + ' جنيه';
   const bar = document.getElementById('p-remaining-bar'); if (bar) bar.classList.toggle('done', Math.abs(remaining) <= 0.01);
+
+  // إتمام الدفع تلقائيًا لما نوصل 100%
+  const isComplete = total > 0 && Math.abs(remaining) <= 0.01;
+  if (PSTATE.customer) PSTATE.customer.completed = isComplete;
+  const box = document.getElementById('p-complete-box'); if (box) box.classList.toggle('complete', isComplete);
+  const msg = document.getElementById('p-complete-msg'); if (msg) msg.classList.toggle('show', isComplete);
+  const incMsg = document.getElementById('p-incomplete-msg'); if (incMsg) incMsg.style.display = isComplete ? 'none' : '';
+  pSaveSession();
 }
 
 function pRenderRows(){
@@ -2020,9 +2028,9 @@ function pRenderEditor(){
       <div class="q-grand-bar"><span>إجمالي المستلم</span><span class="amt" id="p-received-amt">0 جنيه</span></div>
       <div class="q-grand-bar remaining" id="p-remaining-bar"><span>الباقي</span><span class="amt" id="p-remaining-amt">0 جنيه</span></div>
 
-      <div class="p-complete-box">
-        <label><input type="checkbox" id="p-chk-complete" ${c.completed?'checked':''} onchange="pToggleComplete(this)"> إتمام الدفع بالكامل</label>
-        <span class="p-complete-msg ${c.completed?'show':''}" id="p-complete-msg">✔ تم استلام كامل المبلغ</span>
+      <div class="p-complete-box ${c.completed?'complete':''}" id="p-complete-box">
+        <span class="p-incomplete-msg" id="p-incomplete-msg" style="${c.completed?'display:none;':''}">لم يتم استلام كامل المبلغ بعد</span>
+        <span class="p-complete-msg ${c.completed?'show':''}" id="p-complete-msg">✔ إتمام الدفع بالكامل — تم استلام كامل المبلغ</span>
       </div>
 
       <div class="action-bar" style="display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end;">
@@ -2035,23 +2043,11 @@ function pRenderEditor(){
   pRenderRows();
 }
 
-function pToggleComplete(cb){
-  const total = qNum(document.getElementById('p-b-total').value);
-  const received = pReceived();
-  const remaining = total - received;
-  if (cb.checked && Math.abs(remaining) > 0.01) {
-    alert('⚠️ لم يتم الدفع بالكامل بعد! الباقي: ' + fmt(remaining) + ' جنيه');
-    cb.checked = false; return;
-  }
-  document.getElementById('p-complete-msg').classList.toggle('show', cb.checked);
-  if (PSTATE.customer) PSTATE.customer.completed = cb.checked;
-  pSaveSession();
-}
-
 async function pSaveCashFlow(){
   const btn = document.getElementById('pSaveBtn'); const msg = document.getElementById('pSaveMsg');
   PSTATE.customer.total = qNum(document.getElementById('p-b-total').value);
-  PSTATE.customer.completed = document.getElementById('p-chk-complete').checked;
+  const total = PSTATE.customer.total; const remaining = total - pReceived();
+  PSTATE.customer.completed = total > 0 && Math.abs(remaining) <= 0.01;
   PSTATE.customer.date = pToEnGB(document.getElementById('p-b-date').value);
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
   try {
