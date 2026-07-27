@@ -296,6 +296,13 @@
   .user-menu-btn:hover{ background:var(--dark2); color:#fff; }
   #changePassModal{ display:none; position:fixed; inset:0; background:rgba(30,26,21,.65); z-index:960; justify-content:center; align-items:center; }
   #changePassModal.open{ display:flex; }
+  #genConfirmModal{ display:none; position:fixed; inset:0; background:rgba(30,26,21,.65); z-index:970; justify-content:center; align-items:center; }
+  #genConfirmModal.open{ display:flex; }
+  #genConfirmModal.open .q-confirm-card{ animation:modalPop .4s var(--bounce); }
+  .pw-wrap{ position:relative; }
+  .pw-wrap input{ padding-inline-end:40px !important; }
+  .pw-eye{ position:absolute; inset-inline-end:6px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; font-size:16px; padding:6px; line-height:1; color:var(--muted); border-radius:6px; transition:color .2s, background .2s; }
+  .pw-eye:hover{ color:var(--dark); background:#f0ebe3; }
 
   /* ===== Dashboard cards: clickable + drill-down modal ===== */
   .card.clickable{ cursor:pointer; position:relative; }
@@ -335,7 +342,12 @@
     <p class="sub">نظام إدارة المصنع</p>
     <form id="loginForm">
       <div class="field"><label>اسم المستخدم</label><input id="l_name" required autocomplete="username"></div>
-      <div class="field"><label>كلمة المرور</label><input type="password" id="l_pass" required autocomplete="current-password"></div>
+      <div class="field"><label>كلمة المرور</label>
+        <div class="pw-wrap">
+          <input type="password" id="l_pass" required autocomplete="current-password">
+          <button type="button" class="pw-eye" onclick="pwToggle(this)" tabindex="-1" aria-label="إظهار/إخفاء كلمة السر">👁</button>
+        </div>
+      </div>
       <button type="submit" class="btn btn-primary" id="loginBtn" style="width:100%;">دخول</button>
       <div class="msg" id="loginMsg"></div>
     </form>
@@ -395,13 +407,24 @@
   <div class="q-confirm-card">
     <h3>تغيير كلمة السر</h3>
     <p>هتتغير كلمة السر بتاعتك في نظام Living Mood</p>
-    <div class="field" style="margin-bottom:12px;"><input type="password" id="cp-old" placeholder="كلمة السر الحالية" autocomplete="current-password"></div>
-    <div class="field" style="margin-bottom:12px;"><input type="password" id="cp-new" placeholder="كلمة السر الجديدة" autocomplete="new-password"></div>
-    <div class="field" style="margin-bottom:16px;"><input type="password" id="cp-confirm" placeholder="تأكيد كلمة السر الجديدة" autocomplete="new-password"></div>
+    <div class="field pw-wrap" style="margin-bottom:12px;"><input type="password" id="cp-old" placeholder="كلمة السر الحالية" autocomplete="current-password"><button type="button" class="pw-eye" onclick="pwToggle(this)" tabindex="-1" aria-label="إظهار/إخفاء كلمة السر">👁</button></div>
+    <div class="field pw-wrap" style="margin-bottom:12px;"><input type="password" id="cp-new" placeholder="كلمة السر الجديدة" autocomplete="new-password"><button type="button" class="pw-eye" onclick="pwToggle(this)" tabindex="-1" aria-label="إظهار/إخفاء كلمة السر">👁</button></div>
+    <div class="field pw-wrap" style="margin-bottom:16px;"><input type="password" id="cp-confirm" placeholder="تأكيد كلمة السر الجديدة" autocomplete="new-password"><button type="button" class="pw-eye" onclick="pwToggle(this)" tabindex="-1" aria-label="إظهار/إخفاء كلمة السر">👁</button></div>
     <div class="msg" id="cpStatus" style="margin-bottom:14px;"></div>
     <div class="q-confirm-btns">
       <button class="btn btn-primary" id="cpSaveBtn" onclick="submitChangePassword()">حفظ</button>
       <button class="btn btn-outline" onclick="closeChangePassModal()">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<div id="genConfirmModal">
+  <div class="q-confirm-card">
+    <h3 id="genConfirmTitle">تأكيد</h3>
+    <p id="genConfirmMsg"></p>
+    <div class="q-confirm-btns">
+      <button class="btn btn-primary" onclick="_genConfirmRun()">تأكيد</button>
+      <button class="btn btn-outline" onclick="closeGenConfirm()">إلغاء</button>
     </div>
   </div>
 </div>
@@ -645,17 +668,17 @@ async function renderEmployees(token) {
         <div class="panel">
           <h3>إضافة / تعديل موظف</h3>
           <form id="empForm">
-            <input type="hidden" id="e_originalName">
-            <div class="field"><label>اسم الموظف</label><input id="e_name" required></div>
+            <input autocomplete="off" type="hidden" id="e_originalName">
+            <div class="field"><label>اسم الموظف</label><input autocomplete="off" id="e_name" required></div>
             <div class="form-row">
               <div class="field"><label>طريقة القبض</label>
                 <select id="e_paymentType"><option value="اسبوعي">اسبوعي</option><option value="شهري">شهري</option></select>
               </div>
-              <div class="field"><label>اليومية (ج)</label><input type="number" id="e_dailyRate" step="1" min="0"></div>
+              <div class="field"><label>اليومية (ج)</label><input autocomplete="off" type="number" id="e_dailyRate" step="1" min="0"></div>
             </div>
             <div class="form-row">
-              <div class="field"><label>أجر الساعة (ج)</label><input type="number" id="e_hourlyRate" step="1" min="0"></div>
-              <div class="field"><label>ملاحظات</label><input id="e_notes"></div>
+              <div class="field"><label>أجر الساعة (ج)</label><input autocomplete="off" type="number" id="e_hourlyRate" step="1" min="0"></div>
+              <div class="field"><label>ملاحظات</label><input autocomplete="off" id="e_notes"></div>
             </div>
             <button type="submit" class="btn btn-primary" id="empSubmitBtn">حفظ الموظف</button>
             <button type="button" class="btn btn-outline" id="empResetBtn">إضافة جديد</button>
@@ -731,12 +754,12 @@ async function renderLogHours(token) {
               <div class="field"><label>المشروع</label><select id="f_project" required><option value="">اختار المشروع</option>${projects.map(p=>`<option value="${p}">${p}</option>`).join('')}</select></div>
             </div>
             <div class="form-row">
-              <div class="field"><label>التاريخ</label><input type="date" id="f_date" value="${todayStr()}"></div>
-              <div class="field"><label>ساعات عادية</label><input type="number" id="f_hours" step="0.5" min="0" placeholder="0"></div>
+              <div class="field"><label>التاريخ</label><input autocomplete="off" type="date" id="f_date" value="${todayStr()}"></div>
+              <div class="field"><label>ساعات عادية</label><input autocomplete="off" type="number" id="f_hours" step="0.5" min="0" placeholder="0"></div>
             </div>
             <div class="form-row">
-              <div class="field"><label>ساعات سهرة</label><input type="number" id="f_eveningHours" step="0.5" min="0" placeholder="0"></div>
-              <div class="field"><label>مبلغ السهرة (ج)</label><input type="number" id="f_eveningAmount" step="1" min="0" placeholder="0"></div>
+              <div class="field"><label>ساعات سهرة</label><input autocomplete="off" type="number" id="f_eveningHours" step="0.5" min="0" placeholder="0"></div>
+              <div class="field"><label>مبلغ السهرة (ج)</label><input autocomplete="off" type="number" id="f_eveningAmount" step="1" min="0" placeholder="0"></div>
             </div>
             <div class="field"><label>ملاحظات (اختياري)</label><textarea id="f_notes" rows="2"></textarea></div>
             <button type="submit" class="btn btn-primary" id="submitBtn">حفظ السجل</button>
@@ -789,7 +812,7 @@ async function renderDistribution(token) {
     document.getElementById('content').innerHTML = `
       <div class="panel">
         <div class="filters">
-          <input type="date" id="filFrom" value="${wk.from}"><span style="color:var(--muted);font-size:12px;">إلى</span><input type="date" id="filTo" value="${wk.to}">
+          <input autocomplete="off" type="date" id="filFrom" value="${wk.from}"><span style="color:var(--muted);font-size:12px;">إلى</span><input autocomplete="off" type="date" id="filTo" value="${wk.to}">
           <select id="filProject"><option value="">كل المشاريع</option>${projects.map(p=>`<option value="${p}">${p}</option>`).join('')}</select>
           <select id="filEmployee"><option value="">كل الموظفين</option>${employees.map(e=>`<option value="${e.name}">${e.name}</option>`).join('')}</select>
           <button class="btn btn-sm btn-outline" id="thisWeekBtn">الأسبوع ده</button>
@@ -857,12 +880,12 @@ async function renderTreasury(token) {
         <form id="moveForm">
           <div class="form-row3">
             <div class="field"><label>النوع</label><select id="m_type"><option value="مصروف">مصروف (خارج)</option><option value="إيداع">إيداع (داخل)</option></select></div>
-            <div class="field"><label>المبلغ (ج)</label><input type="number" id="m_amount" step="1" min="0" required></div>
-            <div class="field"><label>التاريخ</label><input type="date" id="m_date" value="${todayStr()}"></div>
+            <div class="field"><label>المبلغ (ج)</label><input autocomplete="off" type="number" id="m_amount" step="1" min="0" required></div>
+            <div class="field"><label>التاريخ</label><input autocomplete="off" type="date" id="m_date" value="${todayStr()}"></div>
           </div>
           <div class="form-row">
-            <div class="field"><label>البيان</label><input id="m_desc" required placeholder="مثال: مرتب أسبوعي، دفعة عميل..."></div>
-            <div class="field"><label>المشروع (اختياري)</label><input id="m_project" placeholder="اسم المشروع لو مرتبطة بيه"></div>
+            <div class="field"><label>البيان</label><input autocomplete="off" id="m_desc" required placeholder="مثال: مرتب أسبوعي، دفعة عميل..."></div>
+            <div class="field"><label>المشروع (اختياري)</label><input autocomplete="off" id="m_project" placeholder="اسم المشروع لو مرتبطة بيه"></div>
           </div>
           <div style="display:flex;gap:8px;align-items:center;">
             <button type="submit" class="btn btn-primary" id="moveBtn">حفظ الحركة</button>
@@ -873,7 +896,7 @@ async function renderTreasury(token) {
         <hr style="margin:16px 0;border:none;border-top:1px solid var(--border);">
         <details><summary style="cursor:pointer;font-size:13px;color:var(--muted);font-weight:700;">ضبط رأس المال / رصيد أول المدة</summary>
           <div style="margin-top:10px;display:flex;gap:8px;">
-            <input type="number" id="capitalInput" placeholder="رأس المال" style="flex:1;padding:9px;border:1px solid var(--border);border-radius:8px;">
+            <input autocomplete="off" type="number" id="capitalInput" placeholder="رأس المال" style="flex:1;padding:9px;border:1px solid var(--border);border-radius:8px;">
             <button class="btn btn-outline btn-sm" id="setCapitalBtn">حفظ</button>
           </div>
         </details>
@@ -1149,7 +1172,7 @@ async function renderProducts(token) {
           <h3>منتج جديد</h3>
           <form id="prodForm">
             <div class="form-row">
-              <div class="field"><label>اسم المنتج</label><input id="p_name" required placeholder="مثال: دولاب غرفة نوم"></div>
+              <div class="field"><label>اسم المنتج</label><input autocomplete="off" id="p_name" required placeholder="مثال: دولاب غرفة نوم"></div>
               <div class="field"><label>المشروع</label><select id="p_project" required><option value="">اختار المشروع</option>${projects.map(pr=>`<option value="${pr}">${pr}</option>`).join('')}</select></div>
             </div>
             <label style="font-size:12px;font-weight:700;color:var(--muted);">المواد الخام</label>
@@ -1209,25 +1232,25 @@ async function renderProducts(token) {
 function renderDynRows(){
   document.getElementById('materialsBox').innerHTML = materialRows.map((m,i) => `
     <div class="dyn-row material">
-      <input placeholder="اسم المادة" value="${m.name}" oninput="materialRows[${i}].name=this.value; updateProdTotal();">
-      <input type="number" placeholder="الكمية" value="${m.qty}" oninput="materialRows[${i}].qty=this.value; updateProdTotal();">
-      <input placeholder="الوحدة" value="${m.unit}" oninput="materialRows[${i}].unit=this.value;">
-      <input type="number" placeholder="سعر الوحدة" value="${m.unitPrice}" oninput="materialRows[${i}].unitPrice=this.value; updateProdTotal();">
+      <input autocomplete="off" placeholder="اسم المادة" value="${m.name}" oninput="materialRows[${i}].name=this.value; updateProdTotal();">
+      <input autocomplete="off" type="number" placeholder="الكمية" value="${m.qty}" oninput="materialRows[${i}].qty=this.value; updateProdTotal();">
+      <input autocomplete="off" placeholder="الوحدة" value="${m.unit}" oninput="materialRows[${i}].unit=this.value;">
+      <input autocomplete="off" type="number" placeholder="سعر الوحدة" value="${m.unitPrice}" oninput="materialRows[${i}].unitPrice=this.value; updateProdTotal();">
       <span class="dyn-row-cost" id="matCost-${i}">—</span>
       <button type="button" class="btn btn-sm btn-danger" onclick="materialRows.splice(${i},1); renderDynRows();">✕</button>
     </div>`).join('');
   document.getElementById('laborBox').innerHTML = laborRows.map((l,i) => `
     <div class="dyn-row labor">
       <select onchange="laborRows[${i}].employee=this.value; updateProdTotal();"><option value="">اختار الموظف</option>${(window._empOptionsHtml||'').replace(`value="${l.employee}"`, `value="${l.employee}" selected`)}</select>
-      <input type="number" placeholder="ساعات" value="${l.hours}" oninput="laborRows[${i}].hours=this.value; updateProdTotal();">
+      <input autocomplete="off" type="number" placeholder="ساعات" value="${l.hours}" oninput="laborRows[${i}].hours=this.value; updateProdTotal();">
       <span class="dyn-row-cost" id="laborCost-${i}">—</span>
       <button type="button" class="btn btn-sm btn-outline" onclick="laborRows[${i}].showEvening=!laborRows[${i}].showEvening; renderDynRows();">${l.showEvening ? '− سهرة' : '+ سهرة'}</button>
       <button type="button" class="btn btn-sm btn-danger" onclick="laborRows.splice(${i},1); renderDynRows();">✕</button>
     </div>
     ${l.showEvening ? `
     <div class="evening-row">
-      <input type="number" step="0.5" min="0" placeholder="ساعات السهرة (للسجل فقط)" value="${l.eveningHours}" oninput="laborRows[${i}].eveningHours=this.value; updateProdTotal();">
-      <input type="number" step="1" min="0" placeholder="مبلغ السهرة (ج)" value="${l.eveningAmount}" oninput="laborRows[${i}].eveningAmount=this.value; updateProdTotal();">
+      <input autocomplete="off" type="number" step="0.5" min="0" placeholder="ساعات السهرة (للسجل فقط)" value="${l.eveningHours}" oninput="laborRows[${i}].eveningHours=this.value; updateProdTotal();">
+      <input autocomplete="off" type="number" step="1" min="0" placeholder="مبلغ السهرة (ج)" value="${l.eveningAmount}" oninput="laborRows[${i}].eveningAmount=this.value; updateProdTotal();">
       <button type="button" class="btn btn-sm btn-danger" onclick="laborRows[${i}].showEvening=false; laborRows[${i}].eveningHours=''; laborRows[${i}].eveningAmount=''; renderDynRows();">✕</button>
     </div>` : ''}`).join('');
   updateProdTotal();
@@ -1278,9 +1301,9 @@ async function renderFixedExp(token) {
         <div class="panel">
           <h3>إضافة مصروف ثابت</h3>
           <form id="fxForm">
-            <div class="field"><label>اسم المصروف</label><input id="fx_name" required placeholder="مثال: إيجار المصنع"></div>
-            <div class="field"><label>المبلغ الشهري (ج)</label><input type="number" id="fx_amount" step="1" min="0" required></div>
-            <div class="field"><label>ملاحظات</label><input id="fx_notes"></div>
+            <div class="field"><label>اسم المصروف</label><input autocomplete="off" id="fx_name" required placeholder="مثال: إيجار المصنع"></div>
+            <div class="field"><label>المبلغ الشهري (ج)</label><input autocomplete="off" type="number" id="fx_amount" step="1" min="0" required></div>
+            <div class="field"><label>ملاحظات</label><input autocomplete="off" id="fx_notes"></div>
             <button type="submit" class="btn btn-primary" id="fxBtn">حفظ</button>
             <div class="msg" id="fxMsg"></div>
           </form>
@@ -1374,9 +1397,9 @@ async function qRenderHome(token){
         <h3>إنشاء كوتيشن جديد</h3>
         <div class="msg" id="qCreateMsg"></div>
         <form class="form-row3" onsubmit="event.preventDefault(); qCreateQuote();">
-          <div class="field"><label>موجه إلى (Engineer)</label><input type="text" id="q_engineer"></div>
-          <div class="field"><label>العنوان / المشروع</label><input type="text" id="q_address"></div>
-          <div class="field"><label>سعر الدولار (جنيه)</label><input type="number" id="q_dollar" value="${QCFG.defaultDollar}" min="1">
+          <div class="field"><label>موجه إلى (Engineer)</label><input autocomplete="off" type="text" id="q_engineer"></div>
+          <div class="field"><label>العنوان / المشروع</label><input autocomplete="off" type="text" id="q_address"></div>
+          <div class="field"><label>سعر الدولار (جنيه)</label><input autocomplete="off" type="number" id="q_dollar" value="${QCFG.defaultDollar}" min="1">
             <span style="font-size:10px;color:var(--muted);">يظهر في الملاحظات بالـ PDF</span></div>
         </form>
         <div style="margin-top:16px;display:flex;justify-content:flex-end;">
@@ -1503,12 +1526,12 @@ function qRenderRows(){
   tb.innerHTML = QSTATE.rows.map((r,i) => `
     <tr>
       <td style="text-align:center;color:var(--muted);font-size:11px;">${i+1}</td>
-      <td><input type="text" list="q-cat-list" value="${qEsc(r.category)}" placeholder="DOORS"
+      <td><input autocomplete="off" type="text" list="q-cat-list" value="${qEsc(r.category)}" placeholder="DOORS"
         onchange="qSetField(${r._id},'category',this.value)"></td>
-      <td><input type="text" value="${qEsc(r.unit)}" placeholder="الوحده" onchange="qSetField(${r._id},'unit',this.value)"></td>
+      <td><input autocomplete="off" type="text" value="${qEsc(r.unit)}" placeholder="الوحده" onchange="qSetField(${r._id},'unit',this.value)"></td>
       <td><textarea placeholder="اكتب وصف العمل هنا..." onchange="qSetField(${r._id},'description',this.value)">${qEsc(r.description)}</textarea></td>
-      <td><input type="text" class="ltr-num" inputmode="numeric" value="${r.qty}" onchange="qSetNumField(${r._id},'qty',this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
-      <td><input type="text" class="ltr-num" inputmode="numeric" value="${r.price}" onchange="qSetNumField(${r._id},'price',this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
+      <td><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" value="${r.qty}" onchange="qSetNumField(${r._id},'qty',this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
+      <td><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" value="${r.price}" onchange="qSetNumField(${r._id},'price',this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
       <td class="num-cell">${fmt(qTot(r))}</td>
       <td><textarea placeholder="ملاحظة..." onchange="qSetField(${r._id},'notes',this.value)">${qEsc(r.notes)}</textarea></td>
       <td><button class="btn btn-sm btn-danger" onclick="qDelRow(${r._id})">✕</button></td>
@@ -1529,20 +1552,20 @@ function qRenderEditor(){
     <div class="panel" style="padding:18px 22px;">
       <div class="q-banner">
         <div class="q-info-box">
-          <div class="q-info-row"><label>موجه إلى:</label><input type="text" id="q-b-engineer" value="${qEsc(c.engineer)}"
+          <div class="q-info-row"><label>موجه إلى:</label><input autocomplete="off" type="text" id="q-b-engineer" value="${qEsc(c.engineer)}"
             oninput="QSTATE.customer.engineer=this.value; qSaveSession();"></div>
-          <div class="q-info-row"><label>العنوان / المشروع:</label><input type="text" id="q-b-address" value="${qEsc(c.address)}"
+          <div class="q-info-row"><label>العنوان / المشروع:</label><input autocomplete="off" type="text" id="q-b-address" value="${qEsc(c.address)}"
             oninput="QSTATE.customer.address=this.value; qSaveSession();"></div>
         </div>
         <div class="q-side-col">
           <div class="q-dollar-inline">
             <span style="font-size:12px;color:var(--muted);font-weight:600;">سعر الدولار:</span>
-            <input type="number" id="q-b-dollar" value="${qEsc(QSTATE.dollar)}" min="1" oninput="QSTATE.dollar=this.value; qSaveSession();">
+            <input autocomplete="off" type="number" id="q-b-dollar" value="${qEsc(QSTATE.dollar)}" min="1" oninput="QSTATE.dollar=this.value; qSaveSession();">
             <span style="font-size:12px;color:var(--muted);">جنيه</span>
           </div>
           <div class="q-dollar-inline">
             <span style="font-size:12px;color:var(--muted);font-weight:600;">تاريخ الكوتيشن:</span>
-            <input type="date" id="q-b-date" value="${qDateToISO(c.date) || todayStr()}"
+            <input autocomplete="off" type="date" id="q-b-date" value="${qDateToISO(c.date) || todayStr()}"
               oninput="QSTATE.customer.date=qDateFromISO(this.value); qSaveSession();">
           </div>
         </div>
@@ -1567,10 +1590,10 @@ function qRenderEditor(){
         <div class="dc-title">• خصم على العرض (اختياري)</div>
         <div class="q-dc-fields">
           <div class="q-dc-field"><label>نسبة الخصم</label>
-            <div class="q-dc-input-wrap"><input type="text" id="q-disc-percent" inputmode="decimal" value="${(QSTATE.discount && QSTATE.discount.percent) || 0}" oninput="qSetDiscount('percent',this.value)"><span class="q-dc-suffix">%</span></div>
+            <div class="q-dc-input-wrap"><input autocomplete="off" type="text" id="q-disc-percent" inputmode="decimal" value="${(QSTATE.discount && QSTATE.discount.percent) || 0}" oninput="qSetDiscount('percent',this.value)"><span class="q-dc-suffix">%</span></div>
           </div>
           <div class="q-dc-field"><label>قيمة الخصم</label>
-            <div class="q-dc-input-wrap"><input type="text" id="q-disc-amount" inputmode="decimal" value="${(QSTATE.discount && QSTATE.discount.amount) || 0}" oninput="qSetDiscount('amount',this.value)"><span class="q-dc-suffix">جنيه</span></div>
+            <div class="q-dc-input-wrap"><input autocomplete="off" type="text" id="q-disc-amount" inputmode="decimal" value="${(QSTATE.discount && QSTATE.discount.amount) || 0}" oninput="qSetDiscount('amount',this.value)"><span class="q-dc-suffix">جنيه</span></div>
           </div>
         </div>
         <div class="q-dc-summary" id="q-dc-summary" style="display:none;">
@@ -1705,7 +1728,7 @@ function qRenderPreview(){
       <div class="q-confirm-card">
         <h3>إرسال الكوتيشن بالإيميل</h3>
         <p>اكتب إيميل العميل أو المهندس لإرسال عرض السعر</p>
-        <div class="field" style="margin-bottom:16px;"><input type="email" id="qMailTo" placeholder="example@email.com" style="direction:ltr;text-align:left;"></div>
+        <div class="field" style="margin-bottom:16px;"><input autocomplete="off" type="email" id="qMailTo" placeholder="example@email.com" style="direction:ltr;text-align:left;"></div>
         <div class="msg" id="qMailStatus" style="margin-bottom:14px;"></div>
         <div class="q-confirm-btns">
           <button class="btn btn-primary" id="qMailSendBtn" onclick="qSendMailNow()">إرسال</button>
@@ -2015,7 +2038,7 @@ function pRenderRows(){
       <td><input type="text" autocomplete="off" name="p-name-${r._id}" value="${qEsc(r.name)}" onchange="pSetField(${r._id},'name',this.value)" placeholder="${qEsc(pOrdinalName(i))}"></td>
       <td><input type="text" autocomplete="off" name="p-amount-${r._id}" class="ltr-num" inputmode="numeric" value="${r.amount||''}" onchange="pSetAmount(${r._id},this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
       <td class="num-cell">${pct!==''?pct.toFixed(0)+'%':'—'}</td>
-      <td><input type="date" value="${pToISO(r.date)}" onchange="pSetDate(${r._id},this.value)" style="direction:ltr;width:132px;"></td>
+      <td><input autocomplete="off" type="date" value="${pToISO(r.date)}" onchange="pSetDate(${r._id},this.value)" style="direction:ltr;width:132px;"></td>
       <td><input type="text" autocomplete="off" name="p-method-${r._id}" value="${qEsc(r.method||'')}" onchange="pSetField(${r._id},'method',this.value)" placeholder="اختياري"></td>
       <td><button class="btn btn-sm btn-danger" onclick="pDelRow(${r._id})">✕</button></td>
     </tr>`;
@@ -2042,7 +2065,7 @@ function pRenderEditor(){
         </div>
         <div class="q-info-box">
           <div class="q-info-row"><label>الإجمالي الكلي:</label><input type="text" autocomplete="off" inputmode="numeric" id="p-b-total" value="${c.total||0}" onkeypress="return /[0-9.]/.test(event.key)" oninput="pRenderRows(); pSaveSession();"></div>
-          <div class="q-info-row"><label>تاريخ استلام المشروع:</label><input type="date" id="p-b-date" value="${pToISO(c.date)}" oninput="PSTATE.customer.date=pToEnGB(this.value); pSaveSession();"></div>
+          <div class="q-info-row"><label>تاريخ استلام المشروع:</label><input autocomplete="off" type="date" id="p-b-date" value="${pToISO(c.date)}" oninput="PSTATE.customer.date=pToEnGB(this.value); pSaveSession();"></div>
         </div>
       </div>
     </div>
@@ -2195,7 +2218,7 @@ function pRenderPreview(){
       <div class="q-confirm-card">
         <h3>إرسال كشف الدفعات بالإيميل</h3>
         <p>اكتب إيميل العميل أو المهندس لإرسال كشف الـ Payment Statement</p>
-        <div class="field" style="margin-bottom:16px;"><input type="email" id="pMailTo" placeholder="example@email.com" style="direction:ltr;text-align:left;"></div>
+        <div class="field" style="margin-bottom:16px;"><input autocomplete="off" type="email" id="pMailTo" placeholder="example@email.com" style="direction:ltr;text-align:left;"></div>
         <div class="msg" id="pMailStatus" style="margin-bottom:14px;"></div>
         <div class="q-confirm-btns">
           <button class="btn btn-primary" id="pMailSendBtn" onclick="pSendMailNow()">إرسال</button>
@@ -2279,18 +2302,44 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
 });
 
 /* ================= Logout / Change Password ================= */
+function pwToggle(btn){
+  const input = btn.previousElementSibling;
+  if (!input) return;
+  const showing = input.type === 'text';
+  input.type = showing ? 'password' : 'text';
+  btn.textContent = showing ? '👁' : '🙈';
+}
+
+let _genConfirmCallback = null;
+function openGenConfirm(message, onConfirm, title){
+  document.getElementById('genConfirmTitle').textContent = title || 'تأكيد';
+  document.getElementById('genConfirmMsg').textContent = message;
+  _genConfirmCallback = onConfirm;
+  document.getElementById('genConfirmModal').classList.add('open');
+}
+function closeGenConfirm(){
+  document.getElementById('genConfirmModal').classList.remove('open');
+  _genConfirmCallback = null;
+}
+function _genConfirmRun(){
+  const cb = _genConfirmCallback;
+  closeGenConfirm();
+  if (cb) cb();
+}
+
 function logout(){
-  if (!confirm('هل تريد تسجيل الخروج؟')) return;
-  localStorage.removeItem('lm_loggedIn');
-  localStorage.removeItem('lm_userName');
-  sessionStorage.clear();
-  document.getElementById('appRoot').style.display = 'none';
-  document.getElementById('loginWrap').style.display = 'flex';
-  document.getElementById('l_name').value = '';
-  document.getElementById('l_pass').value = '';
-  const loginMsg = document.getElementById('loginMsg'); loginMsg.className='msg'; loginMsg.textContent='';
-  const loginBtn = document.getElementById('loginBtn'); loginBtn.disabled = false; loginBtn.textContent = 'دخول';
-  document.getElementById('l_name').focus();
+  openGenConfirm('هل تريد تسجيل الخروج؟', () => {
+    localStorage.removeItem('lm_loggedIn');
+    localStorage.removeItem('lm_userName');
+    sessionStorage.clear();
+    document.getElementById('appRoot').style.display = 'none';
+    document.getElementById('loginWrap').style.display = 'flex';
+    document.getElementById('l_name').value = '';
+    document.getElementById('l_pass').value = '';
+    const loginMsg = document.getElementById('loginMsg'); loginMsg.className='msg'; loginMsg.textContent='';
+    const loginBtn = document.getElementById('loginBtn'); loginBtn.disabled = false; loginBtn.textContent = 'دخول';
+    document.getElementById('l_name').focus();
+  }, 'تسجيل الخروج');
 }
 
 function openChangePassModal(){
