@@ -262,8 +262,10 @@
 
   #qMailModal{ display:none; position:fixed; inset:0; background:rgba(30,26,21,.65); z-index:950; justify-content:center; align-items:center; }
   #qMailModal.open{ display:flex; }
+  #pMailModal{ display:none; position:fixed; inset:0; background:rgba(30,26,21,.65); z-index:950; justify-content:center; align-items:center; }
+  #pMailModal.open{ display:flex; }
   .q-confirm-card{ background:#fff; border-radius:14px; padding:28px 16px; width:min(420px,94vw); box-shadow:0 20px 60px rgba(30,26,21,.3); text-align:center; }
-  #qMailModal.open .q-confirm-card, #changePassModal.open .q-confirm-card{ animation:modalPop .4s var(--bounce); }
+  #qMailModal.open .q-confirm-card, #pMailModal.open .q-confirm-card, #changePassModal.open .q-confirm-card{ animation:modalPop .4s var(--bounce); }
   @keyframes modalPop{ from{ opacity:0; transform:scale(.82); } to{ opacity:1; transform:scale(1); } }
   .q-confirm-card h3{ font-size:17px; margin-bottom:10px; }
   .q-confirm-card p{ font-size:13px; color:var(--muted); margin-bottom:18px; line-height:1.7; }
@@ -2154,7 +2156,6 @@ function pBuildPdfHtml(){
     <div class="client-box">
       ${c.engineer ? `<div class="client-row"><span class="client-lbl">موجه إلى:</span><span class="client-val">${qEsc(c.engineer)}</span></div>` : ''}
       ${c.address ? `<div class="client-row"><span class="client-lbl">العنوان / المشروع:</span><span class="client-val">${qEsc(c.address)}</span></div>` : ''}
-      ${c.date ? `<div class="client-row"><span class="client-lbl">تاريخ استلام المشروع:</span><span class="client-val">${qEsc(c.date)}</span></div>` : ''}
     </div>
     <br/>
     <div class="items-wrap"><table class="items">
