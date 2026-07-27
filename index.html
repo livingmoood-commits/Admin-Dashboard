@@ -190,6 +190,9 @@
   .btn-dark{ background:var(--dark); color:#D4B483; }
   .btn-dark:hover{ background:var(--dark2); color:#fff; }
   .btn-dark:disabled{ opacity:.55; cursor:not-allowed; }
+  .btn-success{ background:#e6f4ea; color:var(--green); border:1.5px solid var(--green); }
+  .btn-success:hover{ background:#d5eedc; }
+  .btn-success.active{ background:var(--green); color:#fff; box-shadow:0 6px 14px rgba(44,95,58,.3); }
 
   /* ===== Quotation (عروض الأسعار) — full editor/preview ===== */
   .q-steps{ display:flex; margin-bottom:18px; border-radius:8px; overflow:hidden; box-shadow:0 4px 20px rgba(30,26,21,.08); }
@@ -1813,6 +1816,8 @@ function pTodayEnGB(){ return pToEnGB(new Date().toISOString().slice(0,10)); }
 
 let PSTATE = { subpage:'home', customer:null, rows:[] };
 let _pActionToken = 0; // نفس فكرة _qActionToken بس لصفحة الـ Payment Statements
+let _pHomeCustomers = []; // آخر قائمة عملاء اتحملت في صفحة السجلات السابقة
+let _pHomeFilter = 'all'; // 'all' | 'completed' | 'incomplete' — حالة دروب داون الفلتر فوق السجلات
 
 function pSaveSession(){ try { sessionStorage.setItem('lm_paySession', JSON.stringify(PSTATE)); } catch(e){} }
 function pRestoreSession(){
@@ -1839,10 +1844,7 @@ async function pRenderHome(token){
   try {
     const { customers } = await apiGet('payListCustomers');
     if (isStaleNav(token) || _pActionToken !== myTok) return;
-    const sorted = [...customers].sort((a,b) => {
-      if (!!a.completed !== !!b.completed) return a.completed ? 1 : -1; // المكتمل ينزل تحت
-      return String(b.date||'').localeCompare(String(a.date||'')); // الأحدث فوق داخل كل مجموعة
-    });
+    _pHomeCustomers = customers;
     document.getElementById('content').innerHTML = `
       <div class="panel">
         <h3>إنشاء سجل دفعات جديد</h3>
@@ -1856,36 +1858,68 @@ async function pRenderHome(token){
           <button class="btn btn-primary" onclick="pCreateRecord()">✦ إنشاء وبدء المتابعة</button>
         </div>
       </div>
-      <div class="panel">
-        <h3>السجلات السابقة (${customers.length})</h3>
-        <div class="q-clist">
-        ${sorted.length ? sorted.map(c => {
-          const remaining = (Number(c.total)||0) - (Number(c.received)||0);
-          const pct = c.total > 0 ? Math.min(100, (Number(c.received)||0)/c.total*100) : 0;
-          return `
-          <div class="c-item ${c.completed ? 'is-completed' : ''}">
-            <div class="ci-info" onclick='pOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
-              <div class="ci-name">${qEsc(c.engineer || c.name)}</div>
-              <div class="ci-meta">${qEsc(c.address || '')}</div>
-              <div class="ci-progress">
-                <span>آخر دفعة: <b>${qEsc(c.lastPayment || '—')}</b></span>
-                <span>الإجمالي: <b>${fmt(c.total)}</b></span>
-                <span>المستلم: <b>${fmt(c.received)}</b></span>
-                <span>الباقي: <b style="color:${Math.abs(remaining)<=0.01?'var(--green)':'var(--red)'};">${fmt(remaining)}</b></span>
-                <span>النسبة: <b>${pct.toFixed(0)}%</b></span>
-              </div>
-            </div>
-            <div class="ci-actions">
-              ${c.completed ? '<span class="ci-done-tag">✓ مكتمل</span>' : ''}
-              <button class="ci-badge" onclick='pOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>فتح ←</button>
-              <button class="btn btn-sm btn-danger" onclick="pDeleteCustomer('${c.name.replace(/'/g,"\\'")}')">🗑 حذف</button>
-            </div>
-          </div>`;
-        }).join('') : `<div class="empty">مفيش سجلات لسه</div>`}
-        </div>
-      </div>
+      <div class="panel" id="p-list-panel"></div>
     `;
+    pRenderClistPanel();
   } catch(err){ showError(err); }
+}
+
+function pSetHomeFilter(val){
+  _pHomeFilter = val;
+  pRenderClistPanel();
+}
+
+function pRenderClistPanel(){
+  const panel = document.getElementById('p-list-panel'); if (!panel) return;
+  const customers = _pHomeCustomers;
+  const completedCount = customers.filter(c => c.completed).length;
+  const filter = _pHomeFilter;
+  const visible = filter === 'completed' ? customers.filter(c => c.completed)
+                : filter === 'incomplete' ? customers.filter(c => !c.completed)
+                : customers;
+  const sorted = [...visible].sort((a,b) => {
+    if (!!a.completed !== !!b.completed) return a.completed ? 1 : -1; // المكتمل ينزل تحت
+    return String(b.date||'').localeCompare(String(a.date||'')); // الأحدث فوق داخل كل مجموعة
+  });
+  const emptyMsg = filter === 'completed' ? 'مفيش سجلات مكتملة الدفع'
+                 : filter === 'incomplete' ? 'مفيش سجلات لسه مكملتش الدفع'
+                 : 'مفيش سجلات لسه';
+  panel.innerHTML = `
+    <h3>السجلات السابقة (${customers.length})
+      <span style="display:flex;align-items:center;gap:10px;font-weight:600;">
+        <span style="font-size:12.5px;color:var(--green);white-space:nowrap;">مكتمل الدفع: ${completedCount}</span>
+        <select id="p-filter-select" onchange="pSetHomeFilter(this.value)" style="padding:6px 10px;border:1.5px solid var(--gold);border-radius:6px;font-size:12.5px;font-weight:700;font-family:inherit;background:#fdfcfa;color:var(--dark);cursor:pointer;">
+          <option value="all" ${filter==='all'?'selected':''}>الجميع</option>
+          <option value="completed" ${filter==='completed'?'selected':''}>مكتمل</option>
+          <option value="incomplete" ${filter==='incomplete'?'selected':''}>لم يكتمل</option>
+        </select>
+      </span>
+    </h3>
+    <div class="q-clist">
+    ${sorted.length ? sorted.map(c => {
+      const remaining = (Number(c.total)||0) - (Number(c.received)||0);
+      const pct = c.total > 0 ? Math.min(100, (Number(c.received)||0)/c.total*100) : 0;
+      return `
+      <div class="c-item ${c.completed ? 'is-completed' : ''}">
+        <div class="ci-info" onclick='pOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
+          <div class="ci-name">${qEsc(c.engineer || c.name)}</div>
+          <div class="ci-meta">${qEsc(c.address || '')}</div>
+          <div class="ci-progress">
+            <span>آخر دفعة: <b>${qEsc(c.lastPayment || '—')}</b></span>
+            <span>الإجمالي: <b>${fmt(c.total)}</b></span>
+            <span>المستلم: <b>${fmt(c.received)}</b></span>
+            <span>الباقي: <b style="color:${Math.abs(remaining)<=0.01?'var(--green)':'var(--red)'};">${fmt(remaining)}</b></span>
+            <span>النسبة: <b>${pct.toFixed(0)}%</b></span>
+          </div>
+        </div>
+        <div class="ci-actions">
+          <button class="ci-badge" onclick='pOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>فتح ←</button>
+          <button class="btn btn-sm btn-danger" onclick="pDeleteCustomer('${c.name.replace(/'/g,"\\'")}')">🗑 حذف</button>
+        </div>
+      </div>`;
+    }).join('') : `<div class="empty">${emptyMsg}</div>`}
+    </div>
+  `;
 }
 
 function pCreateRecord(){
