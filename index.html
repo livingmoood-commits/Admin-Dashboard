@@ -1848,9 +1848,9 @@ async function pRenderHome(token){
         <h3>إنشاء سجل دفعات جديد</h3>
         <div class="msg" id="pCreateMsg"></div>
         <form class="form-row3" onsubmit="event.preventDefault(); pCreateRecord();">
-          <div class="field"><label>موجه إلى (Engineer)</label><input type="text" id="p_engineer"></div>
-          <div class="field"><label>العنوان / المشروع</label><input type="text" id="p_address"></div>
-          <div class="field"><label>المبلغ الإجمالي</label><input type="text" inputmode="numeric" id="p_total" placeholder="0" onkeypress="return /[0-9.]/.test(event.key)"></div>
+          <div class="field"><label>موجه إلى (Engineer)</label><input type="text" autocomplete="off" id="p_engineer"></div>
+          <div class="field"><label>العنوان / المشروع</label><input type="text" autocomplete="off" id="p_address"></div>
+          <div class="field"><label>المبلغ الإجمالي</label><input type="text" autocomplete="off" inputmode="numeric" id="p_total" placeholder="0" onkeypress="return /[0-9.]/.test(event.key)"></div>
         </form>
         <div style="margin-top:16px;display:flex;justify-content:flex-end;">
           <button class="btn btn-primary" onclick="pCreateRecord()">✦ إنشاء وبدء المتابعة</button>
@@ -1975,11 +1975,11 @@ function pRenderRows(){
     return `
     <tr>
       <td style="text-align:center;color:var(--muted);font-size:11px;">${i+1}</td>
-      <td><input type="text" value="${qEsc(r.name)}" onchange="pSetField(${r._id},'name',this.value)" placeholder="${qEsc(pOrdinalName(i))}"></td>
-      <td><input type="text" class="ltr-num" inputmode="numeric" value="${r.amount||''}" onchange="pSetAmount(${r._id},this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
+      <td><input type="text" autocomplete="off" name="p-name-${r._id}" value="${qEsc(r.name)}" onchange="pSetField(${r._id},'name',this.value)" placeholder="${qEsc(pOrdinalName(i))}"></td>
+      <td><input type="text" autocomplete="off" name="p-amount-${r._id}" class="ltr-num" inputmode="numeric" value="${r.amount||''}" onchange="pSetAmount(${r._id},this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
       <td class="num-cell">${pct!==''?pct.toFixed(0)+'%':'—'}</td>
       <td><input type="date" value="${pToISO(r.date)}" onchange="pSetDate(${r._id},this.value)" style="direction:ltr;width:132px;"></td>
-      <td><input type="text" value="${qEsc(r.method||'')}" onchange="pSetField(${r._id},'method',this.value)" placeholder="اختياري"></td>
+      <td><input type="text" autocomplete="off" name="p-method-${r._id}" value="${qEsc(r.method||'')}" onchange="pSetField(${r._id},'method',this.value)" placeholder="اختياري"></td>
       <td><button class="btn btn-sm btn-danger" onclick="pDelRow(${r._id})">✕</button></td>
     </tr>`;
   }).join('');
@@ -1998,13 +1998,13 @@ function pRenderEditor(){
     <div class="panel" style="padding:18px 22px;">
       <div class="q-banner">
         <div class="q-info-box">
-          <div class="q-info-row"><label>موجه إلى:</label><input type="text" id="p-b-engineer" value="${qEsc(c.engineer)}"
+          <div class="q-info-row"><label>موجه إلى:</label><input type="text" autocomplete="off" id="p-b-engineer" value="${qEsc(c.engineer)}"
             oninput="PSTATE.customer.engineer=this.value; pSaveSession();"></div>
-          <div class="q-info-row"><label>العنوان / المشروع:</label><input type="text" id="p-b-address" value="${qEsc(c.address)}"
+          <div class="q-info-row"><label>العنوان / المشروع:</label><input type="text" autocomplete="off" id="p-b-address" value="${qEsc(c.address)}"
             oninput="PSTATE.customer.address=this.value; pSaveSession();"></div>
         </div>
         <div class="q-info-box">
-          <div class="q-info-row"><label>الإجمالي الكلي:</label><input type="text" inputmode="numeric" id="p-b-total" value="${c.total||0}" onkeypress="return /[0-9.]/.test(event.key)" oninput="pRenderRows(); pSaveSession();"></div>
+          <div class="q-info-row"><label>الإجمالي الكلي:</label><input type="text" autocomplete="off" inputmode="numeric" id="p-b-total" value="${c.total||0}" onkeypress="return /[0-9.]/.test(event.key)" oninput="pRenderRows(); pSaveSession();"></div>
           <div class="q-info-row"><label>تاريخ استلام المشروع:</label><input type="date" id="p-b-date" value="${pToISO(c.date)}" oninput="PSTATE.customer.date=pToEnGB(this.value); pSaveSession();"></div>
         </div>
       </div>
