@@ -200,6 +200,9 @@
   .q-steps .step.active{ color:var(--gold); border-color:var(--gold); }
   .q-steps .step.done{ color:var(--green); border-color:var(--green); cursor:pointer; }
   .q-steps .step.done:hover{ background:#f0ebe3; }
+  .p-filter-tabs .step{ cursor:pointer; }
+  .p-filter-tabs .step:hover{ background:#f0ebe3; }
+  .p-filter-tabs .step.active{ color:var(--gold); border-color:var(--gold); background:#fbf7ef; }
 
   .q-banner{ display:flex; flex-wrap:wrap; gap:20px; align-items:center; justify-content:space-between; }
   .q-info-box{ background:var(--cream); border-right:4px solid var(--gold); padding:11px 16px; border-radius:5px; display:flex; flex-direction:column; gap:8px; flex:1; min-width:260px; }
@@ -1884,17 +1887,14 @@ function pRenderClistPanel(){
   const emptyMsg = filter === 'completed' ? 'مفيش سجلات مكتملة الدفع'
                  : filter === 'incomplete' ? 'مفيش سجلات لسه مكملتش الدفع'
                  : 'مفيش سجلات لسه';
+  const incompleteCount = customers.length - completedCount;
   panel.innerHTML = `
-    <h3>السجلات السابقة (${customers.length})
-      <span style="display:flex;align-items:center;gap:10px;font-weight:600;">
-        <span style="font-size:12.5px;color:var(--green);white-space:nowrap;">مكتمل الدفع: ${completedCount}</span>
-        <select id="p-filter-select" onchange="pSetHomeFilter(this.value)" style="padding:6px 10px;border:1.5px solid var(--gold);border-radius:6px;font-size:12.5px;font-weight:700;font-family:inherit;background:#fdfcfa;color:var(--dark);cursor:pointer;">
-          <option value="all" ${filter==='all'?'selected':''}>الجميع</option>
-          <option value="completed" ${filter==='completed'?'selected':''}>مكتمل</option>
-          <option value="incomplete" ${filter==='incomplete'?'selected':''}>لم يكتمل</option>
-        </select>
-      </span>
-    </h3>
+    <h3>السجلات السابقة (${customers.length})</h3>
+    <div class="q-steps p-filter-tabs">
+      <div class="step ${filter==='all'?'active':''}" onclick="pSetHomeFilter('all')">الجميع (${customers.length})</div>
+      <div class="step ${filter==='completed'?'active':''}" onclick="pSetHomeFilter('completed')">مكتمل (${completedCount})</div>
+      <div class="step ${filter==='incomplete'?'active':''}" onclick="pSetHomeFilter('incomplete')">غير مكتمل (${incompleteCount})</div>
+    </div>
     <div class="q-clist">
     ${sorted.length ? sorted.map(c => {
       const remaining = (Number(c.total)||0) - (Number(c.received)||0);
