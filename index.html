@@ -200,9 +200,10 @@
   .q-steps .step.active{ color:var(--gold); border-color:var(--gold); }
   .q-steps .step.done{ color:var(--green); border-color:var(--green); cursor:pointer; }
   .q-steps .step.done:hover{ background:#f0ebe3; }
-  .p-filter-tabs .step{ cursor:pointer; }
+  .p-filter-tabs .step{ cursor:pointer; transition:background .2s, color .2s, border-color .3s, transform .18s var(--bounce); }
   .p-filter-tabs .step:hover{ background:#f0ebe3; }
-  .p-filter-tabs .step.active{ color:var(--gold); border-color:var(--gold); background:#fbf7ef; }
+  .p-filter-tabs .step:active{ transform:scale(.96); }
+  .p-filter-tabs .step.active{ color:var(--gold); border-color:var(--gold); background:#fbf7ef; animation:navPop .4s var(--bounce); }
 
   .q-banner{ display:flex; flex-wrap:wrap; gap:20px; align-items:center; justify-content:space-between; }
   .q-info-box{ background:var(--cream); border-right:4px solid var(--gold); padding:11px 16px; border-radius:5px; display:flex; flex-direction:column; gap:8px; flex:1; min-width:260px; }
@@ -1895,7 +1896,7 @@ function pRenderClistPanel(){
       <div class="step ${filter==='completed'?'active':''}" onclick="pSetHomeFilter('completed')">مكتمل (${completedCount})</div>
       <div class="step ${filter==='incomplete'?'active':''}" onclick="pSetHomeFilter('incomplete')">غير مكتمل (${incompleteCount})</div>
     </div>
-    <div class="q-clist">
+    <div class="q-clist" style="animation:contentIn .35s var(--bounce);">
     ${sorted.length ? sorted.map(c => {
       const remaining = (Number(c.total)||0) - (Number(c.received)||0);
       const pct = c.total > 0 ? Math.min(100, (Number(c.received)||0)/c.total*100) : 0;
