@@ -454,22 +454,58 @@
 const API_URL = 'https://script.google.com/macros/s/AKfycbzstJuI5EKdabQmOIechewiCvCnJ2MEHgDubQMFRmZPqqZG7rBByy6OUrfLEIV9zl7U/exec';
 
 /* ================= API helper ================= */
-async function apiGet(action, params) {
-  params = params || {};
-  const qs = new URLSearchParams({ action, ...Object.fromEntries(Object.entries(params).map(([k,v]) => [k, typeof v === 'object' ? JSON.stringify(v) : v])) });
-  const res = await fetch(API_URL + '?' + qs.toString());
-  const data = await res.json();
+// كاش بسيط في الذاكرة لطلبات GET (نفس الـ action+params بيرجع من الكاش لو لسه طازة)
+// بيسرّع التنقل بين الصفحات وبيقلل عدد الطلبات لسيرفر الـ Apps Script (اللي بطيء أصلًا في الـ cold start)
+const _apiCache = new Map();
+const API_CACHE_TTL_MS = 20000; // 20 ثانية — كفاية تقلل التكرار من غير ما تعرض بيانات قديمة كتير
+
+function _apiCacheKey(action, params) { return action + '::' + JSON.stringify(params || {}); }
+function apiCacheClear() { _apiCache.clear(); } // بتتنادى بعد أي عملية save/delete عشان القراءة الجاية تكون طازة
+
+async function _apiFetch(url, opts) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 25000); // فشل بسرعة بدل ما يعلّق لو الشبكة/السيرفر واقف
+  let res;
+  try {
+    res = await fetch(url, { ...(opts || {}), signal: controller.signal });
+  } catch (err) {
+    if (err.name === 'AbortError') throw new Error('السيرفر بياخد وقت طويل ومارّدش — جرب تاني بعد شوية');
+    throw new Error('فشل الاتصال بالسيرفر — تأكد من النت وحاول تاني');
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  const raw = await res.text();
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (e) {
+    // السيرفر رجّع HTML مش JSON — غالبًا رابط الـ Web App قديم أو مش متعمله Deploy بعد آخر تعديل
+    if (!res.ok) throw new Error(`السيرفر ردّ بخطأ (${res.status}) — لازم تعمل Deploy > Manage deployments > Edit > New version لآخر نسخة من الكود`);
+    throw new Error('السيرفر رجّع رد مش مفهوم (مش JSON) — تأكد إن رابط الـ Web App صحيح ومعمول Deploy بآخر نسخة');
+  }
   if (data.error) throw new Error(data.error);
   return data;
 }
+
+async function apiGet(action, params) {
+  params = params || {};
+  const key = _apiCacheKey(action, params);
+  const cached = _apiCache.get(key);
+  if (cached && (Date.now() - cached.t) < API_CACHE_TTL_MS) return cached.data;
+
+  const qs = new URLSearchParams({ action, ...Object.fromEntries(Object.entries(params).map(([k,v]) => [k, typeof v === 'object' ? JSON.stringify(v) : v])) });
+  const data = await _apiFetch(API_URL + '?' + qs.toString());
+  _apiCache.set(key, { t: Date.now(), data });
+  return data;
+}
 async function apiPost(action, payload) {
-  const res = await fetch(API_URL, {
+  const data = await _apiFetch(API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // بيتفادى CORS preflight
     body: JSON.stringify({ action, ...payload })
   });
-  const data = await res.json();
-  if (data.error) throw new Error(data.error);
+  apiCacheClear(); // أي POST معناه البيانات اتغيرت — امسح الكاش عشان القراءة الجاية تكون طازة
   return data;
 }
 function fmt(n){ return (Number(n)||0).toLocaleString('en-US', {maximumFractionDigits:0}); }
