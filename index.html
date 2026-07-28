@@ -140,6 +140,16 @@
   .msg.err{ background:#fbe2e2; color:var(--red); display:block; animation:msgIn .3s var(--bounce); }
   @keyframes msgIn{ from{ opacity:0; transform:translateY(-6px); } to{ opacity:1; transform:translateY(0); } }
 
+  /* ===== مصاريف يومية: بار التاريخ + مربعات الإدخال ===== */
+  .d-date-bar{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px; padding:12px 14px; background:var(--cream); border:1px solid var(--border); border-radius:10px; }
+  .d-date-bar label{ font-size:13px; font-weight:700; color:var(--muted); }
+  .d-input{ width:100%; padding:9px 11px; border:1.5px solid var(--border); border-radius:8px; font-size:13.5px; font-family:inherit; background:#fdfcfa; color:var(--dark); transition:border-color .2s, box-shadow .2s; }
+  .d-input:hover{ border-color:#d8cdb8; }
+  .d-input:focus{ outline:none; border-color:var(--gold); box-shadow:0 0 0 3px rgba(184,151,90,.18); background:#fff; }
+  .d-input::placeholder{ color:#b7ac9a; }
+  #d-date-bar{ direction:ltr; text-align:center; font-weight:700; width:auto; min-width:170px; }
+  #d-body td{ padding:6px 8px; }
+
   .filters{ display:flex; gap:9px; flex-wrap:wrap; margin-bottom:16px; align-items:center; }
   .moves-filter{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
   .moves-filter button{ all:unset; cursor:pointer; padding:8px 16px; border-radius:20px; font-size:12.5px; font-weight:700; color:var(--muted); background:var(--cream); border:1px solid var(--border); transition:background .2s, color .2s, border-color .2s, transform .2s var(--bounce); }
@@ -1006,15 +1016,19 @@ async function deleteTreasuryMoveConfirm(id){
  * فيه شيت لكل يوم بيتعمل تلقائي بسكريبت تاني) — بنفس الأعمدة بالظبط: وصف المصاريف |
  * المبلغ | التاريخ | المشروع الموجه. مفيش لمس مباشر لشيت "الخزنة" من هنا، عشان
  * لو فيه مزامنة تلقائية موجودة أصلاً بتاخد من الشيت ده وتحدّث الخزنة، منعملش خصم مرتين. ================= */
-let DSTATE = { rows: [] };
-function dNewRow(){ return { _id: Math.random(), desc: '', amount: '', project: '', date: yesterdayStr() }; }
+// _noAutofill: اسم شبه-عشوائي لكل حقل، بيتغيّر كل مرة الجدول بيترسم، عشان كروم
+// ميقترحش قيم قديمة (زي أسماء موظفين اتكتبت في صفحات تانية) جوه حقول المصاريف دي.
+function _noAutofill(prefix){ return prefix + '-' + Math.random().toString(36).slice(2, 10); }
+
+let DSTATE = { rows: [], date: todayStr() };
+function dNewRow(){ return { _id: Math.random(), desc: '', amount: '', project: '' }; }
 function dTotal(){ return DSTATE.rows.reduce((s, r) => s + qNum(r.amount), 0); }
 
 async function renderDailyExpenses(token) {
   try {
-    const [{ projects }, todayLog] = await Promise.all([
+    const [{ projects }, log] = await Promise.all([
       apiGet('listProjects'),
-      apiGet('getDailyExpenses', { date: todayStr() })
+      apiGet('getDailyExpenses', { date: DSTATE.date })
     ]);
     if (isStaleNav(token)) return;
     DSTATE.rows = [dNewRow(), dNewRow(), dNewRow()];
@@ -1025,9 +1039,14 @@ async function renderDailyExpenses(token) {
           <h3 style="margin:0;">مصاريف اليوم — سطر لكل مصروف</h3>
           <div style="font-weight:800;font-size:15px;">الإجمالي: <span id="d-total" style="color:var(--red);">0</span> ج</div>
         </div>
+        <div class="d-date-bar">
+          <label for="d-date-bar">تاريخ المصاريف دي:</label>
+          <input type="date" id="d-date-bar" class="d-input" autocomplete="off" value="${DSTATE.date}">
+          <span style="font-size:12px;color:var(--muted);">هيتسجل جنب كل مصروف في الشيت تلقائي</span>
+        </div>
         <div class="tbl-wrap tbl-wrap-scroll">
           <table>
-            <thead><tr><th style="width:26px;">#</th><th style="width:150px;">التاريخ</th><th>وصف المصروف</th><th style="width:110px;">المبلغ</th><th style="width:170px;">المشروع الموجه</th><th></th></tr></thead>
+            <thead><tr><th style="width:26px;">#</th><th>وصف المصروف</th><th style="width:120px;">المبلغ</th><th style="width:190px;">المشروع الموجه</th><th></th></tr></thead>
             <tbody id="d-body"></tbody>
           </table>
         </div>
@@ -1038,25 +1057,35 @@ async function renderDailyExpenses(token) {
         </div>
       </div>
       <div class="panel">
-        <h3>مصاريف اليوم المسجلة فعليًا في الشيت (${todayStr()})</h3>
+        <h3 id="d-log-heading">مصاريف اليوم المسجلة فعليًا في الشيت (${DSTATE.date})</h3>
         <div id="d-today-box"></div>
       </div>
     `;
     dRenderRows();
-    dRenderTodayLog(todayLog.rows || []);
+    dRenderTodayLog(log.rows || []);
     document.getElementById('d-add-row').addEventListener('click', () => { DSTATE.rows.push(dNewRow()); dRenderRows(); });
     document.getElementById('d-save-all').addEventListener('click', dSaveAll);
+    document.getElementById('d-date-bar').addEventListener('change', dOnDateBarChange);
   } catch(err){ showError(err); }
+}
+async function dOnDateBarChange(e){
+  DSTATE.date = e.target.value || todayStr();
+  document.getElementById('d-log-heading').textContent = `مصاريف اليوم المسجلة فعليًا في الشيت (${DSTATE.date})`;
+  const box = document.getElementById('d-today-box');
+  box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  try {
+    const log = await apiGet('getDailyExpenses', { date: DSTATE.date });
+    dRenderTodayLog(log.rows || []);
+  } catch(err){ box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message||err}</div>`; }
 }
 function dRenderRows(){
   const tb = document.getElementById('d-body'); if (!tb) return;
   tb.innerHTML = DSTATE.rows.map((r, i) => `
     <tr>
       <td style="text-align:center;color:var(--muted);font-size:11px;">${i + 1}</td>
-      <td><input type="date" autocomplete="off" name="d-date-${r._id}" value="${r.date}" onchange="dSetField(${r._id},'date',this.value)" style="direction:ltr;width:132px;"></td>
-      <td><input type="text" autocomplete="off" name="d-desc-${r._id}" value="${qEsc(r.desc)}" onchange="dSetField(${r._id},'desc',this.value)" placeholder="مثال: فطار، بنزين، مسامير..."></td>
-      <td><input type="text" autocomplete="off" name="d-amount-${r._id}" class="ltr-num" inputmode="numeric" value="${r.amount || ''}" onchange="dSetField(${r._id},'amount',this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
-      <td><input type="text" autocomplete="off" name="d-project-${r._id}" list="d-project-list" value="${qEsc(r.project)}" onchange="dSetField(${r._id},'project',this.value)" placeholder="مصروفات عامة"></td>
+      <td><input type="text" class="d-input" autocomplete="off" data-lpignore="true" data-1p-ignore name="${_noAutofill('desc')}" value="${qEsc(r.desc)}" onchange="dSetField(${r._id},'desc',this.value)" placeholder="مثال: فطار، بنزين، مسامير..."></td>
+      <td><input type="text" class="d-input ltr-num" autocomplete="off" data-lpignore="true" data-1p-ignore inputmode="numeric" name="${_noAutofill('amount')}" value="${r.amount || ''}" onchange="dSetField(${r._id},'amount',this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
+      <td><input type="text" class="d-input" autocomplete="off" data-lpignore="true" data-1p-ignore list="d-project-list" name="${_noAutofill('project')}" value="${qEsc(r.project)}" onchange="dSetField(${r._id},'project',this.value)" placeholder="مصروفات عامة"></td>
       <td><button class="btn btn-sm btn-danger" onclick="dDelRow(${r._id})">✕</button></td>
     </tr>`).join('');
   document.getElementById('d-total').textContent = fmt(dTotal());
@@ -1079,13 +1108,13 @@ async function dSaveAll(){
   let saved = 0, total = 0;
   try {
     for (const r of valid) {
-      const row = { desc: String(r.desc).trim(), amount: qNum(r.amount), project: String(r.project || '').trim() || 'مصروفات عامة', date: r.date || todayStr() };
+      const row = { desc: String(r.desc).trim(), amount: qNum(r.amount), project: String(r.project || '').trim() || 'مصروفات عامة', date: DSTATE.date };
       await apiPost('addDailyExpenseRow', { row });
       saved++; total += qNum(r.amount);
     }
     msg.className = 'msg ok'; msg.textContent = `✔ اتسجل ${saved} مصروف بإجمالي ${fmt(total)} ج`;
-    const todayLog = await apiGet('getDailyExpenses', { date: todayStr() });
-    dRenderTodayLog(todayLog.rows || []);
+    const log = await apiGet('getDailyExpenses', { date: DSTATE.date });
+    dRenderTodayLog(log.rows || []);
     DSTATE.rows = [dNewRow(), dNewRow(), dNewRow()];
     dRenderRows();
   } catch(err){
@@ -1094,7 +1123,7 @@ async function dSaveAll(){
 }
 function dRenderTodayLog(rows){
   const box = document.getElementById('d-today-box'); if (!box) return;
-  if (!rows.length){ box.innerHTML = '<div class="empty">لسه مفيش مصاريف مسجلة النهاردة</div>'; return; }
+  if (!rows.length){ box.innerHTML = '<div class="empty">لسه مفيش مصاريف مسجلة في اليوم ده</div>'; return; }
   const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
   box.innerHTML = `
     <div style="margin-bottom:10px;font-size:13px;color:var(--muted);font-weight:700;">إجمالي مصاريف اليوم: <span style="color:var(--red);">${fmt(total)} ج</span></div>
