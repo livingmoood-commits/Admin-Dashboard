@@ -149,6 +149,16 @@
   .d-input::placeholder{ color:#b7ac9a; }
   #d-date-bar{ direction:ltr; text-align:center; font-weight:700; width:auto; min-width:170px; }
   #d-body td{ padding:6px 8px; }
+  /* دروب-داون مشاريع مبني بالكود بالكامل (مش <datalist> الأصلي) — عشان كروم كان بيخلط بينه وبين اقتراح باسورد محفوظ */
+  .d-suggest-box{ display:none; position:absolute; top:calc(100% + 4px); right:0; left:0; z-index:50; background:#fff; border:1px solid var(--border); border-radius:8px; box-shadow:0 10px 24px rgba(30,26,21,.16); max-height:220px; overflow-y:auto; text-align:right; }
+  .d-suggest-box.open{ display:block; }
+  .d-suggest-item{ padding:9px 12px; font-size:13px; cursor:pointer; }
+  .d-suggest-item:hover{ background:var(--cream); }
+  .d-days-list{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+  .d-day-chip{ all:unset; cursor:pointer; padding:7px 14px; border-radius:20px; font-size:12.5px; font-weight:700; color:var(--muted); background:var(--cream); border:1px solid var(--border); transition:background .2s, color .2s, border-color .2s, transform .2s var(--bounce); }
+  .d-day-chip:hover{ border-color:var(--gold); color:var(--dark); }
+  .d-day-chip.active{ background:var(--dark); color:#fff; border-color:var(--dark); }
+  .d-day-chip:active{ transform:scale(.94); }
 
   .filters{ display:flex; gap:9px; flex-wrap:wrap; margin-bottom:16px; align-items:center; }
   .moves-filter{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
@@ -1027,20 +1037,22 @@ async function deleteTreasuryMoveConfirm(id){
 // ميقترحش قيم قديمة (زي أسماء موظفين اتكتبت في صفحات تانية) جوه حقول المصاريف دي.
 function _noAutofill(prefix){ return prefix + '-' + Math.random().toString(36).slice(2, 10); }
 
-let DSTATE = { rows: [], date: lastWorkingDayStr() };
+let DSTATE = { rows: [], date: lastWorkingDayStr(), days: [] };
 function dNewRow(){ return { _id: Math.random(), desc: '', amount: '', project: '' }; }
 function dTotal(){ return DSTATE.rows.reduce((s, r) => s + qNum(r.amount), 0); }
 
 async function renderDailyExpenses(token) {
   try {
-    const [{ projects }, log] = await Promise.all([
+    const [{ projects }, log, { days }] = await Promise.all([
       apiGet('listProjects'),
-      apiGet('getDailyExpenses', { date: DSTATE.date })
+      apiGet('getDailyExpenses', { date: DSTATE.date }),
+      apiGet('listDailyExpenseDays')
     ]);
     if (isStaleNav(token)) return;
     DSTATE.rows = [dNewRow(), dNewRow(), dNewRow()];
+    DSTATE.days = days || [];
+    DPROJECT_NAMES = Array.from(new Set([...projects, 'مصروفات عامة']));
     document.getElementById('content').innerHTML = `
-      <datalist id="d-project-list">${projects.map(p => `<option value="${qEsc(p)}"></option>`).join('')}<option value="مصروفات عامة"></option></datalist>
       <div class="panel">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
           <h3 style="margin:0;">مصاريف اليوم — سطر لكل مصروف</h3>
@@ -1064,20 +1076,32 @@ async function renderDailyExpenses(token) {
         </div>
       </div>
       <div class="panel">
-        <h3 id="d-log-heading">مصاريف اليوم المسجلة فعليًا في الشيت (${DSTATE.date})</h3>
+        <h3>الأيام المسجلة</h3>
+        <div class="d-days-list" id="d-days-list"></div>
+        <h3 id="d-log-heading" style="margin-bottom:0;">مصاريف اليوم المسجلة فعليًا في الشيت (${DSTATE.date})</h3>
         <div id="d-today-box"></div>
       </div>
     `;
     dRenderRows();
+    dRenderDaysList();
     dRenderTodayLog(log.rows || []);
     document.getElementById('d-add-row').addEventListener('click', () => { DSTATE.rows.push(dNewRow()); dRenderRows(); });
     document.getElementById('d-save-all').addEventListener('click', dSaveAll);
-    document.getElementById('d-date-bar').addEventListener('change', dOnDateBarChange);
+    document.getElementById('d-date-bar').addEventListener('change', e => dLoadDayLog(e.target.value || todayStr()));
   } catch(err){ showError(err); }
 }
-async function dOnDateBarChange(e){
-  DSTATE.date = e.target.value || todayStr();
+function dRenderDaysList(){
+  const box = document.getElementById('d-days-list'); if (!box) return;
+  if (!DSTATE.days.length){ box.innerHTML = '<span style="font-size:12.5px;color:var(--muted);">لسه مفيش أيام متسجلة</span>'; return; }
+  box.innerHTML = DSTATE.days.map(d => `
+    <button type="button" class="d-day-chip${d.date === DSTATE.date ? ' active' : ''}" onclick="dLoadDayLog('${d.date}')">${qEsc(d.dayName)} ${d.date}</button>
+  `).join('');
+}
+async function dLoadDayLog(dateStr){
+  DSTATE.date = dateStr || todayStr();
+  const dateBar = document.getElementById('d-date-bar'); if (dateBar) dateBar.value = DSTATE.date;
   document.getElementById('d-log-heading').textContent = `مصاريف اليوم المسجلة فعليًا في الشيت (${DSTATE.date})`;
+  dRenderDaysList();
   const box = document.getElementById('d-today-box');
   box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
@@ -1085,6 +1109,7 @@ async function dOnDateBarChange(e){
     dRenderTodayLog(log.rows || []);
   } catch(err){ box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message||err}</div>`; }
 }
+let DPROJECT_NAMES = [];
 function dRenderRows(){
   const tb = document.getElementById('d-body'); if (!tb) return;
   tb.innerHTML = DSTATE.rows.map((r, i) => `
@@ -1092,10 +1117,34 @@ function dRenderRows(){
       <td style="text-align:center;color:var(--muted);font-size:11px;">${i + 1}</td>
       <td><input type="text" class="d-input" autocomplete="off" data-lpignore="true" data-1p-ignore name="${_noAutofill('desc')}" value="${qEsc(r.desc)}" onchange="dSetField(${r._id},'desc',this.value)" placeholder="مثال: فطار، بنزين، مسامير..."></td>
       <td><input type="text" class="d-input ltr-num" autocomplete="off" data-lpignore="true" data-1p-ignore inputmode="numeric" name="${_noAutofill('amount')}" value="${r.amount || ''}" onchange="dSetField(${r._id},'amount',this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
-      <td><input type="text" class="d-input" autocomplete="off" data-lpignore="true" data-1p-ignore list="d-project-list" name="${_noAutofill('project')}" value="${qEsc(r.project)}" onchange="dSetField(${r._id},'project',this.value)" placeholder="مصروفات عامة"></td>
+      <td style="position:relative;">
+        <input type="text" class="d-input" autocomplete="off" data-lpignore="true" data-1p-ignore
+          name="${_noAutofill('project')}" id="d-proj-${r._id}" value="${qEsc(r.project)}" placeholder="مصروفات عامة"
+          oninput="dShowProjectSuggestions(${r._id}, this)"
+          onfocus="dShowProjectSuggestions(${r._id}, this)"
+          onblur="setTimeout(()=>dHideProjectSuggestions(${r._id}), 150)"
+          onchange="dSetField(${r._id},'project',this.value)">
+        <div class="d-suggest-box" id="d-proj-box-${r._id}"></div>
+      </td>
       <td><button class="btn btn-sm btn-danger" onclick="dDelRow(${r._id})">✕</button></td>
     </tr>`).join('');
   document.getElementById('d-total').textContent = fmt(dTotal());
+}
+function dShowProjectSuggestions(rowId, inputEl){
+  const box = document.getElementById('d-proj-box-' + rowId); if (!box) return;
+  const q = String(inputEl.value || '').trim().toLowerCase();
+  const list = DPROJECT_NAMES.filter(p => !q || p.toLowerCase().includes(q)).slice(0, 8);
+  if (!list.length){ box.classList.remove('open'); box.innerHTML = ''; return; }
+  box.innerHTML = list.map(p => `<div class="d-suggest-item" onmousedown="event.preventDefault();dPickProjectSuggestion(${rowId}, '${p.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')">${qEsc(p)}</div>`).join('');
+  box.classList.add('open');
+}
+function dHideProjectSuggestions(rowId){
+  const box = document.getElementById('d-proj-box-' + rowId);
+  if (box) box.classList.remove('open');
+}
+function dPickProjectSuggestion(rowId, value){
+  dHideProjectSuggestions(rowId);
+  dSetField(rowId, 'project', value);
 }
 function dSetField(id, f, v){
   const r = DSTATE.rows.find(r => r._id === id); if (!r) return;
