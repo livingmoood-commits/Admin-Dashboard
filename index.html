@@ -38,7 +38,7 @@
   .sidebar.collapsed .user-menu-btn{ justify-content:center; padding:11px 0; }
   .sidebar.collapsed .nav button:hover{ transform:none; }
   .sidebar.collapsed .sep{ margin:10px 16px; }
-  .brand{ text-align:center; margin-bottom:22px; padding:0 14px; }
+  .brand{ text-align:center; margin-bottom:14px; padding:10px 14px 0; }
   .brand .logo{ width:54px; height:54px; border-radius:14px; background:linear-gradient(155deg,var(--gold),var(--gold-dim)); color:var(--dark); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:19px; margin:0 auto 10px; font-family:'IBM Plex Mono',monospace; }
   .brand h1{ font-size:16px; font-weight:800; letter-spacing:.5px; }
   .brand p{ font-size:10.5px; color:var(--gold); margin-top:3px; letter-spacing:.5px; }
@@ -321,7 +321,7 @@
   #genConfirmModal.open .q-confirm-card{ animation:modalPop .4s var(--bounce); }
   .pw-wrap{ position:relative; }
   .pw-wrap input{ padding-inline-end:40px !important; }
-  .pw-eye{ position:absolute; inset-inline-end:6px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; font-size:16px; padding:6px; line-height:1; color:var(--muted); border-radius:6px; transition:color .2s, background .2s; }
+  .pw-eye{ position:absolute; inset-inline-end:6px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; padding:6px; line-height:1; color:var(--muted); border-radius:6px; transition:color .2s, background .2s; display:flex; align-items:center; justify-content:center; }
   .pw-eye:hover{ color:var(--dark); background:#f0ebe3; }
 
   /* ===== Dashboard cards: clickable + drill-down modal ===== */
@@ -365,7 +365,7 @@
       <div class="field"><label>كلمة المرور</label>
         <div class="pw-wrap">
           <input type="password" id="l_pass" required autocomplete="current-password">
-          <button type="button" class="pw-eye" onclick="pwToggle(this)" tabindex="-1" aria-label="إظهار/إخفاء كلمة السر">👁</button>
+          <button type="button" class="pw-eye" onclick="pwToggle(this)" tabindex="-1" aria-label="إظهار/إخفاء كلمة السر"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg></button>
         </div>
       </div>
       <button type="submit" class="btn btn-primary" id="loginBtn" style="width:100%;">دخول</button>
@@ -378,7 +378,6 @@
 <div class="sidebar" id="sidebar">
   <button class="sidebar-toggle" id="sidebarToggleBtn" onclick="toggleSidebarCollapse()" title="طي/توسيع القائمة" aria-label="طي القائمة الجانبية">‹</button>
   <div class="brand">
-    <div class="logo">LM</div>
     <h1>Living Mood</h1>
     <p>نظام إدارة المصنع</p>
   </div>
@@ -427,9 +426,9 @@
   <div class="q-confirm-card">
     <h3>تغيير كلمة السر</h3>
     <p>هتتغير كلمة السر بتاعتك في نظام Living Mood</p>
-    <div class="field pw-wrap" style="margin-bottom:12px;"><input type="password" id="cp-old" placeholder="كلمة السر الحالية" autocomplete="current-password"><button type="button" class="pw-eye" onclick="pwToggle(this)" tabindex="-1" aria-label="إظهار/إخفاء كلمة السر">👁</button></div>
-    <div class="field pw-wrap" style="margin-bottom:12px;"><input type="password" id="cp-new" placeholder="كلمة السر الجديدة" autocomplete="new-password"><button type="button" class="pw-eye" onclick="pwToggle(this)" tabindex="-1" aria-label="إظهار/إخفاء كلمة السر">👁</button></div>
-    <div class="field pw-wrap" style="margin-bottom:16px;"><input type="password" id="cp-confirm" placeholder="تأكيد كلمة السر الجديدة" autocomplete="new-password"><button type="button" class="pw-eye" onclick="pwToggle(this)" tabindex="-1" aria-label="إظهار/إخفاء كلمة السر">👁</button></div>
+    <div class="field pw-wrap" style="margin-bottom:12px;"><input type="password" id="cp-old" placeholder="كلمة السر الحالية" autocomplete="current-password"><button type="button" class="pw-eye" onclick="pwToggle(this)" tabindex="-1" aria-label="إظهار/إخفاء كلمة السر"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+    <div class="field pw-wrap" style="margin-bottom:12px;"><input type="password" id="cp-new" placeholder="كلمة السر الجديدة" autocomplete="new-password"><button type="button" class="pw-eye" onclick="pwToggle(this)" tabindex="-1" aria-label="إظهار/إخفاء كلمة السر"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+    <div class="field pw-wrap" style="margin-bottom:16px;"><input type="password" id="cp-confirm" placeholder="تأكيد كلمة السر الجديدة" autocomplete="new-password"><button type="button" class="pw-eye" onclick="pwToggle(this)" tabindex="-1" aria-label="إظهار/إخفاء كلمة السر"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
     <div class="msg" id="cpStatus" style="margin-bottom:14px;"></div>
     <div class="q-confirm-btns">
       <button class="btn btn-primary" id="cpSaveBtn" onclick="submitChangePassword()">حفظ</button>
@@ -500,10 +499,11 @@ async function apiGet(action, params) {
   return data;
 }
 async function apiPost(action, payload) {
+  const actor = localStorage.getItem('lm_userName') || '';
   const data = await _apiFetch(API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // بيتفادى CORS preflight
-    body: JSON.stringify({ action, ...payload })
+    body: JSON.stringify({ action, actor, ...payload })
   });
   apiCacheClear(); // أي POST معناه البيانات اتغيرت — امسح الكاش عشان القراءة الجاية تكون طازة
   return data;
@@ -2423,12 +2423,14 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
 });
 
 /* ================= Logout / Change Password ================= */
+const _EYE_OPEN_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>';
+const _EYE_CLOSED_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 5.2A10.6 10.6 0 0 1 12 5c7 0 11 8 11 8a17.6 17.6 0 0 1-3.2 4.1M6.6 6.6C3.4 8.6 1 12 1 12s4 8 11 8a10.6 10.6 0 0 0 4.2-.86"/><path d="M1 1l22 22"/><path d="M14.1 14.1a3 3 0 1 1-4.2-4.2"/></svg>';
 function pwToggle(btn){
   const input = btn.previousElementSibling;
   if (!input) return;
   const showing = input.type === 'text';
   input.type = showing ? 'password' : 'text';
-  btn.textContent = showing ? '👁' : '🙈';
+  btn.innerHTML = showing ? _EYE_OPEN_SVG : _EYE_CLOSED_SVG;
 }
 
 let _genConfirmCallback = null;
