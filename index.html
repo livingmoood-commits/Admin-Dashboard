@@ -150,10 +150,11 @@
   #d-date-bar{ direction:ltr; text-align:center; font-weight:700; width:auto; min-width:170px; }
   #d-body td{ padding:6px 8px; }
   /* دروب-داون مشاريع مبني بالكود بالكامل (مش <datalist> الأصلي) — عشان كروم كان بيخلط بينه وبين اقتراح باسورد محفوظ */
-  .d-suggest-box{ display:none; position:absolute; top:calc(100% + 4px); right:0; left:0; z-index:50; background:#fff; border:1px solid var(--border); border-radius:8px; box-shadow:0 10px 24px rgba(30,26,21,.16); max-height:220px; overflow-y:auto; text-align:right; }
-  .d-suggest-box.open{ display:block; }
-  .d-suggest-item{ padding:9px 12px; font-size:13px; cursor:pointer; }
-  .d-suggest-item:hover{ background:var(--cream); }
+  .d-suggest-box{ display:none; position:absolute; top:calc(100% + 4px); right:0; left:0; z-index:50; background:#fff; border:1px solid var(--border); border-radius:10px; box-shadow:0 12px 26px rgba(30,26,21,.18); max-height:220px; overflow-y:auto; text-align:right; padding:4px; }
+  .d-suggest-box.open{ display:block; animation:dSuggestIn .15s var(--bounce); }
+  @keyframes dSuggestIn{ from{ opacity:0; transform:translateY(-4px); } to{ opacity:1; transform:translateY(0); } }
+  .d-suggest-item{ padding:9px 12px; font-size:13px; font-family:inherit; cursor:pointer; border-radius:7px; transition:background .12s, color .12s; }
+  .d-suggest-item:hover, .d-suggest-item.active{ background:var(--gold); color:var(--dark); font-weight:700; }
   .d-days-list{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
   .d-day-chip{ all:unset; cursor:pointer; padding:7px 14px; border-radius:20px; font-size:12.5px; font-weight:700; color:var(--muted); background:var(--cream); border:1px solid var(--border); transition:background .2s, color .2s, border-color .2s, transform .2s var(--bounce); }
   .d-day-chip:hover{ border-color:var(--gold); color:var(--dark); }
@@ -1202,18 +1203,19 @@ function dRenderRows(){
   tb.innerHTML = DSTATE.rows.map((r, i) => `
     <tr>
       <td style="text-align:center;color:var(--muted);font-size:11px;">${i + 1}</td>
-      <td><input type="text" class="d-input" autocomplete="off" data-lpignore="true" data-1p-ignore name="${_noAutofill('desc')}" value="${qEsc(r.desc)}" onchange="dSetField(${r._id},'desc',this.value)" placeholder="مثال: فطار، بنزين، مسامير..."></td>
-      <td><input type="text" class="d-input ltr-num" autocomplete="off" data-lpignore="true" data-1p-ignore inputmode="numeric" name="${_noAutofill('amount')}" value="${r.amount || ''}" onchange="dSetField(${r._id},'amount',this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
+      <td><input type="text" class="d-input" autocomplete="off" data-lpignore="true" data-1p-ignore name="${_noAutofill('desc')}" value="${qEsc(r.desc)}" onchange="dSetField(${r._id},'desc',this.value)" onkeydown="dHandleTab(event)" placeholder="مثال: فطار، بنزين، مسامير..."></td>
+      <td><input type="text" class="d-input ltr-num" autocomplete="off" data-lpignore="true" data-1p-ignore inputmode="numeric" name="${_noAutofill('amount')}" value="${r.amount || ''}" onchange="dSetField(${r._id},'amount',this.value)" onkeypress="return /[0-9.]/.test(event.key)" onkeydown="dHandleTab(event)"></td>
       <td style="position:relative;">
         <input type="text" class="d-input" autocomplete="off" data-lpignore="true" data-1p-ignore
           name="${_noAutofill('project')}" id="d-proj-${r._id}" value="${qEsc(r.project)}" placeholder="مصروفات عامة"
           oninput="dShowProjectSuggestions(${r._id}, this)"
           onfocus="dShowProjectSuggestions(${r._id}, this)"
           onblur="setTimeout(()=>dHideProjectSuggestions(${r._id}), 150)"
+          onkeydown="dHandleProjectKeydown(event, ${r._id})"
           onchange="dSetField(${r._id},'project',this.value)">
         <div class="d-suggest-box" id="d-proj-box-${r._id}"></div>
       </td>
-      <td><button class="btn btn-sm btn-danger" onclick="dDelRow(${r._id})">✕</button></td>
+      <td><button class="btn btn-sm btn-danger" tabindex="-1" onclick="dDelRow(${r._id})">✕</button></td>
     </tr>`).join('');
   document.getElementById('d-total').textContent = fmt(dTotal());
 }
@@ -1232,6 +1234,46 @@ function dHideProjectSuggestions(rowId){
 function dPickProjectSuggestion(rowId, value){
   dHideProjectSuggestions(rowId);
   dSetField(rowId, 'project', value);
+}
+/* Tab بيتنقل بين خلايا الجدول (وصف/مبلغ/مشروع) بس، مش بيخرج بره لأي زرار أو حاجة تانية */
+function dHandleTab(e){
+  if (e.key !== 'Tab') return;
+  e.preventDefault();
+  const inputs = Array.from(document.querySelectorAll('#d-body .d-input'));
+  const idx = inputs.indexOf(e.target);
+  if (idx === -1) return;
+  let next = idx + (e.shiftKey ? -1 : 1);
+  if (next < 0) next = inputs.length - 1;
+  if (next >= inputs.length) next = 0;
+  inputs[next].focus();
+  if (inputs[next].select) inputs[next].select();
+}
+function dHandleProjectKeydown(e, rowId){
+  const box = document.getElementById('d-proj-box-' + rowId);
+  if (e.key === 'Tab'){ if (box) box.classList.remove('open'); dHandleTab(e); return; }
+  if (!box || !box.classList.contains('open')) return;
+  const items = Array.from(box.querySelectorAll('.d-suggest-item'));
+  if (!items.length) return;
+  let active = items.findIndex(it => it.classList.contains('active'));
+  if (e.key === 'ArrowDown'){
+    e.preventDefault();
+    active = (active + 1) % items.length;
+    items.forEach(it => it.classList.remove('active'));
+    items[active].classList.add('active');
+    items[active].scrollIntoView({ block:'nearest' });
+  } else if (e.key === 'ArrowUp'){
+    e.preventDefault();
+    active = active <= 0 ? items.length - 1 : active - 1;
+    items.forEach(it => it.classList.remove('active'));
+    items[active].classList.add('active');
+    items[active].scrollIntoView({ block:'nearest' });
+  } else if (e.key === 'Enter' && active > -1){
+    e.preventDefault();
+    items[active].dispatchEvent(new Event('mousedown'));
+    items[active].click();
+  } else if (e.key === 'Escape'){
+    box.classList.remove('open');
+  }
 }
 function dSetField(id, f, v){
   const r = DSTATE.rows.find(r => r._id === id); if (!r) return;
