@@ -463,7 +463,7 @@ function apiCacheClear() { _apiCache.clear(); } // بتتنادى بعد أي ع
 
 async function _apiFetch(url, opts) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 25000); // فشل بسرعة بدل ما يعلّق لو الشبكة/السيرفر واقف
+  const timeoutId = setTimeout(() => controller.abort(), 45000); // فشل بسرعة معقولة بدل ما يعلّق للأبد، مع هامش أكبر لأي ملف كبير فيه شيتات كتير
   let res;
   try {
     res = await fetch(url, { ...(opts || {}), signal: controller.signal });
