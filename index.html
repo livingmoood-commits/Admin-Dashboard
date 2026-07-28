@@ -465,6 +465,13 @@ async function apiPost(action, payload) {
 function fmt(n){ return (Number(n)||0).toLocaleString('en-US', {maximumFractionDigits:0}); }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function yesterdayStr(){ const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0,10); }
+// آخر يوم شغل فعلي (بيتخطى الجمعة — لو النهاردة السبت مثلاً، بيرجع الخميس مش الجمعة)
+function lastWorkingDayStr(){
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  if (d.getDay() === 5) d.setDate(d.getDate() - 1); // 5 = الجمعة
+  return d.toISOString().slice(0,10);
+}
 function weekAgoStr(){ const d=new Date(); d.setDate(d.getDate()-7); return d.toISOString().slice(0,10); }
 // بيحدّد لو الخطأ سببه فصل النت (مش مشكلة في السيرفر أو في الداتا) — بيغطي رسائل
 // الفشل المختلفة اللي كل متصفح بيرميها لما مفيش اتصال (كروم/إيدج، فايرفوكس، سفاري)
@@ -1020,7 +1027,7 @@ async function deleteTreasuryMoveConfirm(id){
 // ميقترحش قيم قديمة (زي أسماء موظفين اتكتبت في صفحات تانية) جوه حقول المصاريف دي.
 function _noAutofill(prefix){ return prefix + '-' + Math.random().toString(36).slice(2, 10); }
 
-let DSTATE = { rows: [], date: todayStr() };
+let DSTATE = { rows: [], date: lastWorkingDayStr() };
 function dNewRow(){ return { _id: Math.random(), desc: '', amount: '', project: '' }; }
 function dTotal(){ return DSTATE.rows.reduce((s, r) => s + qNum(r.amount), 0); }
 
@@ -2319,7 +2326,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     await apiGet('login', { name, pass }); // apiGet بيرمي Error لو data.error موجودة
     localStorage.setItem('lm_loggedIn', '1');
     localStorage.setItem('lm_userName', name);
-    document.getElementById('loginWrap').style.display = 'none';
+    document.getElementById('loginWrap').remove(); // مش hide بس — لازم يتشال من الـ DOM خالص عشان كروم يبطل يقترح باسورد "Hazem" المحفوظ في أي حقل تاني في الصفحة
     document.getElementById('appRoot').style.display = 'flex';
     goTo(sessionStorage.getItem('lm_currentPage') || 'dashboard');
   } catch (err) {
@@ -2361,13 +2368,7 @@ function logout(){
     localStorage.removeItem('lm_loggedIn');
     localStorage.removeItem('lm_userName');
     sessionStorage.clear();
-    document.getElementById('appRoot').style.display = 'none';
-    document.getElementById('loginWrap').style.display = 'flex';
-    document.getElementById('l_name').value = '';
-    document.getElementById('l_pass').value = '';
-    const loginMsg = document.getElementById('loginMsg'); loginMsg.className='msg'; loginMsg.textContent='';
-    const loginBtn = document.getElementById('loginBtn'); loginBtn.disabled = false; loginBtn.textContent = 'دخول';
-    document.getElementById('l_name').focus();
+    window.location.reload(); // بديل بسيط وآمن بدل إظهار فورم اللوجن تاني، وبيضمن مفيش أي بواقي من الصفحة القديمة تأثر على كروم
   }, 'تسجيل الخروج');
 }
 
@@ -2402,7 +2403,7 @@ async function submitChangePassword(){
 
 /* ================= Init ================= */
 if (localStorage.getItem('lm_loggedIn') === '1') {
-  document.getElementById('loginWrap').style.display = 'none';
+  document.getElementById('loginWrap').remove();
   document.getElementById('appRoot').style.display = 'flex';
   goTo(sessionStorage.getItem('lm_currentPage') || 'dashboard');
 } else {
