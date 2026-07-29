@@ -703,10 +703,73 @@ function showError(err){
 }
 
 /* ================= Dashboard ================= */
+/* ================= Payments Master Table (شكل موحّد بين نظرة عامة وصفحة Payment Statements) ================= */
+let _pmDashCustomers = []; // آخر قائمة عملاء اتحملت في نسخة نظرة عامة من الجدول ده (منفصلة عن _pHomeCustomers بتاعة صفحة Payment Statements)
+
+function paymentsMasterStats(customers){
+  const totalAgreed = customers.reduce((s,c)=>s+(Number(c.total)||0), 0);
+  const totalReceived = customers.reduce((s,c)=>s+(Number(c.received)||0), 0);
+  const totalRemaining = totalAgreed - totalReceived;
+  const completedCount = customers.filter(c=>c.completed).length;
+  const incompleteCount = customers.length - completedCount;
+  const pct = totalAgreed > 0 ? Math.min(100, (totalReceived/totalAgreed)*100) : 0;
+  return { count: customers.length, completedCount, incompleteCount, totalAgreed, totalReceived, totalRemaining, pct };
+}
+
+// جدول موحّد: صف "الإجمالي" (كل السجلات/كل المستحق) + صف "مكتمل الدفع" (عدد + المُحصّل) +
+// صف "غير مكتمل" (عدد + الباقي لينا برا) — كل صف قابل للدوس عليه يفتح Pop بتفاصيل السجلات
+function paymentsMasterTableHTML(customers, source){
+  if (!customers.length) return `<div class="empty">مفيش سجلات دفعات لسه — من صفحة Payment Statements تقدر تبدأ سجل جديد</div>`;
+  const s = paymentsMasterStats(customers);
+  return `
+    <div class="tbl-wrap">
+      <table class="pm-table">
+        <thead><tr><th>الحالة</th><th>عدد السجلات</th><th>المبلغ</th></tr></thead>
+        <tbody>
+          <tr class="row-clickable" onclick="openPaymentsMasterDetail('all','${source}')">
+            <td>الإجمالي (كل السجلات)</td><td>${s.count}</td><td class="gold" style="font-weight:800;">${fmt(s.totalAgreed)} ج</td>
+          </tr>
+          <tr class="row-clickable" onclick="openPaymentsMasterDetail('completed','${source}')">
+            <td>مكتمل الدفع</td><td>${s.completedCount}</td><td style="color:var(--green);font-weight:800;">${fmt(s.totalReceived)} ج</td>
+          </tr>
+          <tr class="row-clickable" onclick="openPaymentsMasterDetail('incomplete','${source}')">
+            <td>غير مكتمل (الباقي لينا برا)</td><td>${s.incompleteCount}</td><td style="color:var(--red);font-weight:800;">${fmt(s.totalRemaining)} ج</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="master-progress" style="margin-top:12px;">
+      <div class="master-progress-fill${Math.abs(s.totalRemaining)<=0.01?' done':''}" style="width:${s.pct}%;"></div>
+    </div>
+    <div style="text-align:left;font-size:12px;color:var(--muted);margin-top:4px;">نسبة التحصيل الإجمالية: ${s.pct.toFixed(0)}%</div>
+  `;
+}
+
+// دوس على أي صف في الجدول (الإجمالي / مكتمل / غير مكتمل) → Pop فيه قائمة السجلات المطابقة، بأنيميشن
+function openPaymentsMasterDetail(kind, source){
+  const customers = source === 'home' ? _pHomeCustomers : _pmDashCustomers;
+  if (!customers || !customers.length) return;
+  let list = customers.map(c => ({ ...c, remaining: (Number(c.total)||0) - (Number(c.received)||0) }));
+  let title = 'كل السجلات';
+  if (kind === 'completed'){ list = list.filter(c=>c.completed); title = 'السجلات المكتملة الدفع'; }
+  else if (kind === 'incomplete'){ list = list.filter(c=>!c.completed); list.sort((a,b)=>b.remaining-a.remaining); title = 'السجلات غير المكتملة — الباقي لينا برا'; }
+  else { list.sort((a,b)=> String(b.date||'').localeCompare(String(a.date||''))); }
+  const rows = list.length ? list.map(c => `
+    <div class="cd-list-row" style="cursor:pointer;" onclick='openPaymentPreviewModal(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
+      <span class="n">${qEsc(c.engineer || c.name)}${c.address ? ' — '+qEsc(c.address) : ''}</span>
+      <span class="p">${fmt(c.total)} ج <span style="color:var(--muted);font-weight:600;">(الباقي ${fmt(c.remaining)} ج)</span></span>
+    </div>`).join('') : '<div class="empty">مفيش سجلات في القسم ده</div>';
+  openCardModal(`
+    <div class="cd-head"><h3>${title} (${list.length})</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div>${rows}</div>
+  `);
+}
+
 async function renderDashboard(token) {
   try {
-    const d = await apiGet('getDashboardData');
+    const [d, { customers }] = await Promise.all([apiGet('getDashboardData'), apiGet('payListCustomers')]);
     if (isStaleNav(token)) return;
+    _pmDashCustomers = customers;
     document.getElementById('content').innerHTML = `
       <div class="cards">
         <div class="card clickable" onclick="openEmployeesCard()"><div class="label">عدد الموظفين</div><div class="value">${d.employeesCount}</div></div>
@@ -734,31 +797,10 @@ async function renderDashboard(token) {
           <h3 style="margin:0;">Summary Payment Statements — مستحقاتنا برا</h3>
           <button class="btn btn-sm btn-outline" onclick="goTo('debtors')">فتح الصفحة الكاملة ←</button>
         </div>
-        ${renderDashPaymentsSummary(d.paymentsSummary)}
+        ${paymentsMasterTableHTML(customers, 'dash')}
       </div>
     `;
   } catch(err){ showError(err); }
-}
-
-function renderDashPaymentsSummary(ps){
-  if (!ps || !ps.customersCount) return `<div class="empty">مفيش سجلات دفعات لسه — من صفحة Payment Statements تقدر تبدأ سجل جديد</div>`;
-  return `
-    <div class="cards" style="margin-bottom:14px;">
-      <div class="card"><div class="label">عدد السجلات</div><div class="value">${ps.customersCount}</div></div>
-      <div class="card"><div class="label">إجمالي المستحق</div><div class="value gold">${fmt(ps.totalAgreed)} ج</div></div>
-      <div class="card"><div class="label">إجمالي المُحصّل</div><div class="value green">${fmt(ps.totalReceived)} ج</div></div>
-      <div class="card"><div class="label">الباقي لينا برا</div><div class="value" style="color:${ps.totalRemaining>0.01?'var(--red)':'var(--green)'};">${fmt(ps.totalRemaining)} ج</div></div>
-    </div>
-    ${ps.topOutstanding && ps.topOutstanding.length ? `
-    <div style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:8px;">أكبر 5 مستحقات لسه متحصلتش</div>
-    <div class="tbl-wrap"><table><thead><tr><th>العميل / المشروع</th><th>الإجمالي</th><th>المستلم</th><th>الباقي</th></tr></thead>
-    <tbody>${ps.topOutstanding.map(c => `<tr class="row-clickable" onclick='openPaymentPreviewModal(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
-      <td>${qEsc(c.engineer || c.name)}${c.address ? ' — '+qEsc(c.address) : ''}</td>
-      <td>${fmt(c.total)} ج</td><td>${fmt(c.received)} ج</td>
-      <td style="color:var(--red);font-weight:700;">${fmt(c.remaining)} ج</td>
-    </tr>`).join('')}</tbody></table></div>`
-    : `<div class="empty" style="margin-top:6px;">مفيش مستحقات متبقية — كل السجلات متحصّلة بالكامل 🎉</div>`}
-  `;
 }
 
 // دوس على أي مشروع من "أعلى 5 مشاريع" في نظرة عامة → Pop فيه تفاصيل المشروع بالكامل بأنيميشن
