@@ -182,6 +182,25 @@
   .d-day-chip.active{ background:var(--dark); color:#fff; border-color:var(--dark); }
   .d-day-chip:active{ transform:scale(.94); }
 
+  /* ===== جدول "مصاريف اليوم المسجلة فعليًا في الشيت" — قابل للتعديل المباشر ===== */
+  .d-log-input{ width:100%; border:1.5px solid transparent; background:transparent; border-radius:7px; padding:7px 9px; font-size:13px; font-family:inherit; color:var(--dark); text-align:center; transition:border-color .15s, background .15s, box-shadow .15s; }
+  .d-log-input:hover{ border-color:var(--border); background:#fff; }
+  .d-log-input:focus{ outline:none; border-color:var(--gold); background:#fff; box-shadow:0 0 0 3px rgba(184,151,90,.16); }
+  .d-log-input.d-log-desc{ text-align:right; }
+  .d-log-input.d-log-amount{ text-align:center; color:var(--red); font-weight:700; }
+  .d-log-row td{ position:relative; vertical-align:middle; }
+  .d-log-row.saving .d-log-input{ opacity:.55; }
+  .d-log-row.saving::after{ content:''; position:absolute; inset-inline-start:6px; top:50%; width:14px; height:14px; margin-top:-7px; border-radius:50%; border:2px solid var(--gold-dim); border-top-color:transparent; animation:dSpin .6s linear infinite; }
+  @keyframes dSpin{ to{ transform:rotate(360deg); } }
+  .d-log-input.d-saved-flash{ animation:dSavedFlash .8s ease; }
+  @keyframes dSavedFlash{ 0%{ background:#e6f4ea; border-color:var(--green); } 100%{ background:#fff; border-color:transparent; } }
+  .d-log-input.d-err-flash{ animation:dErrFlash .9s ease; }
+  @keyframes dErrFlash{ 0%,40%{ background:#fbe9e7; border-color:var(--red); } 100%{ background:#fff; border-color:transparent; } }
+  .d-log-del-btn{ all:unset; cursor:pointer; width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:13px; transition:background .15s, color .15s, transform .15s var(--bounce); }
+  .d-log-del-btn:hover{ background:#fbe9e7; color:var(--red); }
+  .d-log-del-btn:active{ transform:scale(.88); }
+  .d-log-row.removing{ transition:opacity .2s, transform .2s; opacity:0; transform:scale(.97); }
+
   .filters{ display:flex; gap:9px; flex-wrap:wrap; margin-bottom:16px; align-items:center; }
   .moves-filter{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
   .moves-filter button{ all:unset; cursor:pointer; padding:8px 16px; border-radius:20px; font-size:12.5px; font-weight:700; color:var(--muted); background:var(--cream); border:1px solid var(--border); transition:background .2s, color .2s, border-color .2s, transform .2s var(--bounce); }
@@ -1695,14 +1714,96 @@ async function dSaveAll(){
     msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err) + (saved ? ` (اتسجل ${saved} قبل ما يحصل الخطأ)` : '');
   } finally { btn.disabled = false; }
 }
+// حالة سطور "مصاريف اليوم المسجلة فعليًا" — بتتخزن هنا عشان نقدر نعدّل/نحذف بالـ row الصحيح
+let D_TODAY_ROWS = [];
 function dRenderTodayLog(rows){
   const box = document.getElementById('d-today-box'); if (!box) return;
-  if (!rows.length){ box.innerHTML = '<div class="empty">لسه مفيش مصاريف مسجلة في اليوم ده</div>'; return; }
-  const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  D_TODAY_ROWS = rows || [];
+  if (!D_TODAY_ROWS.length){ box.innerHTML = '<div class="empty">لسه مفيش مصاريف مسجلة في اليوم ده</div>'; return; }
   box.innerHTML = `
-    <div style="margin-bottom:10px;font-size:13px;color:var(--muted);font-weight:700;">إجمالي مصاريف اليوم: <span style="color:var(--red);">${fmt(total)} ج</span></div>
-    <div class="tbl-wrap tbl-wrap-scroll"><table><thead><tr><th>البيان</th><th>المبلغ</th><th>التاريخ</th><th>المشروع</th></tr></thead>
-    <tbody>${rows.map(r => `<tr><td>${qEsc(r.desc)}</td><td style="color:var(--red)">${fmt(r.amount)} ج</td><td>${qEsc(r.date || '—')}</td><td>${qEsc(r.project || '—')}</td></tr>`).join('')}</tbody></table></div>`;
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      <div style="font-size:13px;color:var(--muted);font-weight:700;">إجمالي مصاريف اليوم: <span id="d-today-total" style="color:var(--red);">${fmt(dTodayTotal())} ج</span></div>
+      <div class="msg" id="d-today-msg" style="margin:0;"></div>
+    </div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">اضغط في أي خانة وعدّل — بيتحفظ لوحده أول ما تخرج من الخانة</div>
+    <div class="tbl-wrap tbl-wrap-scroll"><table><thead><tr><th>البيان</th><th style="width:110px;">المبلغ</th><th style="width:110px;">التاريخ</th><th style="width:170px;">المشروع</th><th style="width:36px;"></th></tr></thead>
+    <tbody id="d-today-tbody">${D_TODAY_ROWS.map(dTodayRowHtml).join('')}</tbody></table></div>`;
+}
+function dTodayTotal(){ return D_TODAY_ROWS.reduce((s, r) => s + (Number(r.amount) || 0), 0); }
+function dUpdateTodayTotalBadge(){
+  const el = document.getElementById('d-today-total');
+  if (el) el.textContent = fmt(dTodayTotal());
+}
+function dTodayRowHtml(r){
+  return `<tr class="d-log-row" id="d-today-row-${r.row}">
+    <td><input type="text" class="d-log-input d-log-desc" autocomplete="off" data-lpignore="true" data-1p-ignore value="${qEsc(r.desc)}" onchange="dTodaySave(${r.row}, 'desc', this)"></td>
+    <td><input type="text" inputmode="numeric" class="d-log-input d-log-amount ltr-num" autocomplete="off" data-lpignore="true" data-1p-ignore value="${r.amount || ''}" onkeypress="return /[0-9.]/.test(event.key)" onchange="dTodaySave(${r.row}, 'amount', this)"></td>
+    <td style="text-align:center;color:var(--muted);font-size:12.5px;">${qEsc(r.date || '—')}</td>
+    <td><input type="text" class="d-log-input" autocomplete="off" data-lpignore="true" data-1p-ignore value="${qEsc(r.project)}" placeholder="مصروفات عامة" onchange="dTodaySave(${r.row}, 'project', this)"></td>
+    <td style="text-align:center;"><button type="button" class="d-log-del-btn" title="حذف المصروف ده" onclick="dTodayDelete(${r.row})">✕</button></td>
+  </tr>`;
+}
+function _dTodayMsg(type, text){
+  const el = document.getElementById('d-today-msg'); if (!el) return;
+  el.className = 'msg' + (type ? ' ' + type : '');
+  el.textContent = text || '';
+  if (text) setTimeout(() => { if (el.textContent === text) { el.className = 'msg'; el.textContent = ''; } }, 2500);
+}
+// تعديل سريع لخانة واحدة: بيتحفظ أول ما تخرج من الخانة (onchange)، مع تحديث فوري
+// للشكل (تعتيم + سبينر وقت الحفظ، ثم فلاش أخضر لو نجح أو أحمر لو فشل).
+async function dTodaySave(rowNum, field, inputEl){
+  const rec = D_TODAY_ROWS.find(r => r.row === rowNum); if (!rec) return;
+  let value = inputEl.value;
+  if (field === 'amount') {
+    value = qNum(value);
+    if (!(value > 0)) { inputEl.value = rec.amount || ''; return; }
+  } else {
+    value = String(value).trim();
+    if (field === 'desc' && !value) { inputEl.value = rec.desc; return; }
+    if (field === 'project' && !value) value = 'مصروفات عامة';
+  }
+  if (String(value) === String(rec[field])) return; // مفيش تغيير فعلي — من غير ما نبعت طلب فاضي
+
+  const tr = document.getElementById('d-today-row-' + rowNum);
+  if (tr) tr.classList.add('saving');
+  const payload = { date: DSTATE.date, row: rowNum };
+  payload[field] = value;
+  try {
+    await apiPost('updateDailyExpenseRow', payload);
+    rec[field] = value;
+    inputEl.value = field === 'amount' ? value : value;
+    if (tr) tr.classList.remove('saving');
+    inputEl.classList.remove('d-saved-flash'); void inputEl.offsetWidth; inputEl.classList.add('d-saved-flash');
+    if (field === 'amount') dUpdateTodayTotalBadge();
+  } catch(err){
+    if (tr) tr.classList.remove('saving');
+    inputEl.value = rec[field] || '';
+    inputEl.classList.remove('d-err-flash'); void inputEl.offsetWidth; inputEl.classList.add('d-err-flash');
+    _dTodayMsg('err', '✕ تعذر الحفظ: ' + (err.message || err));
+  }
+}
+async function dTodayDelete(rowNum){
+  const ok = await openGenConfirm('هل تريد حذف هذا المصروف نهائيًا من الشيت؟', 'حذف مصروف');
+  if (!ok) return;
+  const tr = document.getElementById('d-today-row-' + rowNum);
+  if (tr) tr.classList.add('saving');
+  try {
+    await apiPost('deleteDailyExpenseRow', { date: DSTATE.date, row: rowNum });
+    if (tr) {
+      tr.classList.add('removing');
+      setTimeout(async () => {
+        // بعد الحذف، أرقام الصفوف اللي بعده بتتزحلق — فبنعيد تحميل قايمة اليوم عشان الأرقام تفضل مطابقة
+        try {
+          const log = await apiGet('getDailyExpenses', { date: DSTATE.date });
+          dRenderTodayLog(log.rows || []);
+          _dTodayMsg('ok', '✔ اتحذف المصروف');
+        } catch(err){ _dTodayMsg('err', '✕ اتحذف بس تعذر تحديث القايمة: ' + (err.message || err)); }
+      }, 200);
+    }
+  } catch(err){
+    if (tr) tr.classList.remove('saving');
+    _dTodayMsg('err', '✕ تعذر الحذف: ' + (err.message || err));
+  }
 }
 
 /* ================= Projects ================= */
