@@ -88,6 +88,8 @@
   .empty{ text-align:center; color:var(--muted); padding:24px; font-size:13px; }
   .tbl-totals-row td{ background:var(--dark); color:var(--gold, #D4B483); font-weight:700; border-bottom:none; }
   .tbl-totals-row:hover td{ background:var(--dark); }
+  .master-group-sep td{ background:var(--cream); border:none !important; height:14px; padding:0; border-top:3px solid var(--dark) !important; }
+  .master-group-sep:hover td{ background:var(--cream); }
 
   .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:18px; }
   @media(max-width:980px){ .grid2{ grid-template-columns:1fr; } }
@@ -200,6 +202,21 @@
   .d-log-del-btn:hover{ background:#fbe9e7; color:var(--red); }
   .d-log-del-btn:active{ transform:scale(.88); }
   .d-log-row.removing{ transition:opacity .2s, transform .2s; opacity:0; transform:scale(.97); }
+
+  /* ===== تلوين خلايا "حضور شهر/اسبوعي" حسب كود الحركة المكتوب فيها ===== */
+  .pay-cell{ transition:background .15s, border-color .15s, color .15s; font-weight:700; }
+  .pay-cell.pay-add{ background:#e6f4ea !important; border-color:var(--green) !important; color:var(--green) !important; }
+  .pay-cell.pay-ded{ background:#fbe9e7 !important; border-color:var(--red) !important; color:var(--red) !important; }
+  .pay-cell.pay-draw{ background:#fff4e0 !important; border-color:#b8860b !important; color:#8a6408 !important; }
+  .pay-cell.pay-absent{ background:#f1e8f7 !important; border-color:#7b3fa0 !important; color:#5e2f80 !important; }
+  .pay-cell.pay-other{ background:#eef3f8 !important; border-color:#3a6ea5 !important; color:#2b5580 !important; }
+  .pay-legend{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .pay-legend-chip{ display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border-radius:20px; font-size:11.5px; font-weight:700; border:1.5px solid transparent; }
+  .pay-legend-chip.pay-add{ background:#e6f4ea; color:var(--green); border-color:var(--green); }
+  .pay-legend-chip.pay-ded{ background:#fbe9e7; color:var(--red); border-color:var(--red); }
+  .pay-legend-chip.pay-draw{ background:#fff4e0; color:#8a6408; border-color:#b8860b; }
+  .pay-legend-chip.pay-absent{ background:#f1e8f7; color:#5e2f80; border-color:#7b3fa0; }
+  .pay-legend-chip.pay-other{ background:#eef3f8; color:#2b5580; border-color:#3a6ea5; }
 
   .filters{ display:flex; gap:9px; flex-wrap:wrap; margin-bottom:16px; align-items:center; }
   .moves-filter{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
@@ -1150,6 +1167,30 @@ async function loadDistributionReport(){
 const PAY_AR_MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 let PAYSTATE = { year: new Date().getFullYear(), monthIndex: new Date().getMonth(), kind: 'monthly', view: 'month', data: null };
 
+// خريطة كود الحركة (الحرف اللي بيتكتب بعد الرقم) → كلاس اللون + وصف مبسط.
+// ج=إضافة (أخضر) / خ=خصم (أحمر) / م=مسحوبات (كهرماني) / غ=غياب (بنفسجي).
+// أي كود تاني (زي ش أو أي حرف غير معروف) بياخد لون محايد (pay-other) لحد ما تقولّي معناه بالظبط.
+const PAY_CODE_META = {
+  'ج': { cls: 'pay-add',    label: 'إضافة (ج)' },
+  'خ': { cls: 'pay-ded',    label: 'خصم (خ)' },
+  'م': { cls: 'pay-draw',   label: 'مسحوبات (م)' },
+  'غ': { cls: 'pay-absent', label: 'غياب (غ)' },
+};
+// بتاخد أول مجموعة حروف عربي في الخلية (ممكن يكون فيها كذا كود مفصولين بفاصلة) وبترجع كلاس اللون على أساس أول كود
+function payCellClass(raw){
+  const v = String(raw || '').trim();
+  if (!v) return '';
+  const m = v.match(/[ء-ي]+/);
+  if (!m) return '';
+  const code = m[0][0];
+  const meta = PAY_CODE_META[code];
+  return meta ? meta.cls : 'pay-other';
+}
+function payCellRecolor(inputEl){
+  const cls = payCellClass(inputEl.value);
+  inputEl.className = 'd-input pay-cell' + (cls ? ' ' + cls : '');
+}
+
 async function renderPayroll(token){
   document.getElementById('content').innerHTML = `
     <div class="panel">
@@ -1158,9 +1199,9 @@ async function renderPayroll(token){
         <input type="number" id="pay-year" value="${PAYSTATE.year}" class="d-input" style="width:90px;">
         <button class="btn btn-primary btn-sm" id="pay-load-btn">تحميل الشهر</button>
         <div class="sep" style="width:1px;height:26px;background:var(--border);"></div>
-        <button class="btn btn-sm ${PAYSTATE.kind==='monthly'?'btn-primary':'btn-outline'}" id="pay-tab-monthly">الموظفين الشهريين</button>
-        <button class="btn btn-sm ${PAYSTATE.kind==='weekly'?'btn-primary':'btn-outline'}" id="pay-tab-weekly">الموظفين الاسبوعيين</button>
-        <button class="btn btn-sm btn-outline" id="pay-master-btn">عرض الـ Master</button>
+        <button class="btn btn-sm ${(PAYSTATE.view==='month'&&PAYSTATE.kind==='monthly')?'btn-primary':'btn-outline'}" id="pay-tab-monthly">الموظفين الشهريين</button>
+        <button class="btn btn-sm ${(PAYSTATE.view==='month'&&PAYSTATE.kind==='weekly')?'btn-primary':'btn-outline'}" id="pay-tab-weekly">الموظفين الاسبوعيين</button>
+        <button class="btn btn-sm ${PAYSTATE.view==='master'?'btn-primary':'btn-outline'}" id="pay-master-btn">عرض الـ Master</button>
         <span style="font-size:11.5px;color:var(--muted);">✎ أي تعديل في خانة يوم بيتسجل في الشيت الحقيقي على طول</span>
       </div>
     </div>
@@ -1174,7 +1215,9 @@ async function renderPayroll(token){
   });
   document.getElementById('pay-tab-monthly').addEventListener('click', () => { PAYSTATE.kind = 'monthly'; PAYSTATE.view='month'; renderPayroll(token); });
   document.getElementById('pay-tab-weekly').addEventListener('click', () => { PAYSTATE.kind = 'weekly'; PAYSTATE.view='month'; renderPayroll(token); });
-  document.getElementById('pay-master-btn').addEventListener('click', () => { PAYSTATE.view = 'master'; payrollLoadMaster(); });
+  // بينادي renderPayroll() تاني (مش payrollLoadMaster() على طول) عشان شريط الأزرار
+  // فوق يتحدث ويبان زرار "عرض الـ Master" هو الملوّن، والاتنين التانيين برجعوا outline.
+  document.getElementById('pay-master-btn').addEventListener('click', () => { PAYSTATE.view = 'master'; renderPayroll(token); });
   if (PAYSTATE.view === 'master') payrollLoadMaster(); else payrollLoadSheet();
 }
 
@@ -1187,10 +1230,106 @@ async function payrollLoadSheet(){
     payrollRenderTable();
   } catch(err){ showError(err); }
 }
+/* خلية يوم واحدة — textarea بدل input: تقدر تدوس Enter عادي جوه الخلية
+ * وتكتب كود تاني في سطر جديد (بديل Alt+Enter بتاع الشيتس)، وده بيتسجل
+ * بنفس الفاصل (\n) اللي دالة PAYCODE_SUM في سكريبت المرتبات بتفهمه. */
+function payrollDayCellHtml_(row, col, value){
+  return `<td style="padding:2px;"><textarea class="d-input pay-cell ${payCellClass(value)}" rows="2"
+    style="text-align:center;font-size:11px;padding:4px 2px;resize:vertical;min-width:60px;line-height:1.35;"
+    oninput="payCellRecolor(this)"
+    onchange="payrollCellEdited(${row}, ${col}, this)">${qEsc(value)}</textarea></td>`;
+}
+
+/* توزيع حسب نوع الشيت (شهري = بلوك واحد متصل / اسبوعي = كذا بلوك أسبوع) */
 function payrollRenderTable(){
   const box = document.getElementById('pay-box'); if (!box) return;
   const data = PAYSTATE.data; if (!data) return;
-  const dayStart = data.dayStart;
+  if (data.kind === 'monthly') { payrollRenderMonthlyTable_(box, data); return; }
+  payrollRenderWeeklyTable_(box, data);
+}
+
+/* شيت "كشف الحضور الاسبوعي" — كل أسابيع الشهر مع بعض، كل أسبوع بلوكه
+ * (أيام + ملخص أسبوع)، فاصل غامق، بعدها ملخص الشهر، وصف إجمالي متلوّن. */
+function payrollRenderWeeklyTable_(box, data){
+  const sepTh = '<th style="width:6px;background:var(--dark);padding:0;"></th>';
+  const sepThRowspan = '<th style="width:6px;background:var(--dark);padding:0;" rowspan="2"></th>';
+  const sepTd = '<td style="background:var(--dark);padding:0;width:6px;"></td>';
+
+  const row1 = `
+    <tr>
+      <th rowspan="2" style="position:sticky;right:0;background:var(--dark);z-index:2;">اسم الموظف</th>
+      ${data.weekHeaderBlocks.map(wb => `<th colspan="${wb.dayHeaders.length + wb.sumHeaders.length}" style="background:#3a2f22;">الأسبوع ${qEsc(wb.label)}</th>`).join(sepThRowspan)}
+      ${sepThRowspan}
+      <th colspan="${data.monthSummaryHeaders.length}" style="background:#3a2f22;">إجمالي الشهر</th>
+    </tr>`;
+  const row2 = `
+    <tr>
+      ${data.weekHeaderBlocks.map(wb => `
+        ${wb.dayHeaders.map(h => `<th style="min-width:60px;white-space:pre-line;">${qEsc(h)}</th>`).join('')}
+        ${wb.sumHeaders.map(h => `<th style="background:#efe6d6;min-width:78px;font-size:11px;">${qEsc(h)}</th>`).join('')}
+      `).join(sepTh)}
+      ${sepTh}
+      ${data.monthSummaryHeaders.map(h => `<th style="background:#3a2f22;min-width:88px;">${qEsc(h)}</th>`).join('')}
+    </tr>`;
+
+  const bodyRows = data.rows.map(r => {
+    const weeksHtml = r.weeks.map((wk, wi) => {
+      const dayStartCol = data.weekHeaderBlocks[wi].dayStartCol;
+      const daysHtml = wk.dayCells.map((v, di) => payrollDayCellHtml_(r.row, dayStartCol + di, v)).join('');
+      const sumHtml = wk.summaryCells.map(v => `<td style="background:#fbf9f5;color:var(--muted);font-size:11px;">${qEsc(v)}</td>`).join('');
+      return daysHtml + sumHtml;
+    }).join(sepTd);
+    const monthSumHtml = r.monthSummaryCells.map(v => `<td style="background:#fbf9f5;color:var(--muted);">${qEsc(v)}</td>`).join('');
+    return `<tr>
+      <td style="position:sticky;right:0;background:var(--white);font-weight:700;">${qEsc(r.name)}</td>
+      ${weeksHtml}
+      ${sepTd}
+      ${monthSumHtml}
+    </tr>`;
+  }).join('');
+
+  let totalsHtml = '';
+  if (data.totals) {
+    const weeksTotalHtml = data.totals.weeks.map((wkTotals, wi) => {
+      const dayBlanks = '<td></td>'.repeat(data.weekHeaderBlocks[wi].dayHeaders.length);
+      const sums = wkTotals.map(v => `<td>${qEsc(v)}</td>`).join('');
+      return dayBlanks + sums;
+    }).join(sepTd);
+    const monthTotalsHtml = data.totals.monthSummaryCells.map(v => `<td>${qEsc(v)}</td>`).join('');
+    totalsHtml = `<tr class="tbl-totals-row">
+      <td>الإجمالي</td>
+      ${weeksTotalHtml}
+      ${sepTd}
+      ${monthTotalsHtml}
+    </tr>`;
+  }
+
+  box.innerHTML = `
+    <div class="panel">
+      <h3 style="margin-bottom:10px;">${qEsc(data.sheetName)} (${data.rows.length} موظف)</h3>
+      <div class="tbl-wrap tbl-wrap-scroll" style="max-height:70vh;">
+        <table>
+          <thead>${row1}${row2}</thead>
+          <tbody>${bodyRows}${totalsHtml}</tbody>
+        </table>
+      </div>
+      ${payrollLegendHtml_()}
+    </div>`;
+}
+
+/* شيت "حضور شهر" — بلوك واحد متصل من أيام الشهر + صف إجمالي متلوّن */
+function payrollRenderMonthlyTable_(box, data){
+  const bodyRows = data.rows.map(r => `
+    <tr>
+      <td style="position:sticky;right:0;background:var(--white);font-weight:700;">${qEsc(r.name)}</td>
+      ${r.dayCells.map((v, i) => payrollDayCellHtml_(r.row, data.dayStart + i, v)).join('')}
+      ${r.summaryCells.map(v => `<td style="background:#fbf9f5;color:var(--muted);">${qEsc(v)}</td>`).join('')}
+    </tr>`).join('');
+
+  const totalsHtml = data.totals
+    ? `<tr class="tbl-totals-row"><td>الإجمالي</td>${'<td></td>'.repeat(data.dayHeaders.length)}${data.totals.map(v => `<td>${qEsc(v)}</td>`).join('')}</tr>`
+    : '';
+
   box.innerHTML = `
     <div class="panel">
       <h3 style="margin-bottom:10px;">${qEsc(data.sheetName)} (${data.rows.length} موظف)</h3>
@@ -1198,22 +1337,27 @@ function payrollRenderTable(){
         <table>
           <thead><tr>
             <th style="position:sticky;right:0;background:var(--dark);z-index:2;">اسم الموظف</th>
-            ${data.dayHeaders.map(h => `<th style="min-width:66px;white-space:pre-line;">${qEsc(h)}</th>`).join('')}
-            ${data.summaryHeaders.map(h => `<th style="background:#3a2f22;min-width:80px;">${qEsc(h)}</th>`).join('')}
+            ${data.dayHeaders.map(h => `<th style="min-width:52px;white-space:pre-line;">${qEsc(h)}</th>`).join('')}
+            ${data.summaryHeaders.map(h => `<th style="background:#3a2f22;min-width:88px;">${qEsc(h)}</th>`).join('')}
           </tr></thead>
-          <tbody>
-            ${data.rows.map(r => `
-              <tr>
-                <td style="position:sticky;right:0;background:var(--white);font-weight:700;">${qEsc(r.name)}</td>
-                ${r.dayCells.map((v, i) => `<td style="padding:2px;"><input class="d-input" style="text-align:center;font-size:11.5px;padding:4px 2px;" value="${qEsc(v)}" onchange="payrollCellEdited(${r.row}, ${dayStart + i}, this)"></td>`).join('')}
-                ${r.summaryCells.map(v => `<td style="background:#fbf9f5;color:var(--muted);">${qEsc(v)}</td>`).join('')}
-              </tr>`).join('')}
-          </tbody>
+          <tbody>${bodyRows}${totalsHtml}</tbody>
         </table>
       </div>
-      <p style="font-size:11.5px;color:var(--muted);margin-top:8px;">
-        اكتب الأكواد زي الكاتالوج بالظبط (مثال: 200ج، 0.5غ، 300م، 300شق)، وممكن كذا كود في نفس الخلية مفصولين بفاصلة (,). الأعمدة الغامقة على الشمال ملخص محسوب — للعرض بس.
-      </p>
+      ${payrollLegendHtml_()}
+    </div>`;
+}
+
+function payrollLegendHtml_(){
+  return `
+    <p style="font-size:11.5px;color:var(--muted);margin-top:8px;">
+      اكتب الأكواد زي الكاتالوج بالظبط (مثال: 200ج، 0.5غ، 300م، 300شق)، وتقدر تكتب أكتر من كود في نفس الخلية: دوس Enter عادي جوه الخلية عشان تكتب الكود التاني في سطر جديد (بديل Alt+Enter بتاع الشيتس)، أو افصل بينهم بفاصلة (,). الأعمدة الغامقة ملخص محسوب — للعرض بس.
+    </p>
+    <div class="pay-legend">
+      <span class="pay-legend-chip pay-add">إضافة (ج)</span>
+      <span class="pay-legend-chip pay-ded">خصم (خ)</span>
+      <span class="pay-legend-chip pay-draw">مسحوبات (م)</span>
+      <span class="pay-legend-chip pay-absent">غياب (غ)</span>
+      <span class="pay-legend-chip pay-other">كود تاني (زي خي أو شق) — بيتلوّن بلون عام لحد ما تتأكد منه</span>
     </div>`;
 }
 async function payrollCellEdited(row, col, inputEl){
@@ -1229,13 +1373,30 @@ async function payrollLoadMaster(){
   try {
     const data = await apiGet('payrollGetMaster', { year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex });
     if (!data.exists){ box.innerHTML = `<div class="panel"><div class="empty">شيت "${qEsc(data.sheetName)}" لسه مش موجود — ابنيه الأول من منيو "نظام المرتبات" في الشيت.</div></div>`; return; }
+
+    // فاصل بصري حقيقي قبل أول موظف اسبوعي (نفس ترتيب البناء: الشهريين
+    // أولاً وبعدهم الاسبوعيين) + صف الإجمالي منفصل ومتلوّن زي باقي الجداول
+    const monthlyCount = data.monthlyCount || 0;
+    const rowsHtml = data.rows.map((r, i) => {
+      const sepBefore = (monthlyCount > 0 && i === monthlyCount)
+        ? `<tr class="master-group-sep"><td colspan="${data.headers.length}"></td></tr>` : '';
+      return sepBefore + `<tr>${r.map(v => `<td>${qEsc(v)}</td>`).join('')}</tr>`;
+    }).join('');
+    const totalsHtml = data.totalsRow
+      ? `<tr class="tbl-totals-row">${data.totalsRow.map(v => `<td>${qEsc(v)}</td>`).join('')}</tr>` : '';
+
     box.innerHTML = `
       <div class="panel">
         <h3 style="margin-bottom:10px;">${qEsc(data.sheetName)}</h3>
-        <div class="tbl-wrap"><table>
-          <thead><tr>${data.headers.map(h => `<th>${qEsc(h)}</th>`).join('')}</tr></thead>
-          <tbody>${data.rows.map(r => `<tr>${r.map(v => `<td>${qEsc(v)}</td>`).join('')}</tr>`).join('')}</tbody>
-        </table></div>
+        <p style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">
+          ✎ الماستر ملخص شهري كامل (قراءة فقط — القيم مسحوبة من شيتات "حضور شهر" و"كشف الحضور الاسبوعي" مباشرة). الصفوف الأولى للموظفين الشهريين، بعدهم خط فاصل، بعدين الموظفين الاسبوعيين، وآخر صف هو الإجمالي الكلي.
+        </p>
+        <div class="tbl-wrap tbl-wrap-scroll" style="max-height:70vh;">
+          <table>
+            <thead><tr>${data.headers.map(h => `<th>${qEsc(h)}</th>`).join('')}</tr></thead>
+            <tbody>${rowsHtml}${totalsHtml}</tbody>
+          </table>
+        </div>
       </div>`;
   } catch(err){ showError(err); }
 }
