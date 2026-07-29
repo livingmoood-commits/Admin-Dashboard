@@ -417,6 +417,7 @@
     <button data-page="employees"><span class="icon">&#128100;</span><span class="label">الموظفين</span></button>
     <button data-page="logHours"><span class="icon">&#9200;</span><span class="label">ساعات وسهرات</span></button>
     <button data-page="distribution"><span class="icon">&#128202;</span><span class="label">توزيع تكلفة المرتبات</span></button>
+    <button data-page="payroll"><span class="icon">&#128176;</span><span class="label">مرتبات</span></button>
     <div class="sep"></div>
     <button data-page="projects"><span class="icon">&#128188;</span><span class="label">المشاريع</span></button>
     <button data-page="products"><span class="icon">&#128736;&#65039;</span><span class="label">تكلفة المنتجات</span></button>
@@ -655,6 +656,7 @@ const PAGES = {
   employees:    { title:'الموظفين', sub:'من شيت "تفاصيل المرتبات" بتاع الشهر الحالي مباشرة', render: renderEmployees },
   logHours:     { title:'ساعات وسهرات', sub:'سجّل شغل أي صنايعي على أي مشروع', render: renderLogHours },
   distribution: { title:'توزيع تكلفة المرتبات', sub:'مين شغل فين، وكام ساعة، وسهر إمتى', render: renderDistribution },
+  payroll:      { title:'مرتبات', sub:'كشف حضور الشهر بالظبط زي الشيت — عدّل أي خلية وهتتسجل في الشيت الحقيقي مباشرة', render: renderPayroll },
   treasury:     { title:'الخزنة — Cash Flow', sub:'الرصيد الحالي، الداخل والخارج، الإيداعات والمصاريف', render: renderTreasury },
   dailyExpenses:{ title:'مصاريف يومية', sub:'سجّل كل مصاريف اليوم سطر سطر — بتتسجل في شيت اليوم بتاعك مباشرة', render: renderDailyExpenses },
   projects:     { title:'المشاريع', sub:'تكلفة كل مشروع بالتفصيل', render: renderProjects },
@@ -1116,6 +1118,106 @@ async function loadDistributionReport(){
           <tbody>${p.employees.map(e => `<tr><td>${e.employee}</td><td>${fmt(e.hours)}</td><td>${fmt(e.eveningHours)}</td><td>${fmt(e.eveningAmount)} ج</td><td>${e.entries}</td><td>${fmt(e.cost)} ج</td></tr>`).join('')}</tbody></table></div>
         </div>`).join('')}
     `;
+  } catch(err){ showError(err); }
+}
+
+/* ================= مرتبات — كشف الحضور الشهري القابل للتعديل مباشرة =================
+ * الصفحة دي بتعرض بالظبط نفس شيتات "حضور شهر [شهر] [سنة]" (الموظفين الشهريين) و
+ * "كشف الحضور الاسبوعي [شهر] [سنة]" (الموظفين الاسبوعيين) اللي بيبنيهم سكريبت "نظام
+ * مرتبات Living Mood"، وكمان شيت "Master [شهر] [سنة]". أي خلية يوم تتعدّل هنا بتتسجل
+ * على طول في نفس الشيت الحقيقي (مفيش نسخة داتا تانية محفوظة في الداشبورد نفسه) —
+ * الأكشنات المطلوبة من الباك اند: payrollGetSheet / payrollSetCell / payrollGetMaster.
+ * ================================================================================= */
+const PAY_AR_MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+let PAYSTATE = { year: new Date().getFullYear(), monthIndex: new Date().getMonth(), kind: 'monthly', view: 'month', data: null };
+
+async function renderPayroll(token){
+  document.getElementById('content').innerHTML = `
+    <div class="panel">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+        <select id="pay-month" class="d-input" style="width:auto;">${PAY_AR_MONTHS.map((m,i)=>`<option value="${i}" ${i===PAYSTATE.monthIndex?'selected':''}>${qEsc(m)}</option>`).join('')}</select>
+        <input type="number" id="pay-year" value="${PAYSTATE.year}" class="d-input" style="width:90px;">
+        <button class="btn btn-primary btn-sm" id="pay-load-btn">تحميل الشهر</button>
+        <div class="sep" style="width:1px;height:26px;background:var(--border);"></div>
+        <button class="btn btn-sm ${PAYSTATE.kind==='monthly'?'btn-primary':'btn-outline'}" id="pay-tab-monthly">الموظفين الشهريين</button>
+        <button class="btn btn-sm ${PAYSTATE.kind==='weekly'?'btn-primary':'btn-outline'}" id="pay-tab-weekly">الموظفين الاسبوعيين</button>
+        <button class="btn btn-sm btn-outline" id="pay-master-btn">عرض الـ Master</button>
+        <span style="font-size:11.5px;color:var(--muted);">✎ أي تعديل في خانة يوم بيتسجل في الشيت الحقيقي على طول</span>
+      </div>
+    </div>
+    <div id="pay-box"><div class="loading-row">جاري التحميل...</div></div>
+  `;
+  document.getElementById('pay-load-btn').addEventListener('click', () => {
+    PAYSTATE.monthIndex = parseInt(document.getElementById('pay-month').value, 10);
+    PAYSTATE.year = parseInt(document.getElementById('pay-year').value, 10) || PAYSTATE.year;
+    PAYSTATE.view = 'month';
+    payrollLoadSheet();
+  });
+  document.getElementById('pay-tab-monthly').addEventListener('click', () => { PAYSTATE.kind = 'monthly'; PAYSTATE.view='month'; renderPayroll(token); });
+  document.getElementById('pay-tab-weekly').addEventListener('click', () => { PAYSTATE.kind = 'weekly'; PAYSTATE.view='month'; renderPayroll(token); });
+  document.getElementById('pay-master-btn').addEventListener('click', () => { PAYSTATE.view = 'master'; payrollLoadMaster(); });
+  if (PAYSTATE.view === 'master') payrollLoadMaster(); else payrollLoadSheet();
+}
+
+async function payrollLoadSheet(){
+  const box = document.getElementById('pay-box'); box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  try {
+    const data = await apiGet('payrollGetSheet', { year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex, kind: PAYSTATE.kind });
+    PAYSTATE.data = data;
+    if (!data.exists){ box.innerHTML = `<div class="panel"><div class="empty">شيت "${qEsc(data.sheetName)}" لسه مش موجود — ابنيه الأول من منيو "نظام المرتبات" في الشيت.</div></div>`; return; }
+    payrollRenderTable();
+  } catch(err){ showError(err); }
+}
+function payrollRenderTable(){
+  const box = document.getElementById('pay-box'); if (!box) return;
+  const data = PAYSTATE.data; if (!data) return;
+  const dayStart = data.dayStart;
+  box.innerHTML = `
+    <div class="panel">
+      <h3 style="margin-bottom:10px;">${qEsc(data.sheetName)} (${data.rows.length} موظف)</h3>
+      <div class="tbl-wrap tbl-wrap-scroll" style="max-height:70vh;">
+        <table>
+          <thead><tr>
+            <th style="position:sticky;right:0;background:var(--dark);z-index:2;">اسم الموظف</th>
+            ${data.dayHeaders.map(h => `<th style="min-width:66px;white-space:pre-line;">${qEsc(h)}</th>`).join('')}
+            ${data.summaryHeaders.map(h => `<th style="background:#3a2f22;min-width:80px;">${qEsc(h)}</th>`).join('')}
+          </tr></thead>
+          <tbody>
+            ${data.rows.map(r => `
+              <tr>
+                <td style="position:sticky;right:0;background:var(--white);font-weight:700;">${qEsc(r.name)}</td>
+                ${r.dayCells.map((v, i) => `<td style="padding:2px;"><input class="d-input" style="text-align:center;font-size:11.5px;padding:4px 2px;" value="${qEsc(v)}" onchange="payrollCellEdited(${r.row}, ${dayStart + i}, this)"></td>`).join('')}
+                ${r.summaryCells.map(v => `<td style="background:#fbf9f5;color:var(--muted);">${qEsc(v)}</td>`).join('')}
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <p style="font-size:11.5px;color:var(--muted);margin-top:8px;">
+        اكتب الأكواد زي الكاتالوج بالظبط (مثال: 200ج، 0.5غ، 300م، 300شق)، وممكن كذا كود في نفس الخلية مفصولين بفاصلة (,). الأعمدة الغامقة على الشمال ملخص محسوب — للعرض بس.
+      </p>
+    </div>`;
+}
+async function payrollCellEdited(row, col, inputEl){
+  const val = inputEl.value.trim();
+  inputEl.disabled = true;
+  try {
+    await apiPost('payrollSetCell', { sheetName: PAYSTATE.data.sheetName, row, col, value: val });
+    await payrollLoadSheet(); // إعادة تحميل الشيت عشان أعمدة الملخص (المحسوبة بمعادلات) تتحدّث صح
+  } catch(err){ showError(err); inputEl.disabled = false; }
+}
+async function payrollLoadMaster(){
+  const box = document.getElementById('pay-box'); box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  try {
+    const data = await apiGet('payrollGetMaster', { year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex });
+    if (!data.exists){ box.innerHTML = `<div class="panel"><div class="empty">شيت "${qEsc(data.sheetName)}" لسه مش موجود — ابنيه الأول من منيو "نظام المرتبات" في الشيت.</div></div>`; return; }
+    box.innerHTML = `
+      <div class="panel">
+        <h3 style="margin-bottom:10px;">${qEsc(data.sheetName)}</h3>
+        <div class="tbl-wrap"><table>
+          <thead><tr>${data.headers.map(h => `<th>${qEsc(h)}</th>`).join('')}</tr></thead>
+          <tbody>${data.rows.map(r => `<tr>${r.map(v => `<td>${qEsc(v)}</td>`).join('')}</tr>`).join('')}</tbody>
+        </table></div>
+      </div>`;
   } catch(err){ showError(err); }
 }
 
