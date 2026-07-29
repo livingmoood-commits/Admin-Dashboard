@@ -86,6 +86,8 @@
   .tbl-wrap-scroll{ overflow:auto; max-height:520px; }
   .tbl-wrap-scroll thead th{ position:sticky; top:0; z-index:1; }
   .empty{ text-align:center; color:var(--muted); padding:24px; font-size:13px; }
+  .tbl-totals-row td{ background:var(--dark); color:var(--gold, #D4B483); font-weight:700; border-bottom:none; }
+  .tbl-totals-row:hover td{ background:var(--dark); }
 
   .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:18px; }
   @media(max-width:980px){ .grid2{ grid-template-columns:1fr; } }
@@ -1856,11 +1858,11 @@ function renderDebtsPage(debts){
   const settledCount = debts.filter(d=>d.settled).length;
   document.getElementById('content').innerHTML = `
     <div class="cards">
-      <div class="card"><div class="label">عدد الديون</div><div class="value">${debts.length}</div></div>
-      <div class="card"><div class="label">مسدد بالكامل</div><div class="value green">${settledCount}</div></div>
-      <div class="card"><div class="label">إجمالي الديون</div><div class="value gold">${fmt(totalDebt)} ج</div></div>
-      <div class="card"><div class="label">إجمالي المسدد</div><div class="value green">${fmt(totalPaid)} ج</div></div>
-      <div class="card"><div class="label">الباقي علينا</div><div class="value" style="color:${totalRemaining>0.01?'var(--red)':'var(--green)'};">${fmt(totalRemaining)} ج</div></div>
+      <div class="card clickable" onclick="openDebtsCard('all')"><div class="label">عدد الديون</div><div class="value">${debts.length}</div></div>
+      <div class="card clickable" onclick="openDebtsCard('settled')"><div class="label">مسدد بالكامل</div><div class="value green">${settledCount}</div></div>
+      <div class="card clickable" onclick="openDebtsCard('total')"><div class="label">إجمالي الديون</div><div class="value gold">${fmt(totalDebt)} ج</div></div>
+      <div class="card clickable" onclick="openDebtsCard('paid')"><div class="label">إجمالي المسدد</div><div class="value green">${fmt(totalPaid)} ج</div></div>
+      <div class="card clickable" onclick="openDebtsCard('remaining')"><div class="label">الباقي علينا</div><div class="value" style="color:${totalRemaining>0.01?'var(--red)':'var(--green)'};">${fmt(totalRemaining)} ج</div></div>
     </div>
     <div class="stack-v">
       <div class="panel">
@@ -1905,6 +1907,30 @@ function renderDebtsPage(debts){
     } catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); btn.disabled=false; btn.textContent='حفظ الدين'; }
   });
 }
+// دوس على أي كارت في صفحة الديون (عدد/مسدد/إجمالي/مسدد/باقي) → Pop فيه قائمة الديون المطابقة،
+// ودوس على أي دين في القايمة يفتحلك تعديله على طول (نفس زرار "تعديل" في الجدول)
+function openDebtsCard(kind){
+  const debts = _debtsCache || [];
+  let list = debts.slice();
+  let title = 'كل الديون';
+  let sumField = 'total';
+  if (kind === 'settled'){ list = list.filter(d=>d.settled); title = 'الديون المسددة بالكامل'; }
+  else if (kind === 'remaining'){ list = list.filter(d=>d.remaining>0.01); list.sort((a,b)=>b.remaining-a.remaining); title = 'الباقي علينا — حسب الجهة'; sumField = 'remaining'; }
+  else if (kind === 'paid'){ list = list.filter(d=>d.paid>0.01); list.sort((a,b)=>b.paid-a.paid); title = 'إجمالي المسدد — حسب الجهة'; sumField = 'paid'; }
+  else if (kind === 'total'){ list.sort((a,b)=>b.total-a.total); title = 'إجمالي الديون — حسب الجهة'; }
+  else { list.sort((a,b)=> String(b.date||'').localeCompare(String(a.date||''))); }
+  const sumVal = list.reduce((s,d)=>s+(d[sumField]||0), 0);
+  const rows = list.length ? list.map(d => `
+    <div class="cd-list-row" style="cursor:pointer;" onclick="closeCardModal(); editDebtStart('${d.id}')">
+      <span class="n">${qEsc(d.creditor)}${d.desc ? ' — '+qEsc(d.desc) : ''}</span>
+      <span class="p">${fmt(d[sumField])} ج</span>
+    </div>`).join('') : '<div class="empty">مفيش ديون في القسم ده</div>';
+  openCardModal(`
+    <div class="cd-head"><h3>${title} (${list.length})</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:10px;">الإجمالي: <b style="color:var(--dark);">${fmt(sumVal)} ج</b></div>
+    <div>${rows}</div>
+  `);
+}
 // تعديل الدين بقى Pop زي السداد والحذف بالظبط — مش بيودّي فوق للفورم
 function editDebtStart(id){
   const d = _debtsCache.find(x=>x.id===id); if (!d) return;
@@ -1948,6 +1974,9 @@ async function saveDebtEdit(id){
 function renderDebtsList(debts){
   const box = document.getElementById('debtsListBox');
   if (!debts.length){ box.innerHTML = '<div class="empty">مفيش ديون مسجلة</div>'; return; }
+  const totalAll = debts.reduce((s,d)=>s+d.total, 0);
+  const paidAll = debts.reduce((s,d)=>s+d.paid, 0);
+  const remainingAll = debts.reduce((s,d)=>s+d.remaining, 0);
   box.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>الجهة</th><th>الوصف</th><th>الإجمالي</th><th>المسدد</th><th>الباقي</th><th>الحالة</th><th></th></tr></thead>
     <tbody>${debts.map(d=>`<tr>
       <td>${qEsc(d.creditor)}</td><td>${qEsc(d.desc||'—')}</td><td>${fmt(d.total)} ج</td><td>${fmt(d.paid)} ج</td>
@@ -1958,7 +1987,15 @@ function renderDebtsList(debts){
         <button class="btn btn-sm btn-outline" onclick="editDebtStart('${d.id}')">تعديل</button>
         <button class="btn btn-sm btn-danger" onclick="deleteDebtConfirm('${d.id}')">حذف</button>
       </td>
-    </tr>`).join('')}</tbody></table></div>`;
+    </tr>`).join('')}</tbody>
+    <tfoot><tr class="tbl-totals-row">
+      <td colspan="2">الإجمالي (${debts.length})</td>
+      <td>${fmt(totalAll)} ج</td>
+      <td>${fmt(paidAll)} ج</td>
+      <td>${fmt(remainingAll)} ج</td>
+      <td colspan="2"></td>
+    </tr></tfoot>
+    </table></div>`;
 }
 async function payDebtPrompt(id, remaining){
   const val = await openGenPrompt('المبلغ المسدد دلوقتي (من إجمالي الباقي '+fmt(remaining)+' ج):', remaining, 'سداد دين');
