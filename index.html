@@ -88,6 +88,9 @@
   .empty{ text-align:center; color:var(--muted); padding:24px; font-size:13px; }
   .tbl-totals-row td{ background:var(--dark); color:var(--gold, #D4B483); font-weight:700; border-bottom:none; }
   .tbl-totals-row:hover td{ background:var(--dark); }
+  .tbl-wrap-scroll .tbl-totals-row td{ position:sticky; bottom:0; z-index:2; }
+  .master-group-header td{ background:#3a2f22; color:var(--gold, #D4B483); font-weight:700; padding:6px 10px; border:none !important; }
+  .master-group-header:hover td{ background:#3a2f22; }
   .master-group-sep td{ background:var(--cream); border:none !important; height:14px; padding:0; border-top:3px solid var(--dark) !important; }
   .master-group-sep:hover td{ background:var(--cream); }
 
@@ -1388,7 +1391,7 @@ function payrollRenderMonthlyTable_(box, data){
     </tr>`).join('');
 
   const totalsHtml = data.totals
-    ? `<tr class="tbl-totals-row"><td>الإجمالي</td>${'<td></td>'.repeat(data.dayHeaders.length)}${data.totals.map(v => `<td>${qEsc(v)}</td>`).join('')}</tr>`
+    ? `<tr class="tbl-totals-row"><td style="position:sticky;right:0;">الإجمالي</td>${'<td></td>'.repeat(data.dayHeaders.length)}${data.totals.map(v => `<td>${qEsc(v)}</td>`).join('')}</tr>`
     : '';
 
   box.innerHTML = `
@@ -1435,12 +1438,14 @@ async function payrollLoadMaster(){
     const data = await apiGet('payrollGetMaster', { year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex });
     if (!data.exists){ box.innerHTML = `<div class="panel"><div class="empty">شيت "${qEsc(data.sheetName)}" لسه مش موجود — ابنيه الأول من منيو "نظام المرتبات" في الشيت.</div></div>`; return; }
 
-    // فاصل بصري حقيقي قبل أول موظف اسبوعي (نفس ترتيب البناء: الشهريين
-    // أولاً وبعدهم الاسبوعيين) + صف الإجمالي منفصل ومتلوّن زي باقي الجداول
+    // هيدر واضح "الموظفين الشهريين" / "الموظفين الاسبوعيين" قبل كل مجموعة
+    // (نفس ترتيب البناء: الشهريين أولاً وبعدهم الاسبوعيين) + صف الإجمالي منفصل ومتلوّن وثابت تحت
     const monthlyCount = data.monthlyCount || 0;
+    const colspan = data.headers.length;
+    const monthlyHeader = monthlyCount > 0 ? `<tr class="master-group-header"><td colspan="${colspan}">الموظفين الشهريين</td></tr>` : '';
+    const weeklyHeader = monthlyCount < data.rows.length ? `<tr class="master-group-header"><td colspan="${colspan}">الموظفين الاسبوعيين</td></tr>` : '';
     const rowsHtml = data.rows.map((r, i) => {
-      const sepBefore = (monthlyCount > 0 && i === monthlyCount)
-        ? `<tr class="master-group-sep"><td colspan="${data.headers.length}"></td></tr>` : '';
+      const sepBefore = (monthlyCount > 0 && i === monthlyCount) ? weeklyHeader : '';
       return sepBefore + `<tr>${r.map(v => `<td>${qEsc(v)}</td>`).join('')}</tr>`;
     }).join('');
     const totalsHtml = data.totalsRow
@@ -1450,12 +1455,12 @@ async function payrollLoadMaster(){
       <div class="panel">
         <h3 style="margin-bottom:10px;">${qEsc(data.sheetName)}</h3>
         <p style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">
-          ✎ الماستر ملخص شهري كامل (قراءة فقط — القيم مسحوبة من شيتات "حضور شهر" و"كشف الحضور الاسبوعي" مباشرة). الصفوف الأولى للموظفين الشهريين، بعدهم خط فاصل، بعدين الموظفين الاسبوعيين، وآخر صف هو الإجمالي الكلي.
+          ✎ الماستر ملخص شهري كامل (قراءة فقط — القيم مسحوبة من شيتات "حضور شهر" و"كشف الحضور الاسبوعي" مباشرة). الصفوف الأولى للموظفين الشهريين، بعدهم الموظفين الاسبوعيين، وآخر صف هو الإجمالي الكلي.
         </p>
         <div class="tbl-wrap tbl-wrap-scroll" style="max-height:70vh;">
           <table>
             <thead><tr>${data.headers.map(h => `<th>${qEsc(h)}</th>`).join('')}</tr></thead>
-            <tbody>${rowsHtml}${totalsHtml}</tbody>
+            <tbody>${monthlyHeader}${rowsHtml}${totalsHtml}</tbody>
           </table>
         </div>
       </div>`;
