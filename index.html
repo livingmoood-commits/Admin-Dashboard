@@ -89,6 +89,7 @@
 
   .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:18px; }
   @media(max-width:980px){ .grid2{ grid-template-columns:1fr; } }
+  .stack-v{ display:flex; flex-direction:column; gap:18px; }
 
   /* ===== Mobile: hamburger off-canvas sidebar ===== */
   @media(max-width:900px){
@@ -788,12 +789,19 @@ async function renderDashboard(token) {
     document.getElementById('content').innerHTML = `
       <div class="cards">
         <div class="card clickable" onclick="openEmployeesCard()"><div class="label">عدد الموظفين</div><div class="value">${d.employeesCount}</div></div>
-        <div class="card clickable" onclick="goTo('projects')"><div class="label">عدد المشاريع</div><div class="value">${d.projectsCount}</div></div>
+        <div class="card clickable" onclick="goTo('projects')"><div class="label">عدد المشاريع المسجلة</div><div class="value">${d.projectsCount}</div></div>
         <div class="card clickable" onclick="goTo('treasury')"><div class="label">رصيد الخزنة</div><div class="value green">${fmt(d.treasuryBalance)} ج</div></div>
         <div class="card clickable" onclick="goTo('distribution')"><div class="label">إجمالي تكلفة العمالة</div><div class="value gold">${fmt(d.totalLaborCost)} ج</div></div>
         <div class="card clickable" onclick="goTo('logHours')"><div class="label">إجمالي ساعات الشغل</div><div class="value">${fmt(d.totalLaborHours)} س</div></div>
         <div class="card clickable" onclick="goTo('products')"><div class="label">تكلفة المنتجات (خامات)</div><div class="value gold">${fmt(d.totalProductsCost)} ج</div></div>
         <div class="card clickable" onclick="goTo('install')"><div class="label">تكلفة التركيب</div><div class="value gold">${fmt(d.totalInstallCost)} ج</div></div>
+      </div>
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+          <h3 style="margin:0;">Summary Payment Statements — مستحقاتنا برا</h3>
+          <button class="btn btn-sm btn-outline" onclick="goTo('debtors')">فتح الصفحة الكاملة ←</button>
+        </div>
+        ${paymentsMasterTableHTML(customers, 'dash')}
       </div>
       <div class="grid2">
         <div class="panel"><h3>أعلى 5 مشاريع في التكلفة</h3>
@@ -806,13 +814,6 @@ async function renderDashboard(token) {
           <tbody>${d.recentHoursEntries.map(l=>`<tr><td>${l.date}</td><td>${l.employee}</td><td>${l.project}</td><td>${fmt(l.cost)} ج</td></tr>`).join('')}</tbody></table></div>`
           : `<div class="empty">لا يوجد سجلات بعد</div>`}
         </div>
-      </div>
-      <div class="panel">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-          <h3 style="margin:0;">Summary Payment Statements — مستحقاتنا برا</h3>
-          <button class="btn btn-sm btn-outline" onclick="goTo('debtors')">فتح الصفحة الكاملة ←</button>
-        </div>
-        ${paymentsMasterTableHTML(customers, 'dash')}
       </div>
     `;
   } catch(err){ showError(err); }
@@ -1824,13 +1825,15 @@ function renderDebtsPage(debts){
       <div class="card"><div class="label">إجمالي المسدد</div><div class="value green">${fmt(totalPaid)} ج</div></div>
       <div class="card"><div class="label">الباقي علينا</div><div class="value" style="color:${totalRemaining>0.01?'var(--red)':'var(--green)'};">${fmt(totalRemaining)} ج</div></div>
     </div>
-    <div class="grid2">
+    <div class="stack-v">
       <div class="panel">
         <h3 id="dbtFormTitle">دين جديد</h3>
         <form id="debtForm">
           <input type="hidden" id="dbt_editId" value="">
-          <div class="field"><label>الجهة الدائنة</label><input autocomplete="off" id="dbt_creditor" required placeholder="مثال: مورد الخشب"></div>
-          <div class="field"><label>الوصف</label><input autocomplete="off" id="dbt_desc" placeholder="اختياري"></div>
+          <div class="form-row">
+            <div class="field"><label>الجهة الدائنة</label><input autocomplete="off" id="dbt_creditor" required placeholder="مثال: مورد الخشب"></div>
+            <div class="field"><label>الوصف</label><input autocomplete="off" id="dbt_desc" placeholder="اختياري"></div>
+          </div>
           <div class="form-row">
             <div class="field"><label>الإجمالي</label><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" id="dbt_total" placeholder="0" onkeypress="return /[0-9.]/.test(event.key)"></div>
             <div class="field"><label>مسدد مبدئيًا (لو فيه)</label><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" id="dbt_paid" placeholder="0" onkeypress="return /[0-9.]/.test(event.key)"></div>
