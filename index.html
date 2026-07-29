@@ -1827,9 +1827,8 @@ function renderDebtsPage(debts){
     </div>
     <div class="stack-v">
       <div class="panel">
-        <h3 id="dbtFormTitle">دين جديد</h3>
+        <h3>دين جديد</h3>
         <form id="debtForm">
-          <input type="hidden" id="dbt_editId" value="">
           <div class="form-row">
             <div class="field"><label>الجهة الدائنة</label><input autocomplete="off" id="dbt_creditor" required placeholder="مثال: مورد الخشب"></div>
             <div class="field"><label>الوصف</label><input autocomplete="off" id="dbt_desc" placeholder="اختياري"></div>
@@ -1840,7 +1839,6 @@ function renderDebtsPage(debts){
           </div>
           <div class="field"><label>ملاحظات</label><textarea id="dbt_notes" rows="2"></textarea></div>
           <button type="submit" class="btn btn-primary" id="dbtBtn">حفظ الدين</button>
-          <button type="button" class="btn btn-outline" id="dbtCancelBtn" style="display:none;" onclick="cancelDebtEdit()">إلغاء التعديل</button>
           <div class="msg" id="dbtMsg"></div>
         </form>
       </div>
@@ -1854,7 +1852,6 @@ function renderDebtsPage(debts){
   document.getElementById('debtForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = document.getElementById('dbtBtn'); const msg = document.getElementById('dbtMsg');
-    const editId = document.getElementById('dbt_editId').value;
     msg.className='msg'; msg.textContent=''; btn.disabled=true; btn.innerHTML='<span class="spinner"></span>جاري الحفظ...';
     const debt = {
       creditor: document.getElementById('dbt_creditor').value.trim(),
@@ -1863,38 +1860,53 @@ function renderDebtsPage(debts){
       paid: qNum(document.getElementById('dbt_paid').value),
       notes: document.getElementById('dbt_notes').value
     };
-    if (!debt.creditor){ msg.className='msg err'; msg.textContent='اسم الجهة الدائنة مطلوب'; btn.disabled=false; btn.textContent = editId ? 'تحديث الدين' : 'حفظ الدين'; return; }
+    if (!debt.creditor){ msg.className='msg err'; msg.textContent='اسم الجهة الدائنة مطلوب'; btn.disabled=false; btn.textContent='حفظ الدين'; return; }
     try {
-      if (editId) {
-        await apiPost('updateDebt', { debt: { ...debt, id: editId } });
-        msg.className='msg ok'; msg.textContent='تم تحديث الدين';
-      } else {
-        await apiPost('addDebt', { debt });
-        msg.className='msg ok'; msg.textContent='تم حفظ الدين';
-      }
+      await apiPost('addDebt', { debt });
+      msg.className='msg ok'; msg.textContent='تم حفظ الدين';
       renderDebts();
-    } catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); btn.disabled=false; btn.textContent = editId ? 'تحديث الدين' : 'حفظ الدين'; }
+    } catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); btn.disabled=false; btn.textContent='حفظ الدين'; }
   });
 }
+// تعديل الدين بقى Pop زي السداد والحذف بالظبط — مش بيودّي فوق للفورم
 function editDebtStart(id){
   const d = _debtsCache.find(x=>x.id===id); if (!d) return;
-  document.getElementById('dbt_editId').value = d.id;
-  document.getElementById('dbt_creditor').value = d.creditor;
-  document.getElementById('dbt_desc').value = d.desc || '';
-  document.getElementById('dbt_total').value = d.total;
-  document.getElementById('dbt_paid').value = d.paid;
-  document.getElementById('dbt_notes').value = d.notes || '';
-  document.getElementById('dbtFormTitle').textContent = 'تعديل الدين';
-  document.getElementById('dbtBtn').textContent = 'تحديث الدين';
-  document.getElementById('dbtCancelBtn').style.display = 'inline-block';
-  window.scrollTo(0,0);
+  openCardModal(`
+    <div class="cd-head"><h3>تعديل الدين</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div class="form-row">
+      <div class="field"><label>الجهة الدائنة</label><input autocomplete="off" id="ed_creditor" value="${qEsc(d.creditor)}"></div>
+      <div class="field"><label>الوصف</label><input autocomplete="off" id="ed_desc" value="${qEsc(d.desc||'')}"></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>الإجمالي</label><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" id="ed_total" value="${d.total}" onkeypress="return /[0-9.]/.test(event.key)"></div>
+      <div class="field"><label>المسدد</label><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" id="ed_paid" value="${d.paid}" onkeypress="return /[0-9.]/.test(event.key)"></div>
+    </div>
+    <div class="field"><label>ملاحظات</label><textarea id="ed_notes" rows="2">${qEsc(d.notes||'')}</textarea></div>
+    <div class="msg" id="edDebtMsg" style="margin-top:10px;"></div>
+    <div class="q-confirm-btns" style="margin-top:14px;">
+      <button class="btn btn-primary" onclick="saveDebtEdit('${d.id}')">حفظ التعديل</button>
+      <button class="btn btn-outline" onclick="closeCardModal()">إلغاء</button>
+    </div>
+  `);
 }
-function cancelDebtEdit(){
-  document.getElementById('dbt_editId').value = '';
-  document.getElementById('debtForm').reset();
-  document.getElementById('dbtFormTitle').textContent = 'دين جديد';
-  document.getElementById('dbtBtn').textContent = 'حفظ الدين';
-  document.getElementById('dbtCancelBtn').style.display = 'none';
+async function saveDebtEdit(id){
+  const msg = document.getElementById('edDebtMsg');
+  const creditor = document.getElementById('ed_creditor').value.trim();
+  if (!creditor){ msg.className='msg err'; msg.textContent='اسم الجهة الدائنة مطلوب'; return; }
+  const debt = {
+    id,
+    creditor,
+    desc: document.getElementById('ed_desc').value.trim(),
+    total: qNum(document.getElementById('ed_total').value),
+    paid: qNum(document.getElementById('ed_paid').value),
+    notes: document.getElementById('ed_notes').value
+  };
+  msg.className='msg'; msg.textContent='';
+  try {
+    await apiPost('updateDebt', { debt });
+    closeCardModal();
+    renderDebts();
+  } catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); }
 }
 function renderDebtsList(debts){
   const box = document.getElementById('debtsListBox');
@@ -3095,4 +3107,3 @@ if (localStorage.getItem('lm_loggedIn') === '1') {
 </script>
 </body>
 </html>
-s
