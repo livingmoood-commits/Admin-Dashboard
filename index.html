@@ -962,22 +962,19 @@ function renderEmployeesListView(kind){
 }
 
 /* ================= Employees ================= */
+let _empList = [];
+let _empFilter = 'all';
 async function renderEmployees(token) {
   try {
     const { employees } = await apiGet('listEmployees');
     if (isStaleNav(token)) return;
+    _empList = employees;
+    _empFilter = 'all';
     document.getElementById('content').innerHTML = `
       <div class="stack-v">
         <div class="panel">
           <h3>قائمة الموظفين (${employees.length})</h3>
-          <div class="tbl-wrap"><table>
-            <thead><tr><th>الاسم</th><th>طريقة القبض</th><th>اليومية</th><th>أجر الساعة</th><th>قبض الاسبوع</th><th>قبض الشهر</th><th></th></tr></thead>
-            <tbody>${employees.length ? employees.map(e => `<tr>
-              <td>${e.name}</td><td>${e.paymentType}</td><td>${fmt(e.dailyRate)} ج</td><td>${fmt(e.hourlyRate)} ج</td><td>${fmt(e.weeklyPay)} ج</td><td>${fmt(e.monthlyPay)} ج</td>
-              <td><button class="btn btn-sm btn-outline" onclick='editEmployee(${JSON.stringify(e).replace(/'/g,"&#39;")})'>تعديل</button>
-                  <button class="btn btn-sm btn-danger" onclick="deleteEmployeeConfirm('${e.name.replace(/'/g,"\\'")}')">حذف</button></td>
-            </tr>`).join('') : `<tr><td colspan="7" class="empty">مفيش موظفين مسجلين في شيت المرتبات</td></tr>`}</tbody>
-          </table></div>
+          <div id="emp-list-panel"></div>
         </div>
         <div class="panel">
           <h3>إضافة / تعديل موظف</h3>
@@ -1001,6 +998,7 @@ async function renderEmployees(token) {
         </div>
       </div>
     `;
+    renderEmployeesListPanel();
     document.getElementById('empResetBtn').addEventListener('click', () => resetEmployeeForm());
     document.getElementById('empForm').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -1021,6 +1019,38 @@ async function renderEmployees(token) {
       finally { btn.disabled=false; btn.textContent='حفظ الموظف'; }
     });
   } catch(err){ showError(err); }
+}
+function empSetFilter(val){
+  _empFilter = val;
+  renderEmployeesListPanel();
+}
+function renderEmployeesListPanel(){
+  const panel = document.getElementById('emp-list-panel'); if (!panel) return;
+  const all = _empList;
+  const weeklyCount = all.filter(e => e.paymentType === 'اسبوعي').length;
+  const monthlyCount = all.filter(e => e.paymentType === 'شهري').length;
+  const filter = _empFilter;
+  const visible = filter === 'weekly' ? all.filter(e => e.paymentType === 'اسبوعي')
+                : filter === 'monthly' ? all.filter(e => e.paymentType === 'شهري')
+                : all;
+  const emptyMsg = filter === 'weekly' ? 'مفيش موظفين اسبوعيين'
+                 : filter === 'monthly' ? 'مفيش موظفين شهريين'
+                 : 'مفيش موظفين مسجلين في شيت المرتبات';
+  panel.innerHTML = `
+    <div class="q-steps p-filter-tabs">
+      <div class="step ${filter==='all'?'active':''}" onclick="empSetFilter('all')">الجميع (${all.length})</div>
+      <div class="step ${filter==='weekly'?'active':''}" onclick="empSetFilter('weekly')">قبض اسبوعي (${weeklyCount})</div>
+      <div class="step ${filter==='monthly'?'active':''}" onclick="empSetFilter('monthly')">قبض شهري (${monthlyCount})</div>
+    </div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>الاسم</th><th>طريقة القبض</th><th>اليومية</th><th>أجر الساعة</th><th>قبض الاسبوع</th><th>قبض الشهر</th><th></th></tr></thead>
+      <tbody>${visible.length ? visible.map(e => `<tr>
+        <td>${e.name}</td><td>${e.paymentType}</td><td>${fmt(e.dailyRate)} ج</td><td>${fmt(e.hourlyRate)} ج</td><td>${fmt(e.weeklyPay)} ج</td><td>${fmt(e.monthlyPay)} ج</td>
+        <td><button class="btn btn-sm btn-outline" onclick='editEmployee(${JSON.stringify(e).replace(/'/g,"&#39;")})'>تعديل</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteEmployeeConfirm('${e.name.replace(/'/g,"\\'")}')">حذف</button></td>
+      </tr>`).join('') : `<tr><td colspan="7" class="empty">${emptyMsg}</td></tr>`}</tbody>
+    </table></div>
+  `;
 }
 function resetEmployeeForm(){
   document.getElementById('e_originalName').value='';
