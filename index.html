@@ -157,9 +157,12 @@
   .d-quick-wrap{ position:relative; flex-shrink:0; }
   .d-quick-tag-btn{ flex-shrink:0; min-width:118px; padding:12px 18px; border:1.5px solid var(--border); border-radius:11px; font-size:14.5px; font-weight:700; font-family:inherit; background:#fdfcfa; color:var(--muted); cursor:pointer; white-space:nowrap; transition:border-color .2s, color .2s, background .2s; }
   .d-quick-tag-btn:hover, .d-quick-tag-btn.open{ border-color:var(--gold); color:var(--dark); background:#fbf7ef; }
-  .d-quick-menu{ display:none; position:absolute; top:calc(100% + 6px); left:50%; transform:translateX(-50%); z-index:60; background:#fff; border:1px solid var(--border); border-radius:11px; box-shadow:0 12px 26px rgba(30,26,21,.18); width:max-content; min-width:150px; max-width:220px; overflow:hidden; padding:5px; }
-  .d-quick-menu.open{ display:block; animation:dSuggestIn .15s var(--bounce); }
+  /* منيو "+ سريع" بقى برضه popover واحد ثابت (position:fixed) بره الجدول لنفس سبب دروب-داون
+     المشاريع: كان بيتقص/يظهر متراكب فوق أعمدة تانية جنبه لما يكون قريب من حافة الجدول. */
+  .d-quick-popover{ display:none; position:fixed; z-index:200; background:#fff; border:1px solid var(--border); border-radius:12px; box-shadow:0 18px 36px rgba(30,26,21,.22); width:max-content; min-width:160px; max-width:240px; overflow:hidden; padding:6px; }
+  .d-quick-popover.open{ display:block; animation:dSuggestIn .15s var(--bounce); }
   .d-quick-item{ padding:11px 14px; font-size:14px; font-family:inherit; cursor:pointer; border-radius:8px; text-align:right; transition:background .12s, color .12s; }
+  .d-quick-item + .d-quick-item{ margin-top:2px; }
   .d-quick-item:hover{ background:var(--gold); color:var(--dark); font-weight:700; }
   .d-bulk-add{ display:flex; gap:6px; align-items:center; }
   #d-date-bar{ direction:ltr; text-align:center; font-weight:700; width:auto; min-width:170px; }
@@ -1305,6 +1308,7 @@ async function renderDailyExpenses(token) {
           </table>
         </div>
         <div class="d-suggest-popover" id="d-suggest-popover"></div>
+        <div class="d-quick-popover" id="d-quick-popover"></div>
         <div style="display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap;">
           <button type="button" class="btn btn-outline btn-sm" id="d-add-row">+ إضافة سطر</button>
           <div class="d-bulk-add">
@@ -1333,8 +1337,8 @@ async function renderDailyExpenses(token) {
     });
     document.getElementById('d-save-all').addEventListener('click', dSaveAll);
     document.getElementById('d-date-bar').addEventListener('change', e => dLoadDayLog(e.target.value || todayStr()));
-    document.getElementById('d-tbl-wrap').addEventListener('scroll', () => dHideProjectSuggestions(), { passive:true });
-    window.addEventListener('resize', () => dHideProjectSuggestions());
+    document.getElementById('d-tbl-wrap').addEventListener('scroll', () => { dHideProjectSuggestions(); dCloseAllQuickTags(); }, { passive:true });
+    window.addEventListener('resize', () => { dHideProjectSuggestions(); dCloseAllQuickTags(); });
   } catch(err){ showError(err); }
 }
 function dRenderDaysList(){
@@ -1368,9 +1372,6 @@ function dRenderRows(){
           <input type="text" class="d-input" autocomplete="off" data-lpignore="true" data-1p-ignore name="${_noAutofill('desc')}" id="d-desc-${r._id}" value="${qEsc(r.desc)}" oninput="dSetDescLive(${r._id}, this.value)" onkeydown="dHandleTab(event)" placeholder="مثال: فطار، بنزين، مسامير...">
           <div class="d-quick-wrap">
             <button type="button" class="d-quick-tag-btn" title="إضافة سريعة بعد المكتوب" onclick="dToggleQuickTag(${r._id}, this)">+ سريع</button>
-            <div class="d-quick-menu" id="d-quick-menu-${r._id}">
-              ${D_QUICK_TAGS.map(t => `<div class="d-quick-item" onmousedown="event.preventDefault();dPickQuickTag(${r._id}, '${t.replace(/'/g, "\\'")}')">${qEsc(t)}</div>`).join('')}
-            </div>
           </div>
         </div>
       </td>
@@ -1457,19 +1458,28 @@ function dHandleProjectKeydown(e, rowId){
     box.classList.remove('open');
   }
 }
+function _dQuickPopover(){ return document.getElementById('d-quick-popover'); }
 function dCloseAllQuickTags(){
-  document.querySelectorAll('.d-quick-menu.open').forEach(m => m.classList.remove('open'));
+  const box = _dQuickPopover(); if (box){ box.classList.remove('open'); box.dataset.rowId = ''; }
   document.querySelectorAll('.d-quick-tag-btn.open').forEach(b => b.classList.remove('open'));
 }
 function dToggleQuickTag(id, btnEl){
-  const menu = document.getElementById('d-quick-menu-' + id);
-  if (!menu) return;
-  const wasOpen = menu.classList.contains('open');
+  const box = _dQuickPopover(); if (!box) return;
+  const wasOpenForThisRow = box.classList.contains('open') && String(box.dataset.rowId) === String(id);
   dCloseAllQuickTags();
-  if (!wasOpen){
-    menu.classList.add('open');
-    btnEl.classList.add('open');
-  }
+  if (wasOpenForThisRow) return;
+  box.innerHTML = D_QUICK_TAGS.map(t => `<div class="d-quick-item" onmousedown="event.preventDefault();dPickQuickTag(${id}, '${t.replace(/'/g, "\\'")}')">${qEsc(t)}</div>`).join('');
+  box.dataset.rowId = id;
+  const r = btnEl.getBoundingClientRect();
+  const spaceBelow = window.innerHeight - r.bottom;
+  const openUp = spaceBelow < 200 && r.top > spaceBelow;
+  box.style.left = ''; box.style.right = '';
+  // محاذي لحافة الزرار اليمين (RTL) بدل ما يتمركز فوق الأعمدة اللي جنبه
+  box.style.right = (window.innerWidth - r.right) + 'px';
+  if (openUp){ box.style.top = ''; box.style.bottom = (window.innerHeight - r.top + 6) + 'px'; }
+  else { box.style.bottom = ''; box.style.top = (r.bottom + 6) + 'px'; }
+  box.classList.add('open');
+  btnEl.classList.add('open');
 }
 function dSetDescLive(id, v){
   const r = DSTATE.rows.find(r => r._id === id); if (!r) return;
@@ -1494,7 +1504,7 @@ function dPickQuickTag(id, tag){
   r.desc = newVal;
 }
 document.addEventListener('click', function(e){
-  if (!e.target.closest('.d-quick-wrap')) dCloseAllQuickTags();
+  if (!e.target.closest('.d-quick-wrap') && !e.target.closest('.d-quick-popover')) dCloseAllQuickTags();
 });
 function dSetField(id, f, v){
   const r = DSTATE.rows.find(r => r._id === id); if (!r) return;
