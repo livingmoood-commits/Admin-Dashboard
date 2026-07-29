@@ -253,6 +253,7 @@
   .q-tbl td:has(textarea){ vertical-align:top; }
   .q-tbl td input, .q-tbl td textarea{ background:#fff; border:1.5px solid var(--border); border-radius:5px; font-family:inherit; font-size:13px; color:var(--dark); width:100%; padding:5px 7px; outline:none; direction:rtl; text-align:right; }
   .q-tbl td input.ltr-num{ direction:ltr; text-align:left; }
+  .ltr-num{ direction:ltr; text-align:left; }
   .q-tbl td input:focus, .q-tbl td textarea:focus{ border-color:var(--gold); }
   .q-tbl td textarea{ resize:vertical; min-height:130px; line-height:1.6; }
   .q-tbl th:nth-child(4){ min-width:260px; }
@@ -471,7 +472,7 @@
   <div class="q-confirm-card">
     <h3 id="genPromptTitle">إدخال قيمة</h3>
     <p id="genPromptMsg"></p>
-    <div class="field" style="margin-bottom:16px;"><input type="text" id="genPromptInput" inputmode="decimal"></div>
+    <div class="field" style="margin-bottom:16px;"><input type="text" class="ltr-num" id="genPromptInput" inputmode="decimal"></div>
     <div class="q-confirm-btns">
       <button class="btn btn-primary" onclick="closeGenPrompt(true)">تأكيد</button>
       <button class="btn btn-outline" onclick="closeGenPrompt(false)">إلغاء</button>
@@ -1800,6 +1801,8 @@ async function deleteInstallConfirm(id){
 }
 
 /* ================= Debts (ديون) ================= */
+/* ================= Debts ================= */
+let _debtsCache = [];
 async function renderDebts(token) {
   try {
     const { debts } = await apiGet('listDebts');
@@ -1808,6 +1811,7 @@ async function renderDebts(token) {
   } catch(err){ showError(err); }
 }
 function renderDebtsPage(debts){
+  _debtsCache = debts;
   const totalDebt = debts.reduce((s,d)=>s+d.total, 0);
   const totalPaid = debts.reduce((s,d)=>s+d.paid, 0);
   const totalRemaining = totalDebt - totalPaid;
@@ -1822,16 +1826,18 @@ function renderDebtsPage(debts){
     </div>
     <div class="grid2">
       <div class="panel">
-        <h3>دين جديد</h3>
+        <h3 id="dbtFormTitle">دين جديد</h3>
         <form id="debtForm">
+          <input type="hidden" id="dbt_editId" value="">
           <div class="field"><label>الجهة الدائنة</label><input autocomplete="off" id="dbt_creditor" required placeholder="مثال: مورد الخشب"></div>
           <div class="field"><label>الوصف</label><input autocomplete="off" id="dbt_desc" placeholder="اختياري"></div>
           <div class="form-row">
-            <div class="field"><label>الإجمالي</label><input autocomplete="off" type="text" inputmode="numeric" id="dbt_total" placeholder="0" onkeypress="return /[0-9.]/.test(event.key)"></div>
-            <div class="field"><label>مسدد مبدئيًا (لو فيه)</label><input autocomplete="off" type="text" inputmode="numeric" id="dbt_paid" placeholder="0" onkeypress="return /[0-9.]/.test(event.key)"></div>
+            <div class="field"><label>الإجمالي</label><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" id="dbt_total" placeholder="0" onkeypress="return /[0-9.]/.test(event.key)"></div>
+            <div class="field"><label>مسدد مبدئيًا (لو فيه)</label><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" id="dbt_paid" placeholder="0" onkeypress="return /[0-9.]/.test(event.key)"></div>
           </div>
           <div class="field"><label>ملاحظات</label><textarea id="dbt_notes" rows="2"></textarea></div>
           <button type="submit" class="btn btn-primary" id="dbtBtn">حفظ الدين</button>
+          <button type="button" class="btn btn-outline" id="dbtCancelBtn" style="display:none;" onclick="cancelDebtEdit()">إلغاء التعديل</button>
           <div class="msg" id="dbtMsg"></div>
         </form>
       </div>
@@ -1845,6 +1851,7 @@ function renderDebtsPage(debts){
   document.getElementById('debtForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = document.getElementById('dbtBtn'); const msg = document.getElementById('dbtMsg');
+    const editId = document.getElementById('dbt_editId').value;
     msg.className='msg'; msg.textContent=''; btn.disabled=true; btn.innerHTML='<span class="spinner"></span>جاري الحفظ...';
     const debt = {
       creditor: document.getElementById('dbt_creditor').value.trim(),
@@ -1853,13 +1860,38 @@ function renderDebtsPage(debts){
       paid: qNum(document.getElementById('dbt_paid').value),
       notes: document.getElementById('dbt_notes').value
     };
-    if (!debt.creditor){ msg.className='msg err'; msg.textContent='اسم الجهة الدائنة مطلوب'; btn.disabled=false; btn.textContent='حفظ الدين'; return; }
+    if (!debt.creditor){ msg.className='msg err'; msg.textContent='اسم الجهة الدائنة مطلوب'; btn.disabled=false; btn.textContent = editId ? 'تحديث الدين' : 'حفظ الدين'; return; }
     try {
-      await apiPost('addDebt', { debt });
-      msg.className='msg ok'; msg.textContent='تم حفظ الدين';
+      if (editId) {
+        await apiPost('updateDebt', { debt: { ...debt, id: editId } });
+        msg.className='msg ok'; msg.textContent='تم تحديث الدين';
+      } else {
+        await apiPost('addDebt', { debt });
+        msg.className='msg ok'; msg.textContent='تم حفظ الدين';
+      }
       renderDebts();
-    } catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); btn.disabled=false; btn.textContent='حفظ الدين'; }
+    } catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); btn.disabled=false; btn.textContent = editId ? 'تحديث الدين' : 'حفظ الدين'; }
   });
+}
+function editDebtStart(id){
+  const d = _debtsCache.find(x=>x.id===id); if (!d) return;
+  document.getElementById('dbt_editId').value = d.id;
+  document.getElementById('dbt_creditor').value = d.creditor;
+  document.getElementById('dbt_desc').value = d.desc || '';
+  document.getElementById('dbt_total').value = d.total;
+  document.getElementById('dbt_paid').value = d.paid;
+  document.getElementById('dbt_notes').value = d.notes || '';
+  document.getElementById('dbtFormTitle').textContent = 'تعديل الدين';
+  document.getElementById('dbtBtn').textContent = 'تحديث الدين';
+  document.getElementById('dbtCancelBtn').style.display = 'inline-block';
+  window.scrollTo(0,0);
+}
+function cancelDebtEdit(){
+  document.getElementById('dbt_editId').value = '';
+  document.getElementById('debtForm').reset();
+  document.getElementById('dbtFormTitle').textContent = 'دين جديد';
+  document.getElementById('dbtBtn').textContent = 'حفظ الدين';
+  document.getElementById('dbtCancelBtn').style.display = 'none';
 }
 function renderDebtsList(debts){
   const box = document.getElementById('debtsListBox');
@@ -1871,6 +1903,7 @@ function renderDebtsList(debts){
       <td><span class="pill ${d.settled?'dep':'exp'}">${d.settled?'مسدد':'باقي'}</span></td>
       <td style="display:flex;gap:6px;">
         ${!d.settled ? `<button class="btn btn-sm btn-outline" onclick="payDebtPrompt('${d.id}', ${d.remaining})">سداد</button>` : ''}
+        <button class="btn btn-sm btn-outline" onclick="editDebtStart('${d.id}')">تعديل</button>
         <button class="btn btn-sm btn-danger" onclick="deleteDebtConfirm('${d.id}')">حذف</button>
       </td>
     </tr>`).join('')}</tbody></table></div>`;
@@ -2498,7 +2531,7 @@ async function pRenderHome(token){
         <form class="form-row3" onsubmit="event.preventDefault(); pCreateRecord();">
           <div class="field"><label>موجه إلى (Engineer)</label><input type="text" autocomplete="off" id="p_engineer"></div>
           <div class="field"><label>العنوان / المشروع</label><input type="text" autocomplete="off" id="p_address"></div>
-          <div class="field"><label>المبلغ الإجمالي</label><input type="text" autocomplete="off" inputmode="numeric" id="p_total" placeholder="0" onkeypress="return /[0-9.]/.test(event.key)"></div>
+          <div class="field"><label>المبلغ الإجمالي</label><input type="text" class="ltr-num" autocomplete="off" inputmode="numeric" id="p_total" placeholder="0" onkeypress="return /[0-9.]/.test(event.key)"></div>
         </form>
         <div style="margin-top:16px;display:flex;justify-content:flex-end;">
           <button class="btn btn-primary" onclick="pCreateRecord()">✦ إنشاء وبدء المتابعة</button>
@@ -2524,12 +2557,12 @@ function pRenderMasterPanel(){
   panel.innerHTML = `
     <h3>ملخص شامل — كل المستحقات (Master)</h3>
     <div class="cards-pair">
-      <div class="card"><div class="label">عدد السجلات</div><div class="value">${customers.length}</div></div>
-      <div class="card"><div class="label">الإجمالي الكلي (المستحق)</div><div class="value gold">${fmt(totalAgreed)} ج</div></div>
-      <div class="card"><div class="label">مكتمل الدفع</div><div class="value green">${completedCount}</div></div>
-      <div class="card"><div class="label">إجمالي المُحصّل</div><div class="value green">${fmt(totalReceived)} ج</div></div>
-      <div class="card"><div class="label">غير مكتمل</div><div class="value" style="color:var(--red);">${customers.length - completedCount}</div></div>
-      <div class="card"><div class="label">الباقي لينا برا</div><div class="value" style="color:${totalRemaining>0.01?'var(--red)':'var(--green)'};">${fmt(totalRemaining)} ج</div></div>
+      <div class="card clickable" onclick="openPaymentsMasterDetail('all','home')"><div class="label">عدد السجلات</div><div class="value">${customers.length}</div></div>
+      <div class="card clickable" onclick="openPaymentsMasterDetail('all','home')"><div class="label">الإجمالي الكلي (المستحق)</div><div class="value gold">${fmt(totalAgreed)} ج</div></div>
+      <div class="card clickable" onclick="openPaymentsMasterDetail('completed','home')"><div class="label">مكتمل الدفع</div><div class="value green">${completedCount}</div></div>
+      <div class="card clickable" onclick="openPaymentsMasterDetail('completed','home')"><div class="label">إجمالي المُحصّل</div><div class="value green">${fmt(totalReceived)} ج</div></div>
+      <div class="card clickable" onclick="openPaymentsMasterDetail('incomplete','home')"><div class="label">غير مكتمل</div><div class="value" style="color:var(--red);">${customers.length - completedCount}</div></div>
+      <div class="card clickable" onclick="openPaymentsMasterDetail('incomplete','home')"><div class="label">الباقي لينا برا</div><div class="value" style="color:${totalRemaining>0.01?'var(--red)':'var(--green)'};">${fmt(totalRemaining)} ج</div></div>
     </div>
     <div class="master-progress">
       <div class="master-progress-fill${Math.abs(totalRemaining)<=0.01?' done':''}" style="width:${pct}%;"></div>
@@ -2727,7 +2760,7 @@ function pRenderEditor(){
             oninput="PSTATE.customer.address=this.value; pSaveSession();"></div>
         </div>
         <div class="q-info-box">
-          <div class="q-info-row"><label>الإجمالي الكلي:</label><input type="text" autocomplete="off" inputmode="numeric" id="p-b-total" value="${c.total||0}" onkeypress="return /[0-9.]/.test(event.key)" oninput="pRenderRows(); pSaveSession();"></div>
+          <div class="q-info-row"><label>الإجمالي الكلي:</label><input type="text" class="ltr-num" autocomplete="off" inputmode="numeric" id="p-b-total" value="${c.total||0}" onkeypress="return /[0-9.]/.test(event.key)" oninput="pRenderRows(); pSaveSession();"></div>
           <div class="q-info-row"><label>تاريخ استلام المشروع:</label><input autocomplete="off" type="date" id="p-b-date" value="${pToISO(c.date)}" oninput="PSTATE.customer.date=pToEnGB(this.value); pSaveSession();"></div>
         </div>
       </div>
