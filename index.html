@@ -1289,12 +1289,11 @@ async function renderDailyExpenses(token) {
     if (isStaleNav(token)) return;
     DSTATE.rows = [dNewRow(), dNewRow(), dNewRow()];
     DSTATE.days = days || [];
-    DPROJECT_NAMES = Array.from(new Set([...projects, 'مصروفات عامة']));
+    DPROJECT_NAMES = Array.from(new Set(['مصروفات عامة', ...projects]));
     document.getElementById('content').innerHTML = `
       <div class="panel">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
           <h3 style="margin:0;">مصاريف اليوم — سطر لكل مصروف</h3>
-          <div style="font-weight:800;font-size:15px;">الإجمالي: <span id="d-total" style="color:var(--red);">0</span> ج</div>
         </div>
         <div class="d-date-bar">
           <label for="d-date-bar">تاريخ المصاريف دي:</label>
@@ -1316,6 +1315,7 @@ async function renderDailyExpenses(token) {
             <button type="button" class="btn btn-outline btn-sm" id="d-bulk-add-btn">+ إضافة عدد أسطر</button>
           </div>
           <button type="button" class="btn btn-primary" id="d-save-all">حفظ</button>
+          <div style="font-weight:800;font-size:15px;">الإجمالي: <span id="d-total" style="color:var(--red);">0</span> ج</div>
           <div class="msg" id="d-msg"></div>
         </div>
       </div>
@@ -1369,25 +1369,30 @@ function dRenderRows(){
       <td style="text-align:center;color:var(--muted);font-size:11px;">${i + 1}</td>
       <td>
         <div class="d-desc-cell">
-          <input type="text" class="d-input" autocomplete="off" data-lpignore="true" data-1p-ignore name="${_noAutofill('desc')}" id="d-desc-${r._id}" value="${qEsc(r.desc)}" oninput="dSetDescLive(${r._id}, this.value)" onkeydown="dHandleTab(event)" placeholder="مثال: فطار، بنزين، مسامير...">
+          <input type="text" class="d-input" autocomplete="off" data-lpignore="true" data-1p-ignore name="${_noAutofill('desc')}" id="d-desc-${r._id}" data-col="0" value="${qEsc(r.desc)}" oninput="dSetDescLive(${r._id}, this.value)" onkeydown="dHandleTab(event)" onpaste="dHandlePaste(event, ${r._id}, 0)" placeholder="مثال: فطار، بنزين، مسامير...">
           <div class="d-quick-wrap">
             <button type="button" class="d-quick-tag-btn" title="إضافة سريعة بعد المكتوب" onclick="dToggleQuickTag(${r._id}, this)">+ سريع</button>
           </div>
         </div>
       </td>
-      <td><input type="text" class="d-input ltr-num" autocomplete="off" data-lpignore="true" data-1p-ignore inputmode="numeric" name="${_noAutofill('amount')}" value="${r.amount || ''}" onchange="dSetField(${r._id},'amount',this.value)" onkeypress="return /[0-9.]/.test(event.key)" onkeydown="dHandleTab(event)"></td>
+      <td><input type="text" class="d-input ltr-num" autocomplete="off" data-lpignore="true" data-1p-ignore inputmode="numeric" name="${_noAutofill('amount')}" id="d-amt-${r._id}" data-col="1" value="${r.amount || ''}" onchange="dSetField(${r._id},'amount',this.value)" onkeypress="return /[0-9.]/.test(event.key)" onkeydown="dHandleTab(event)" onpaste="dHandlePaste(event, ${r._id}, 1)"></td>
       <td style="position:relative;">
         <input type="text" class="d-input" autocomplete="off" data-lpignore="true" data-1p-ignore
-          name="${_noAutofill('project')}" id="d-proj-${r._id}" value="${qEsc(r.project)}" placeholder="مصروفات عامة"
+          name="${_noAutofill('project')}" id="d-proj-${r._id}" data-col="2" value="${qEsc(r.project)}" placeholder="مصروفات عامة"
           oninput="dShowProjectSuggestions(${r._id}, this)"
           onfocus="dShowProjectSuggestions(${r._id}, this)"
           onblur="setTimeout(()=>dHideProjectSuggestions(${r._id}), 150)"
           onkeydown="dHandleProjectKeydown(event, ${r._id})"
-          onchange="dSetField(${r._id},'project',this.value)">
+          onchange="dSetField(${r._id},'project',this.value)"
+          onpaste="dHandlePaste(event, ${r._id}, 2)">
       </td>
-      <td><button class="btn btn-sm btn-danger" tabindex="-1" onclick="dDelRow(${r._id})">✕</button></td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-sm btn-outline" tabindex="-1" title="نقل لفوق" onclick="dMoveRow(${r._id},-1)" ${i===0?'disabled':''}>&#9650;</button>
+        <button class="btn btn-sm btn-outline" tabindex="-1" title="نقل لتحت" onclick="dMoveRow(${r._id},1)" ${i===DSTATE.rows.length-1?'disabled':''}>&#9660;</button>
+        <button class="btn btn-sm btn-danger" tabindex="-1" onclick="dDelRow(${r._id})">✕</button>
+      </td>
     </tr>`).join('');
-  document.getElementById('d-total').textContent = fmt(dTotal());
+  dUpdateTotalBadge();
 }
 /* بوكس اقتراحات المشروع بقى popover واحد مشترك بره الجدول (position:fixed)، بيتحرك مكانه
  * على حسب الحقل اللي بتكتب فيه دلوقتي. الطريقة دي بتحل مشكلة إن البوكس كان بيتقطع/يختفي
@@ -1506,14 +1511,57 @@ function dPickQuickTag(id, tag){
 document.addEventListener('click', function(e){
   if (!e.target.closest('.d-quick-wrap') && !e.target.closest('.d-quick-popover')) dCloseAllQuickTags();
 });
+function dUpdateTotalBadge(){
+  const totalEl = document.getElementById('d-total');
+  if (totalEl) totalEl.textContent = fmt(dTotal());
+}
+// ملحوظة: قبل كده كانت الدالة دي بتعمل dRenderRows() (بناء الجدول كله من جديد) في كل مرة
+// حقل يتغير — ده كان بيمسح/يقطع الكتابة في خلايا تانية لو المستخدم لسه بيكتب فيها وقت
+// ما خلية جنبها بتعمل commit (onchange). دلوقتي بنحدّث الداتا والإجمالي بس من غير ما نلمس DOM الجدول.
 function dSetField(id, f, v){
   const r = DSTATE.rows.find(r => r._id === id); if (!r) return;
   r[f] = f === 'amount' ? qNum(v) : v;
-  dRenderRows();
+  if (f === 'amount') dUpdateTotalBadge();
 }
 function dDelRow(id){
   DSTATE.rows = DSTATE.rows.filter(r => r._id !== id);
   if (!DSTATE.rows.length) DSTATE.rows = [dNewRow()];
+  dRenderRows();
+}
+// نقل صف لفوق (-1) أو لتحت (+1) في ترتيب الجدول
+function dMoveRow(id, dir){
+  const idx = DSTATE.rows.findIndex(r => r._id === id);
+  const target = idx + dir;
+  if (idx === -1 || target < 0 || target >= DSTATE.rows.length) return;
+  const tmp = DSTATE.rows[idx];
+  DSTATE.rows[idx] = DSTATE.rows[target];
+  DSTATE.rows[target] = tmp;
+  dRenderRows();
+}
+/* لصق زي إكسيل: تقدر تنسخ كذا خلية/سطر من إكسيل أو جوجل شيت (أو من نفس الجدول) وتلصقها
+ * دفعة واحدة، وهي هتتوزع تلقائي على الأعمدة والصفوف بدايةً من الخلية اللي انت واقف فيها،
+ * وهتضيف صفوف جديدة تلقائي لو محتاجة صفوف أكتر من الموجودة. لو النص المنسوخ خلية واحدة
+ * بسيطة (من غير Tab أو سطر جديد)، بنسيب المتصفح يعمل اللصق العادي جوه الخلية زي ما هو. */
+function dHandlePaste(e, rowId, colIndex){
+  const text = (e.clipboardData || window.clipboardData).getData('text');
+  if (!text || (!text.includes('\t') && !text.includes('\n'))) return; // لصق عادي لخلية واحدة
+  e.preventDefault();
+  const lines = text.replace(/\r/g, '').split('\n').filter((l, i, arr) => !(l === '' && i === arr.length - 1));
+  let startIdx = DSTATE.rows.findIndex(r => r._id === rowId);
+  if (startIdx === -1) startIdx = DSTATE.rows.length;
+  lines.forEach((line, i) => {
+    const cols = line.split('\t');
+    const targetIdx = startIdx + i;
+    while (targetIdx >= DSTATE.rows.length) DSTATE.rows.push(dNewRow());
+    const row = DSTATE.rows[targetIdx];
+    cols.forEach((val, cIdx) => {
+      const destCol = colIndex + cIdx;
+      const v = val.trim();
+      if (destCol === 0) row.desc = v;
+      else if (destCol === 1) row.amount = qNum(v);
+      else if (destCol === 2) row.project = v;
+    });
+  });
   dRenderRows();
 }
 async function dSaveAll(){
@@ -1521,12 +1569,20 @@ async function dSaveAll(){
   const msg = document.getElementById('d-msg'); const btn = document.getElementById('d-save-all');
   if (!valid.length){ msg.className = 'msg err'; msg.textContent = 'من فضلك اكتب وصف ومبلغ لسطر واحد على الأقل'; return; }
   btn.disabled = true; msg.className = 'msg'; msg.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
-  let saved = 0, total = 0;
+  const rows = valid.map(r => ({ desc: String(r.desc).trim(), amount: qNum(r.amount), project: String(r.project || '').trim() || 'مصروفات عامة', date: DSTATE.date }));
+  const total = rows.reduce((s, r) => s + r.amount, 0);
+  let saved = 0;
   try {
-    for (const r of valid) {
-      const row = { desc: String(r.desc).trim(), amount: qNum(r.amount), project: String(r.project || '').trim() || 'مصروفات عامة', date: DSTATE.date };
-      await apiPost('addDailyExpenseRow', { row });
-      saved++; total += qNum(r.amount);
+    // بنحاول الأول نبعت كل الأسطر في طلب واحد بس (أسرع بكتير من طلب لكل سطر لوحده)،
+    // ولو السيرفر لسه معندوش الأكشن ده (addDailyExpenseRows) بنرجع تلقائي للطريقة القديمة سطر سطر.
+    try {
+      await apiPost('addDailyExpenseRows', { rows });
+      saved = rows.length;
+    } catch (batchErr) {
+      for (const row of rows) {
+        await apiPost('addDailyExpenseRow', { row });
+        saved++;
+      }
     }
     msg.className = 'msg ok'; msg.textContent = `✔ اتسجل ${saved} مصروف بإجمالي ${fmt(total)} ج`;
     const log = await apiGet('getDailyExpenses', { date: DSTATE.date });
