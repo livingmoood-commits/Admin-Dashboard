@@ -985,12 +985,13 @@ async function renderEmployees(token) {
               <div class="field"><label>طريقة القبض</label>
                 <select id="e_paymentType"><option value="اسبوعي">اسبوعي</option><option value="شهري">شهري</option></select>
               </div>
-              <div class="field"><label>اليومية (ج)</label><input autocomplete="off" type="number" id="e_dailyRate" step="1" min="0"></div>
+              <div class="field"><label id="e_periodPayLabel">قبض الاسبوع (ج)</label><input autocomplete="off" type="number" id="e_periodPay" step="1" min="0" placeholder="اكتب المبلغ يتحسب الباقي أوتوماتيك"></div>
             </div>
             <div class="form-row">
+              <div class="field"><label>اليومية (ج)</label><input autocomplete="off" type="number" id="e_dailyRate" step="1" min="0"></div>
               <div class="field"><label>أجر الساعة (ج)</label><input autocomplete="off" type="number" id="e_hourlyRate" step="1" min="0"></div>
-              <div class="field"><label>ملاحظات</label><input autocomplete="off" id="e_notes"></div>
             </div>
+            <div class="field"><label>ملاحظات</label><input autocomplete="off" id="e_notes"></div>
             <button type="submit" class="btn btn-primary" id="empSubmitBtn">حفظ الموظف</button>
             <button type="button" class="btn btn-outline" id="empResetBtn">إضافة جديد</button>
             <div class="msg" id="empMsg"></div>
@@ -1000,15 +1001,23 @@ async function renderEmployees(token) {
     `;
     renderEmployeesListPanel();
     document.getElementById('empResetBtn').addEventListener('click', () => resetEmployeeForm());
+    document.getElementById('e_paymentType').addEventListener('change', () => empUpdatePeriodLabel());
+    document.getElementById('e_periodPay').addEventListener('input', () => empCalcFromPeriodPay());
+    document.getElementById('e_dailyRate').addEventListener('input', () => empCalcFromDaily());
+    empUpdatePeriodLabel();
     document.getElementById('empForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const btn = document.getElementById('empSubmitBtn'); const msg = document.getElementById('empMsg');
       msg.className='msg'; msg.textContent=''; btn.disabled=true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
       const originalName = document.getElementById('e_originalName').value;
+      const paymentType = document.getElementById('e_paymentType').value;
+      const periodPay = document.getElementById('e_periodPay').value;
       const employee = {
         id: originalName || undefined, name: document.getElementById('e_name').value.trim(),
-        paymentType: document.getElementById('e_paymentType').value,
+        paymentType,
         dailyRate: document.getElementById('e_dailyRate').value, hourlyRate: document.getElementById('e_hourlyRate').value,
+        weeklyPay: paymentType === 'اسبوعي' ? periodPay : undefined,
+        monthlyPay: paymentType === 'شهري' ? periodPay : undefined,
         notes: document.getElementById('e_notes').value
       };
       try {
@@ -1019,6 +1028,25 @@ async function renderEmployees(token) {
       finally { btn.disabled=false; btn.textContent='حفظ الموظف'; }
     });
   } catch(err){ showError(err); }
+}
+/* طريقة القبض بتحدد تسمية حقل "قبض الاسبوع/الشهر" وقاسم اليومية:
+ * اسبوعي → القبض ÷ 6 = اليومية | شهري → القبض ÷ 26 = اليومية
+ * وفي الحالتين: اليومية ÷ 9 = أجر الساعة */
+function empUpdatePeriodLabel(){
+  const isMonthly = document.getElementById('e_paymentType').value === 'شهري';
+  document.getElementById('e_periodPayLabel').textContent = isMonthly ? 'قبض الشهر (ج)' : 'قبض الاسبوع (ج)';
+}
+function empCalcFromPeriodPay(){
+  const isMonthly = document.getElementById('e_paymentType').value === 'شهري';
+  const periodPay = Number(document.getElementById('e_periodPay').value) || 0;
+  const divisor = isMonthly ? 26 : 6;
+  const daily = periodPay > 0 ? Math.round((periodPay / divisor) * 100) / 100 : '';
+  document.getElementById('e_dailyRate').value = daily;
+  document.getElementById('e_hourlyRate').value = daily !== '' ? Math.round((daily / 9) * 100) / 100 : '';
+}
+function empCalcFromDaily(){
+  const daily = Number(document.getElementById('e_dailyRate').value) || 0;
+  document.getElementById('e_hourlyRate').value = daily > 0 ? Math.round((daily / 9) * 100) / 100 : '';
 }
 function empSetFilter(val){
   _empFilter = val;
@@ -1055,14 +1083,17 @@ function renderEmployeesListPanel(){
 function resetEmployeeForm(){
   document.getElementById('e_originalName').value='';
   document.getElementById('empForm').reset();
+  empUpdatePeriodLabel();
 }
 function editEmployee(e){
   document.getElementById('e_originalName').value = e.name;
   document.getElementById('e_name').value = e.name;
   document.getElementById('e_paymentType').value = e.paymentType;
+  document.getElementById('e_periodPay').value = e.paymentType === 'شهري' ? (e.monthlyPay || '') : (e.weeklyPay || '');
   document.getElementById('e_dailyRate').value = e.dailyRate;
   document.getElementById('e_hourlyRate').value = e.hourlyRate;
   document.getElementById('e_notes').value = e.notes || '';
+  empUpdatePeriodLabel();
   window.scrollTo(0,0);
 }
 async function deleteEmployeeConfirm(name){
@@ -1274,7 +1305,7 @@ function payrollDayCellHtml_(row, col, value){
 function payrollRenderTable(){
   const box = document.getElementById('pay-box'); if (!box) return;
   const data = PAYSTATE.data; if (!data) return;
-  if (data.kind === 'monthly') { payrollRenderMonthlyTable_(box, data); return; }
+  if (PAYSTATE.kind === 'monthly') { payrollRenderMonthlyTable_(box, data); return; }
   payrollRenderWeeklyTable_(box, data);
 }
 
