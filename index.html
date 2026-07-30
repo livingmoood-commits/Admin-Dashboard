@@ -1110,26 +1110,6 @@ async function deleteEmployeeConfirm(name){
 const PAY_AR_MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 let PAYSTATE = { year: new Date().getFullYear(), monthIndex: new Date().getMonth(), kind: 'monthly', view: 'month', data: null };
 
-// ⚠️ تصحيح 2026-07-30: من غير الحفظ ده، أي Reload (أو حتى رجوع من صفحة تانية) كان
-// بيصفّر PAYSTATE لقيمه الافتراضية (شهر/سنة النهارده، تبويب "الشهريين")، فتحس إنه
-// "رجّعك للشهر الحالي" حتى لو كنت واقف في شهر/تبويب/أسبوع تاني. بنحفظ بس الاختيارات
-// (مش data نفسها، عشان تتحمّل fresh من الشيت كل مرة) بنفس نمط qSaveSession/pSaveSession.
-function paySaveSession(){
-  try { sessionStorage.setItem('lm_paySession', JSON.stringify({ year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex, kind: PAYSTATE.kind, view: PAYSTATE.view })); } catch(e){}
-}
-function payRestoreSession(){
-  try {
-    const raw = sessionStorage.getItem('lm_paySession');
-    if (!raw) return;
-    const s = JSON.parse(raw);
-    if (!s) return;
-    if (s.year) PAYSTATE.year = s.year;
-    if (Number.isInteger(s.monthIndex)) PAYSTATE.monthIndex = s.monthIndex;
-    if (s.kind) PAYSTATE.kind = s.kind;
-    if (s.view) PAYSTATE.view = s.view;
-  } catch(e){}
-}
-
 // خريطة كود الحركة (الحرف اللي بيتكتب بعد الرقم) → كلاس اللون + وصف مبسط.
 // ج=إضافة (أخضر) / خ=خصم (أحمر) / م=مسحوبات (كهرماني) / غ=غياب (بنفسجي).
 // أي كود تاني (زي ش أو أي حرف غير معروف) بياخد لون محايد (pay-other) لحد ما تقولّي معناه بالظبط.
@@ -1159,7 +1139,6 @@ function payCellRecolor(inputEl){
 }
 
 async function renderPayroll(token){
-  payRestoreSession();
   document.getElementById('content').innerHTML = `
     <div class="panel">
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
@@ -1180,7 +1159,6 @@ async function renderPayroll(token){
     PAYSTATE.monthIndex = parseInt(document.getElementById('pay-month').value, 10);
     PAYSTATE.year = parseInt(document.getElementById('pay-year').value, 10) || PAYSTATE.year;
     PAYSTATE.view = 'month';
-    paySaveSession();
     payrollUpdateTabsUI_();
     payrollLoadSheet();
   });
@@ -1190,19 +1168,16 @@ async function renderPayroll(token){
   document.getElementById('pay-tab-monthly').addEventListener('click', () => {
     if (PAYSTATE.view==='month' && PAYSTATE.kind==='monthly') return;
     PAYSTATE.kind = 'monthly'; PAYSTATE.view = 'month';
-    paySaveSession();
     payrollUpdateTabsUI_(); payrollLoadSheet();
   });
   document.getElementById('pay-tab-weekly').addEventListener('click', () => {
     if (PAYSTATE.view==='month' && PAYSTATE.kind==='weekly') return;
     PAYSTATE.kind = 'weekly'; PAYSTATE.view = 'month';
-    paySaveSession();
     payrollUpdateTabsUI_(); payrollLoadSheet();
   });
   document.getElementById('pay-master-btn').addEventListener('click', () => {
     if (PAYSTATE.view==='master') return;
     PAYSTATE.view = 'master';
-    paySaveSession();
     payrollUpdateTabsUI_(); payrollLoadMaster();
   });
   if (PAYSTATE.view === 'master') payrollLoadMaster(); else payrollLoadSheet();
