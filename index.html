@@ -1725,8 +1725,8 @@ async function dLoadDayLog(dateStr){
   } catch(err){ box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message||err}</div>`; }
 }
 let DPROJECT_NAMES = [];
-const D_QUICK_TAGS = ['مسحوبات', 'بنزين', 'أكل', 'مشتريات', 'صيانة', 'مواصلات', 'مرتبات', 'أخرى'];
-const D_QUICK_TAG_ICONS = { 'مسحوبات':'💸', 'بنزين':'⛽', 'أكل':'🍔', 'مشتريات':'🛒', 'صيانة':'🔧', 'مواصلات':'🚗', 'مرتبات':'💰', 'أخرى':'✨' };
+const D_QUICK_TAGS = ['مسحوبات', 'مرتبات', 'أكل', 'مشتريات', 'صيانة', 'مواصلات', 'بنزين', 'أخرى'];
+const D_QUICK_TAG_ICONS = { 'مسحوبات':'💸','مرتبات':'💰', 'أكل':'🍔', 'مشتريات':'🛒', 'صيانة':'🔧', 'مواصلات':'🚗',  'بنزين':'⛽', 'أخرى':'✨' };
 function dRenderRows(){
   const tb = document.getElementById('d-body'); if (!tb) return;
   tb.innerHTML = DSTATE.rows.map((r, i) => `
