@@ -164,23 +164,34 @@
   .d-quick-tag-btn:hover, .d-quick-tag-btn.open{ border-color:var(--gold); color:var(--dark); background:#fbf7ef; }
   /* منيو "+ سريع" بقى برضه popover واحد ثابت (position:fixed) بره الجدول لنفس سبب دروب-داون
      المشاريع: كان بيتقص/يظهر متراكب فوق أعمدة تانية جنبه لما يكون قريب من حافة الجدول. */
-  .d-quick-popover{ display:none; position:fixed; z-index:200; background:#fff; border:1px solid var(--border); border-radius:12px; box-shadow:0 18px 36px rgba(30,26,21,.22); width:max-content; min-width:160px; max-width:240px; overflow:hidden; padding:6px; }
-  .d-quick-popover.open{ display:block; animation:dSuggestIn .15s var(--bounce); }
-  .d-quick-item{ padding:11px 14px; font-size:14px; font-family:inherit; cursor:pointer; border-radius:8px; text-align:right; transition:background .12s, color .12s; }
-  .d-quick-item + .d-quick-item{ margin-top:2px; }
-  .d-quick-item:hover, .d-quick-item.active{ background:var(--gold); color:var(--dark); font-weight:700; }
-  .d-bulk-add{ display:flex; gap:6px; align-items:center; }
-  #d-date-bar{ direction:ltr; text-align:center; font-weight:700; width:auto; min-width:170px; }
+  .d-quick-popover{ display:none; position:fixed; z-index:200; flex-direction:column; background:#fff; border:1px solid rgba(184,151,90,.28); border-radius:14px; box-shadow:0 22px 44px rgba(30,26,21,.20), 0 2px 10px rgba(184,151,90,.10); width:max-content; min-width:180px; max-width:250px; overflow:hidden; }
+  .d-quick-popover.open{ display:flex; animation:dSuggestIn .16s var(--bounce); }
   #d-body td{ padding:6px 8px; }
   /* دروب-داون مشاريع مبني بالكود بالكامل (مش <datalist> الأصلي) — عشان كروم كان بيخلط بينه وبين اقتراح باسورد محفوظ.
      البوكس بقى "popover" واحد بس position:fixed بره الجدول، عشان لما الجدول نفسه بيعمل سكرول داخلي
      (tbl-wrap-scroll) الدروب-داون ميتقصّش/يتقطعش على حافة السكرول زي ما كان بيحصل. */
-  .d-suggest-popover{ display:none; position:fixed; z-index:200; background:#fff; border:1px solid var(--border); border-radius:12px; box-shadow:0 18px 36px rgba(30,26,21,.22); max-height:260px; overflow-y:auto; text-align:right; padding:6px; }
-  .d-suggest-popover.open{ display:block; animation:dSuggestIn .15s var(--bounce); }
+  .d-suggest-popover{ display:none; position:fixed; z-index:200; flex-direction:column; background:#fff; border:1px solid rgba(184,151,90,.28); border-radius:14px; box-shadow:0 22px 44px rgba(30,26,21,.20), 0 2px 10px rgba(184,151,90,.10); overflow:hidden; text-align:right; }
+  .d-suggest-popover.open{ display:flex; animation:dSuggestIn .16s var(--bounce); }
   @keyframes dSuggestIn{ from{ opacity:0; transform:translateY(-4px); } to{ opacity:1; transform:translateY(0); } }
-  .d-suggest-item{ padding:11px 14px; font-size:14px; font-family:inherit; cursor:pointer; border-radius:8px; transition:background .12s, color .12s; }
-  .d-suggest-item + .d-suggest-item{ margin-top:2px; }
-  .d-suggest-item:hover, .d-suggest-item.active{ background:var(--gold); color:var(--dark); font-weight:700; }
+  /* الحاوية الداخلية القابلة للسكرول — منفصلة عن الفريم برة عشان تلميحة الكيبورد تحت تفضل ثابتة
+     وميتقصّش شكل البوكس، وعشان نقدر نحط سكرول بار دهبي مخصص بدل الرمادي الافتراضي. */
+  .d-pop-items{ overflow-y:auto; max-height:236px; padding:6px; scrollbar-width:thin; scrollbar-color:var(--gold) transparent; }
+  .d-pop-items::-webkit-scrollbar{ width:6px; }
+  .d-pop-items::-webkit-scrollbar-track{ background:transparent; }
+  .d-pop-items::-webkit-scrollbar-thumb{ background:var(--gold); border-radius:6px; }
+  .d-pop-items::-webkit-scrollbar-thumb:hover{ background:var(--gold-dim); }
+  .d-quick-item, .d-suggest-item{ display:flex; align-items:center; gap:10px; padding:8px 10px; font-size:14px; font-family:inherit; cursor:pointer; border-radius:9px; border-right:3px solid transparent; transition:background .13s, border-color .13s, padding .13s; }
+  .d-quick-item + .d-quick-item, .d-suggest-item + .d-suggest-item{ margin-top:2px; }
+  .d-quick-item:hover, .d-quick-item.active, .d-suggest-item:hover, .d-suggest-item.active{
+    background:linear-gradient(90deg, rgba(184,151,90,.17), rgba(184,151,90,.04));
+    border-right-color:var(--gold); color:var(--dark); font-weight:700; padding-right:12px;
+  }
+  .d-pop-icon{ width:25px; height:25px; border-radius:8px; background:rgba(184,151,90,.14); color:var(--gold-dim); display:flex; align-items:center; justify-content:center; font-size:12.5px; font-weight:700; flex-shrink:0; transition:background .13s, color .13s; }
+  .d-quick-item:hover .d-pop-icon, .d-quick-item.active .d-pop-icon, .d-suggest-item:hover .d-pop-icon, .d-suggest-item.active .d-pop-icon{ background:var(--gold); color:#fff; }
+  .d-pop-label{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .d-pop-hint{ flex-shrink:0; font-size:10.5px; color:var(--muted); text-align:center; padding:6px 10px; border-top:1px solid var(--border); background:var(--cream); }
+  .d-bulk-add{ display:flex; gap:6px; align-items:center; }
+  #d-date-bar{ direction:ltr; text-align:center; font-weight:700; width:auto; min-width:170px; }
   .d-days-list{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
   .d-day-chip{ all:unset; cursor:pointer; padding:7px 14px; border-radius:20px; font-size:12.5px; font-weight:700; color:var(--muted); background:var(--cream); border:1px solid var(--border); transition:background .2s, color .2s, border-color .2s, transform .2s var(--bounce); }
   .d-day-chip:hover{ border-color:var(--gold); color:var(--dark); }
@@ -1714,7 +1725,8 @@ async function dLoadDayLog(dateStr){
   } catch(err){ box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message||err}</div>`; }
 }
 let DPROJECT_NAMES = [];
-const D_QUICK_TAGS = ['مسحوبات', 'بنزين', 'أكل', 'مشتريات', 'صيانة', 'مواصلات', 'أخرى'];
+const D_QUICK_TAGS = ['مسحوبات', 'بنزين', 'أكل', 'مشتريات', 'صيانة', 'مواصلات', 'مرتبات', 'أخرى'];
+const D_QUICK_TAG_ICONS = { 'مسحوبات':'💸', 'بنزين':'⛽', 'أكل':'🍔', 'مشتريات':'🛒', 'صيانة':'🔧', 'مواصلات':'🚗', 'مرتبات':'💰', 'أخرى':'✨' };
 function dRenderRows(){
   const tb = document.getElementById('d-body'); if (!tb) return;
   tb.innerHTML = DSTATE.rows.map((r, i) => `
@@ -1751,16 +1763,23 @@ function dRenderRows(){
  * على حسب الحقل اللي بتكتب فيه دلوقتي. الطريقة دي بتحل مشكلة إن البوكس كان بيتقطع/يختفي
  * جزء منه لما يكون قريب من حافة الجدول اللي بيعمل سكرول داخلي (tbl-wrap-scroll). */
 function _dPopover(){ return document.getElementById('d-suggest-popover'); }
+function _dProjectIcon(p){
+  if (p === 'مصروفات عامة') return '📋';
+  const ch = String(p || '').trim().charAt(0);
+  return qEsc(ch ? ch.toUpperCase() : '•');
+}
 function dShowProjectSuggestions(rowId, inputEl){
   const box = _dPopover(); if (!box) return;
   const q = String(inputEl.value || '').trim().toLowerCase();
-  const list = DPROJECT_NAMES.filter(p => !q || p.toLowerCase().includes(q)).slice(0, 8);
+  const list = DPROJECT_NAMES.filter(p => !q || p.toLowerCase().includes(q)).slice(0, 30);
   if (!list.length){ box.classList.remove('open'); box.innerHTML = ''; return; }
-  box.innerHTML = list.map(p => `<div class="d-suggest-item" onmousedown="event.preventDefault();dPickProjectSuggestion(${rowId}, '${p.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')">${qEsc(p)}</div>`).join('');
+  box.innerHTML = '<div class="d-pop-items">' + list.map(p =>
+    `<div class="d-suggest-item" onmousedown="event.preventDefault();dPickProjectSuggestion(${rowId}, '${p.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')"><span class="d-pop-icon">${_dProjectIcon(p)}</span><span class="d-pop-label">${qEsc(p)}</span></div>`
+  ).join('') + '</div><div class="d-pop-hint">↑↓ للتنقل · Enter للاختيار</div>';
   box.dataset.rowId = rowId;
   const r = inputEl.getBoundingClientRect();
   const spaceBelow = window.innerHeight - r.bottom;
-  const openUp = spaceBelow < 180 && r.top > spaceBelow;
+  const openUp = spaceBelow < 200 && r.top > spaceBelow;
   box.style.left = Math.max(8, r.left) + 'px';
   box.style.width = r.width + 'px';
   if (openUp){ box.style.top = ''; box.style.bottom = (window.innerHeight - r.top + 4) + 'px'; }
@@ -1775,6 +1794,10 @@ function dHideProjectSuggestions(rowId){
 function dPickProjectSuggestion(rowId, value){
   dHideProjectSuggestions(rowId);
   dSetField(rowId, 'project', value);
+  // dSetField لوحدها بتحدّث بيانات الصف بس (DSTATE) من غير ما تلمس الـ input نفسه
+  // (عشان مفيش إعادة رسم للجدول كله)، فكان لازم نكتب القيمة المختارة في الخانة يدويًا هنا.
+  const input = document.getElementById('d-proj-' + rowId);
+  if (input) input.value = value;
 }
 /* Tab بيتنقل بين خلايا الجدول (وصف/مبلغ/مشروع) بس، مش بيخرج بره لأي زرار أو حاجة تانية */
 function dHandleTab(e){
@@ -1861,7 +1884,9 @@ function dToggleQuickTag(id, btnEl){
   const wasOpenForThisRow = box.classList.contains('open') && String(box.dataset.rowId) === String(id);
   dCloseAllQuickTags();
   if (wasOpenForThisRow) return;
-  box.innerHTML = D_QUICK_TAGS.map(t => `<div class="d-quick-item" onmousedown="event.preventDefault();dPickQuickTag(${id}, '${t.replace(/'/g, "\\'")}')">${qEsc(t)}</div>`).join('');
+  box.innerHTML = '<div class="d-pop-items">' + D_QUICK_TAGS.map(t =>
+    `<div class="d-quick-item" onmousedown="event.preventDefault();dPickQuickTag(${id}, '${t.replace(/'/g, "\\'")}')"><span class="d-pop-icon">${D_QUICK_TAG_ICONS[t] || '📌'}</span><span class="d-pop-label">${qEsc(t)}</span></div>`
+  ).join('') + '</div><div class="d-pop-hint">↑↓ للتنقل · Enter للاختيار</div>';
   box.dataset.rowId = id;
   const r = btnEl.getBoundingClientRect();
   const spaceBelow = window.innerHeight - r.bottom;
