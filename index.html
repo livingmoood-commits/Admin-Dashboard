@@ -1141,15 +1141,16 @@ function payCellRecolor(inputEl){
 async function renderPayroll(token){
   document.getElementById('content').innerHTML = `
     <div class="panel">
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
         <select id="pay-month" class="d-input" style="width:auto;">${PAY_AR_MONTHS.map((m,i)=>`<option value="${i}" ${i===PAYSTATE.monthIndex?'selected':''}>${qEsc(m)}</option>`).join('')}</select>
         <input type="number" id="pay-year" value="${PAYSTATE.year}" class="d-input" style="width:90px;">
         <button class="btn btn-primary btn-sm" id="pay-load-btn">تحميل الشهر</button>
-        <div class="sep" style="width:1px;height:26px;background:var(--border);"></div>
-        <button class="btn btn-sm ${(PAYSTATE.view==='month'&&PAYSTATE.kind==='monthly')?'btn-primary':'btn-outline'}" id="pay-tab-monthly">الموظفين الشهريين</button>
-        <button class="btn btn-sm ${(PAYSTATE.view==='month'&&PAYSTATE.kind==='weekly')?'btn-primary':'btn-outline'}" id="pay-tab-weekly">الموظفين الاسبوعيين</button>
-        <button class="btn btn-sm ${PAYSTATE.view==='master'?'btn-primary':'btn-outline'}" id="pay-master-btn">عرض الـ Master</button>
         <span style="font-size:11.5px;color:var(--muted);">✎ أي تعديل في خانة يوم بيتسجل في الشيت الحقيقي على طول</span>
+      </div>
+      <div class="q-steps p-filter-tabs" id="pay-tabs">
+        <div class="step ${(PAYSTATE.view==='month'&&PAYSTATE.kind==='monthly')?'active':''}" id="pay-tab-monthly">الموظفين الشهريين</div>
+        <div class="step ${(PAYSTATE.view==='month'&&PAYSTATE.kind==='weekly')?'active':''}" id="pay-tab-weekly">الموظفين الاسبوعيين</div>
+        <div class="step ${PAYSTATE.view==='master'?'active':''}" id="pay-master-btn">عرض الـ Master</div>
       </div>
     </div>
     <div id="pay-box"><div class="loading-row">جاري التحميل...</div></div>
@@ -1158,14 +1159,37 @@ async function renderPayroll(token){
     PAYSTATE.monthIndex = parseInt(document.getElementById('pay-month').value, 10);
     PAYSTATE.year = parseInt(document.getElementById('pay-year').value, 10) || PAYSTATE.year;
     PAYSTATE.view = 'month';
+    payrollUpdateTabsUI_();
     payrollLoadSheet();
   });
-  document.getElementById('pay-tab-monthly').addEventListener('click', () => { PAYSTATE.kind = 'monthly'; PAYSTATE.view='month'; renderPayroll(token); });
-  document.getElementById('pay-tab-weekly').addEventListener('click', () => { PAYSTATE.kind = 'weekly'; PAYSTATE.view='month'; renderPayroll(token); });
-  // بينادي renderPayroll() تاني (مش payrollLoadMaster() على طول) عشان شريط الأزرار
-  // فوق يتحدث ويبان زرار "عرض الـ Master" هو الملوّن، والاتنين التانيين برجعوا outline.
-  document.getElementById('pay-master-btn').addEventListener('click', () => { PAYSTATE.view = 'master'; renderPayroll(token); });
+  // التبديل بين التبويبات التلاتة بقى بيحدّث بس شريط التبويب + محتوى pay-box —
+  // من غير ما يعيد بناء الصفحة كلها (renderPayroll) زي الأول، عشان السكرول والمكان
+  // اللي المستخدم واقف فيه ميتلخبطش (ميرجعش لفوق الصفحة كل ما يبدّل تبويب).
+  document.getElementById('pay-tab-monthly').addEventListener('click', () => {
+    if (PAYSTATE.view==='month' && PAYSTATE.kind==='monthly') return;
+    PAYSTATE.kind = 'monthly'; PAYSTATE.view = 'month';
+    payrollUpdateTabsUI_(); payrollLoadSheet();
+  });
+  document.getElementById('pay-tab-weekly').addEventListener('click', () => {
+    if (PAYSTATE.view==='month' && PAYSTATE.kind==='weekly') return;
+    PAYSTATE.kind = 'weekly'; PAYSTATE.view = 'month';
+    payrollUpdateTabsUI_(); payrollLoadSheet();
+  });
+  document.getElementById('pay-master-btn').addEventListener('click', () => {
+    if (PAYSTATE.view==='master') return;
+    PAYSTATE.view = 'master';
+    payrollUpdateTabsUI_(); payrollLoadMaster();
+  });
   if (PAYSTATE.view === 'master') payrollLoadMaster(); else payrollLoadSheet();
+}
+// بتحدّث شكل التبويبات التلاتة (active/مش active) بس من غير ما تلمس باقي الصفحة أو تعمل أي reload زيادة
+function payrollUpdateTabsUI_(){
+  const mEl = document.getElementById('pay-tab-monthly');
+  const wEl = document.getElementById('pay-tab-weekly');
+  const mstEl = document.getElementById('pay-master-btn');
+  if (mEl) mEl.className = 'step' + ((PAYSTATE.view==='month'&&PAYSTATE.kind==='monthly') ? ' active' : '');
+  if (wEl) wEl.className = 'step' + ((PAYSTATE.view==='month'&&PAYSTATE.kind==='weekly') ? ' active' : '');
+  if (mstEl) mstEl.className = 'step' + (PAYSTATE.view==='master' ? ' active' : '');
 }
 
 async function payrollLoadSheet(){
@@ -1213,7 +1237,7 @@ function payrollRenderWeeklyTable_(box, data){
     <tr>
       ${data.weekHeaderBlocks.map(wb => `
         ${wb.dayHeaders.map(h => `<th style="min-width:60px;white-space:pre-line;">${qEsc(h)}</th>`).join('')}
-        ${wb.sumHeaders.map(h => `<th style="background:#efe6d6;min-width:78px;font-size:11px;">${qEsc(h)}</th>`).join('')}
+        ${wb.sumHeaders.map(h => `<th style="background:#efe6d6;color:var(--dark);min-width:78px;font-size:11px;">${qEsc(h)}</th>`).join('')}
       `).join(sepTh)}
       ${sepTh}
       ${data.monthSummaryHeaders.map(h => `<th style="background:#3a2f22;min-width:88px;">${qEsc(h)}</th>`).join('')}
