@@ -1193,12 +1193,22 @@ function payrollUpdateTabsUI_(){
 }
 
 async function payrollLoadSheet(){
-  const box = document.getElementById('pay-box'); box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  const box = document.getElementById('pay-box');
+  // نحفظ مكان السكرول (يمين/شمال + فوق/تحت) بتاع الجدول القديم قبل ما نمسحه،
+  // عشان بعد إعادة التحميل (مثلاً بعد تعديل خلية) نرجّعه لنفس المكان — بدل ما
+  // يرجع يبدأ من أول الشهر (الأسبوع الأول) كل مرة وتضطر تلف تاني.
+  const prevWrap = box.querySelector('.tbl-wrap-scroll');
+  const prevScroll = prevWrap ? { left: prevWrap.scrollLeft, top: prevWrap.scrollTop } : null;
+  box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
     const data = await apiGet('payrollGetSheet', { year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex, kind: PAYSTATE.kind });
     PAYSTATE.data = data;
     if (!data.exists){ box.innerHTML = `<div class="panel"><div class="empty">شيت "${qEsc(data.sheetName)}" لسه مش موجود — ابنيه الأول من منيو "نظام المرتبات" في الشيت.</div></div>`; return; }
     payrollRenderTable();
+    if (prevScroll) {
+      const wrap = box.querySelector('.tbl-wrap-scroll');
+      if (wrap) { wrap.scrollLeft = prevScroll.left; wrap.scrollTop = prevScroll.top; }
+    }
   } catch(err){ showError(err); }
 }
 /* خلية يوم واحدة — textarea بدل input: تقدر تدوس Enter عادي جوه الخلية
@@ -1362,7 +1372,10 @@ function summaryCellClass(header, raw){
 // اسم قديم متسيب لحد ما نتأكد إن مفيش حاجة تانية بتستدعيه بالاسم القديم
 function masterCellClass(header, raw){ return summaryCellClass(header, raw); }
 async function payrollLoadMaster(){
-  const box = document.getElementById('pay-box'); box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  const box = document.getElementById('pay-box');
+  const prevWrap = box.querySelector('.tbl-wrap-scroll');
+  const prevScroll = prevWrap ? { left: prevWrap.scrollLeft, top: prevWrap.scrollTop } : null;
+  box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
     const data = await apiGet('payrollGetMaster', { year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex });
     if (!data.exists){ box.innerHTML = `<div class="panel"><div class="empty">شيت "${qEsc(data.sheetName)}" لسه مش موجود — ابنيه الأول من منيو "نظام المرتبات" في الشيت.</div></div>`; return; }
@@ -1398,6 +1411,10 @@ async function payrollLoadMaster(){
           </table>
         </div>
       </div>`;
+    if (prevScroll) {
+      const wrap = box.querySelector('.tbl-wrap-scroll');
+      if (wrap) { wrap.scrollLeft = prevScroll.left; wrap.scrollTop = prevScroll.top; }
+    }
   } catch(err){ showError(err); }
 }
 
