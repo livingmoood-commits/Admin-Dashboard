@@ -237,7 +237,7 @@
      رمادي مطفي بشكل افتراضي، والكلاسات اللي تحت (mc-ded/mc-add/mc-draw/mc-net) بتغيّر
      اللون لما القيمة فعلاً != 0 عشان تبان الحاجات المهمة (غياب/خصم حقيقي) واضحة.
      ⚠️ الترتيب هنا مهم: sm-cell لازم يتعرّف قبل mc-* عشان لون الخصم/الإضافة يغلب الرمادي. */
-  td.sm-cell{ background:#fbf9f5; color:var(--muted); font-size:11px; }
+  td.sm-cell{ background:#fbf9f5; color:var(--muted); font-size:13.5px; }
   td.mc-ded{ color:var(--red); font-weight:700; }
   td.mc-add{ color:var(--green); font-weight:700; }
   td.mc-draw{ color:#8a6408; font-weight:700; }
@@ -1237,7 +1237,7 @@ function payrollRenderWeeklyTable_(box, data){
     <tr>
       ${data.weekHeaderBlocks.map(wb => `
         ${wb.dayHeaders.map(h => `<th style="min-width:60px;white-space:pre-line;">${qEsc(h)}</th>`).join('')}
-        ${wb.sumHeaders.map(h => `<th style="background:#efe6d6;color:var(--dark);min-width:78px;font-size:11px;">${qEsc(h)}</th>`).join('')}
+        ${wb.sumHeaders.map(h => `<th style="background:#efe6d6;color:var(--dark);min-width:80px;font-size:12.5px;">${qEsc(h)}</th>`).join('')}
       `).join(sepTh)}
       ${sepTh}
       ${data.monthSummaryHeaders.map(h => `<th style="background:#3a2f22;min-width:88px;">${qEsc(h)}</th>`).join('')}
@@ -1280,7 +1280,7 @@ function payrollRenderWeeklyTable_(box, data){
     <div class="panel">
       <h3 style="margin-bottom:10px;">${qEsc(data.sheetName)} (${data.rows.length} موظف)</h3>
       <div class="tbl-wrap tbl-wrap-scroll" style="max-height:70vh;">
-        <table>
+        <table style="width:auto;">
           <thead>${row1}${row2}</thead>
           <tbody>${bodyRows}${totalsHtml}</tbody>
         </table>
