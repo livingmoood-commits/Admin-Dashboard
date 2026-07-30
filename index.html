@@ -233,6 +233,11 @@
   .pay-legend-chip.pay-other{ background:#eef3f8; color:#2b5580; border-color:#3a6ea5; }
   /* تلوين أعمدة شيت الـ Master (إجمالي الشهر لكل موظف) — بيتلوّن بس لما القيمة فعلاً != 0،
      عشان "0" في عمود إجمالي معناه "مفيش حاجة اتسجلت" مش غياب زي خانة اليوم الفردية. */
+  /* خلايا الملخص (قيمة الأوفر/أيام الغياب/خصم أيام/إضافات/خصومات/مسحوبات/صافي) —
+     رمادي مطفي بشكل افتراضي، والكلاسات اللي تحت (mc-ded/mc-add/mc-draw/mc-net) بتغيّر
+     اللون لما القيمة فعلاً != 0 عشان تبان الحاجات المهمة (غياب/خصم حقيقي) واضحة.
+     ⚠️ الترتيب هنا مهم: sm-cell لازم يتعرّف قبل mc-* عشان لون الخصم/الإضافة يغلب الرمادي. */
+  td.sm-cell{ background:#fbf9f5; color:var(--muted); font-size:11px; }
   td.mc-ded{ color:var(--red); font-weight:700; }
   td.mc-add{ color:var(--green); font-weight:700; }
   td.mc-draw{ color:#8a6408; font-weight:700; }
@@ -1217,11 +1222,12 @@ function payrollRenderWeeklyTable_(box, data){
   const bodyRows = data.rows.map(r => {
     const weeksHtml = r.weeks.map((wk, wi) => {
       const dayStartCol = data.weekHeaderBlocks[wi].dayStartCol;
+      const sumHeaders = data.weekHeaderBlocks[wi].sumHeaders;
       const daysHtml = wk.dayCells.map((v, di) => payrollDayCellHtml_(r.row, dayStartCol + di, v)).join('');
-      const sumHtml = wk.summaryCells.map(v => `<td style="background:#fbf9f5;color:var(--muted);font-size:11px;">${qEsc(v)}</td>`).join('');
+      const sumHtml = wk.summaryCells.map((v, si) => `<td class="sm-cell ${summaryCellClass(sumHeaders[si], v)}">${qEsc(v)}</td>`).join('');
       return daysHtml + sumHtml;
     }).join(sepTd);
-    const monthSumHtml = r.monthSummaryCells.map(v => `<td style="background:#fbf9f5;color:var(--muted);">${qEsc(v)}</td>`).join('');
+    const monthSumHtml = r.monthSummaryCells.map((v, si) => `<td class="sm-cell ${summaryCellClass(data.monthSummaryHeaders[si], v)}">${qEsc(v)}</td>`).join('');
     return `<tr>
       <td style="position:sticky;right:0;background:var(--white);font-weight:700;">${qEsc(r.name)}</td>
       ${weeksHtml}
@@ -1265,7 +1271,7 @@ function payrollRenderMonthlyTable_(box, data){
     <tr>
       <td style="position:sticky;right:0;background:var(--white);font-weight:700;">${qEsc(r.name)}</td>
       ${r.dayCells.map((v, i) => payrollDayCellHtml_(r.row, data.dayStart + i, v)).join('')}
-      ${r.summaryCells.map(v => `<td style="background:#fbf9f5;color:var(--muted);">${qEsc(v)}</td>`).join('')}
+      ${r.summaryCells.map((v, si) => `<td class="sm-cell ${summaryCellClass(data.summaryHeaders[si], v)}">${qEsc(v)}</td>`).join('')}
     </tr>`).join('');
 
   const totalsHtml = data.totals
@@ -1311,21 +1317,26 @@ async function payrollCellEdited(row, col, inputEl){
     await payrollLoadSheet(); // إعادة تحميل الشيت عشان أعمدة الملخص (المحسوبة بمعادلات) تتحدّث صح
   } catch(err){ showError(err); inputEl.disabled = false; }
 }
-// تلوين خلايا شيت الـ Master حسب اسم العمود (مش زي خلايا اليوم في الحضور الشهري/الاسبوعي):
-// الماستر عمود "إجمالي" (رقم شهر كامل) مش خانة يوم واحد، فـ "0" هنا معناه "مفيش حاجة
-// اتسجلت في العمود ده الشهر ده" (طبيعي وكتير) — مش غياب. اللي فعلاً محتاج يبان واضح هو
-// لما "إجمالي خصم الأيام" يبقى أكبر من صفر (يعني فيه غياب/خصم فعلي حصل الشهر ده).
-function masterCellClass(header, raw){
+// تلوين خلايا الملخص (زي الماستر، وكمان أعمدة الملخص في كشف الحضور الشهري/الاسبوعي —
+// "قيمة الأوفر"، "أيام الغياب"، "خصم أيام"، "إضافات"، "خصومات"، "مسحوبات"، "صافي" إلخ):
+// دي كلها أعمدة "إجمالي" (يوم/أسبوع/شهر كامل) مش خانة يوم واحدة، فـ "0" هنا معناه
+// "مفيش حاجة اتسجلت في العمود ده" (طبيعي جدًا) — مش غياب. اللي فعلاً محتاج يبان واضح
+// هو لما القيمة تبقى فعلاً أكبر من صفر.
+function summaryCellClass(header, raw){
   const h = String(header || '');
   const v = parseFloat(String(raw || '').replace(/[^\d.\-]/g, ''));
   const isZero = !v || v === 0;
+  if (/غياب/.test(h))      return isZero ? '' : 'mc-ded';     // أيام الغياب — أحمر لو فيه غياب فعلي
   if (/خصم/.test(h))       return isZero ? '' : 'mc-ded';     // خصم الأيام / الخصومات — أحمر لو فيه قيمة فعلية
   if (/إضاف/.test(h))      return isZero ? '' : 'mc-add';     // إضافات — أخضر لو فيه قيمة
+  if (/أوفر/.test(h))      return isZero ? '' : 'mc-add';     // ساعات/قيمة الأوفر — أخضر لو فيه قيمة
   if (/مسحوب/.test(h))     return isZero ? '' : 'mc-draw';    // مسحوبات — كهرماني لو فيه قيمة
   if (/سلفة/.test(h))      return isZero ? '' : 'mc-draw';    // سلفة الشهر القادم — كهرماني لو فيه قيمة
-  if (/صافي/.test(h))      return 'mc-net';                   // صافي الشهر — دايمًا بارز
+  if (/صافي/.test(h))      return 'mc-net';                   // صافي — دايمًا بارز
   return '';
 }
+// اسم قديم متسيب لحد ما نتأكد إن مفيش حاجة تانية بتستدعيه بالاسم القديم
+function masterCellClass(header, raw){ return summaryCellClass(header, raw); }
 async function payrollLoadMaster(){
   const box = document.getElementById('pay-box'); box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
