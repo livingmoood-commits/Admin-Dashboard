@@ -231,6 +231,12 @@
   .pay-legend-chip.pay-draw{ background:#fff4e0; color:#8a6408; border-color:#b8860b; }
   .pay-legend-chip.pay-absent{ background:#f1e8f7; color:#5e2f80; border-color:#7b3fa0; }
   .pay-legend-chip.pay-other{ background:#eef3f8; color:#2b5580; border-color:#3a6ea5; }
+  /* تلوين أعمدة شيت الـ Master (إجمالي الشهر لكل موظف) — بيتلوّن بس لما القيمة فعلاً != 0،
+     عشان "0" في عمود إجمالي معناه "مفيش حاجة اتسجلت" مش غياب زي خانة اليوم الفردية. */
+  td.mc-ded{ color:var(--red); font-weight:700; }
+  td.mc-add{ color:var(--green); font-weight:700; }
+  td.mc-draw{ color:#8a6408; font-weight:700; }
+  td.mc-net{ color:var(--dark); font-weight:800; }
 
   .filters{ display:flex; gap:9px; flex-wrap:wrap; margin-bottom:16px; align-items:center; }
   .moves-filter{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
@@ -1112,6 +1118,10 @@ const PAY_CODE_META = {
 function payCellClass(raw){
   const v = String(raw || '').trim();
   if (!v) return '';
+  // خلية فيها "0" بس من غير أي كود جنبها = يوم من غير حضور (زي الأيام اللي قبل تاريخ
+  // الانضمام) وبيتحسب غياب فعلي بيخصم يوم — بنلوّنها بلون "خصم" الأحمر عشان تبان واضحة
+  // ومتتلخبطش بخلية فاضية عادية.
+  if (/^0+(\.0+)?$/.test(v)) return 'pay-ded';
   const m = v.match(/[ء-ي]+/);
   if (!m) return '';
   const code = m[0][0];
@@ -1289,6 +1299,7 @@ function payrollLegendHtml_(){
       <span class="pay-legend-chip pay-ded">خصم (خ)</span>
       <span class="pay-legend-chip pay-draw">مسحوبات (م)</span>
       <span class="pay-legend-chip pay-absent">غياب (غ)</span>
+      <span class="pay-legend-chip pay-ded">0 — يوم من غير حضور (زي الأيام قبل تاريخ الانضمام) وبيتحسب غياب</span>
       <span class="pay-legend-chip pay-other">كود تاني (زي خي أو شق) — بيتلوّن بلون عام لحد ما تتأكد منه</span>
     </div>`;
 }
@@ -1299,6 +1310,21 @@ async function payrollCellEdited(row, col, inputEl){
     await apiPost('payrollSetCell', { sheetName: PAYSTATE.data.sheetName, row, col, value: val });
     await payrollLoadSheet(); // إعادة تحميل الشيت عشان أعمدة الملخص (المحسوبة بمعادلات) تتحدّث صح
   } catch(err){ showError(err); inputEl.disabled = false; }
+}
+// تلوين خلايا شيت الـ Master حسب اسم العمود (مش زي خلايا اليوم في الحضور الشهري/الاسبوعي):
+// الماستر عمود "إجمالي" (رقم شهر كامل) مش خانة يوم واحد، فـ "0" هنا معناه "مفيش حاجة
+// اتسجلت في العمود ده الشهر ده" (طبيعي وكتير) — مش غياب. اللي فعلاً محتاج يبان واضح هو
+// لما "إجمالي خصم الأيام" يبقى أكبر من صفر (يعني فيه غياب/خصم فعلي حصل الشهر ده).
+function masterCellClass(header, raw){
+  const h = String(header || '');
+  const v = parseFloat(String(raw || '').replace(/[^\d.\-]/g, ''));
+  const isZero = !v || v === 0;
+  if (/خصم/.test(h))       return isZero ? '' : 'mc-ded';     // خصم الأيام / الخصومات — أحمر لو فيه قيمة فعلية
+  if (/إضاف/.test(h))      return isZero ? '' : 'mc-add';     // إضافات — أخضر لو فيه قيمة
+  if (/مسحوب/.test(h))     return isZero ? '' : 'mc-draw';    // مسحوبات — كهرماني لو فيه قيمة
+  if (/سلفة/.test(h))      return isZero ? '' : 'mc-draw';    // سلفة الشهر القادم — كهرماني لو فيه قيمة
+  if (/صافي/.test(h))      return 'mc-net';                   // صافي الشهر — دايمًا بارز
+  return '';
 }
 async function payrollLoadMaster(){
   const box = document.getElementById('pay-box'); box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
@@ -1314,7 +1340,11 @@ async function payrollLoadMaster(){
     const weeklyHeader = monthlyCount < data.rows.length ? `<tr class="master-group-header"><td colspan="${colspan}">الموظفين الاسبوعيين</td></tr>` : '';
     const rowsHtml = data.rows.map((r, i) => {
       const sepBefore = (monthlyCount > 0 && i === monthlyCount) ? weeklyHeader : '';
-      return sepBefore + `<tr>${r.map(v => `<td>${qEsc(v)}</td>`).join('')}</tr>`;
+      const cellsHtml = r.map((v, ci) => {
+        const cls = masterCellClass(data.headers[ci], v);
+        return `<td class="${cls}">${qEsc(v)}</td>`;
+      }).join('');
+      return sepBefore + `<tr>${cellsHtml}</tr>`;
     }).join('');
     const totalsHtml = data.totalsRow
       ? `<tr class="tbl-totals-row">${data.totalsRow.map(v => `<td>${qEsc(v)}</td>`).join('')}</tr>` : '';
@@ -1322,8 +1352,9 @@ async function payrollLoadMaster(){
     box.innerHTML = `
       <div class="panel">
         <h3 style="margin-bottom:10px;">${qEsc(data.sheetName)}</h3>
-        <p style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">
-          ✎ الماستر ملخص شهري كامل (قراءة فقط — القيم مسحوبة من شيتات "حضور شهر" و"كشف الحضور الاسبوعي" مباشرة). الصفوف الأولى للموظفين الشهريين، بعدهم الموظفين الاسبوعيين، وآخر صف هو الإجمالي الكلي.
+        <p style="font-size:11.5px;color:var(--muted);margin-bottom:10px;line-height:1.8;">
+          ✎ الماستر ملخص شهري كامل للقراءة فقط — كل عمود هنا "إجمالي الشهر" مجموع من شيتات "حضور شهر" و"كشف الحضور الاسبوعي"، مش خانة يوم واحد. الصفوف الأولى للموظفين الشهريين، بعدهم الاسبوعيين، وآخر صف هو الإجمالي الكلي.<br>
+          ⚠️ الفرق عن جدول الحضور اليومي: هناك "0" في خانة يوم = غياب فعلي (بيتلوّن أحمر لوحده). هنا "0" في عمود إجمالي معناه ببساطة "مفيش حاجة اتسجلت الشهر ده" — عادي جدًا ومش لازم يبان أحمر. اللي بيتلوّن هنا هو بس القيم اللي فعلاً != 0: <span style="color:var(--red);font-weight:700;">أحمر</span> = خصومات/خصم أيام حصلت، <span style="color:var(--green);font-weight:700;">أخضر</span> = إضافات، <span style="color:#8a6408;font-weight:700;">كهرماني</span> = مسحوبات/سلفة.
         </p>
         <div class="tbl-wrap tbl-wrap-scroll" style="max-height:70vh;">
           <table>
