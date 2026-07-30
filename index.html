@@ -465,8 +465,6 @@
   <div class="nav" id="nav">
     <button data-page="dashboard" class="active"><span class="icon">&#9679;</span><span class="label">نظرة عامة</span></button>
     <button data-page="employees"><span class="icon">&#128100;</span><span class="label">الموظفين</span></button>
-    <button data-page="logHours"><span class="icon">&#9200;</span><span class="label">ساعات وسهرات</span></button>
-    <button data-page="distribution"><span class="icon">&#128202;</span><span class="label">توزيع تكلفة المرتبات</span></button>
     <button data-page="payroll"><span class="icon">&#128176;</span><span class="label">مرتبات</span></button>
     <div class="sep"></div>
     <button data-page="projects"><span class="icon">&#128188;</span><span class="label">المشاريع</span></button>
@@ -704,8 +702,6 @@ function checkApiConfigured(){
 const PAGES = {
   dashboard:    { title:'نظرة عامة', sub:'ملخص شامل لكل حاجة في المصنع', render: renderDashboard },
   employees:    { title:'الموظفين', sub:'من شيت "تفاصيل المرتبات" بتاع الشهر الحالي مباشرة', render: renderEmployees },
-  logHours:     { title:'ساعات وسهرات', sub:'سجّل شغل أي صنايعي على أي مشروع', render: renderLogHours },
-  distribution: { title:'توزيع تكلفة المرتبات', sub:'مين شغل فين، وكام ساعة، وسهر إمتى', render: renderDistribution },
   payroll:      { title:'مرتبات', sub:'كشف حضور الشهر بالظبط زي الشيت — عدّل أي خلية وهتتسجل في الشيت الحقيقي مباشرة', render: renderPayroll },
   treasury:     { title:'الخزنة — Cash Flow', sub:'الرصيد الحالي، الداخل والخارج، الإيداعات والمصاريف', render: renderTreasury },
   dailyExpenses:{ title:'مصاريف يومية', sub:'سجّل كل مصاريف اليوم سطر سطر — بتتسجل في شيت اليوم بتاعك مباشرة', render: renderDailyExpenses },
@@ -856,8 +852,8 @@ async function renderDashboard(token) {
         <div class="card clickable" onclick="openEmployeesCard()"><div class="label">عدد الموظفين</div><div class="value">${d.employeesCount}</div></div>
         <div class="card clickable" onclick="goTo('projects')"><div class="label">عدد المشاريع المسجلة</div><div class="value">${d.projectsCount}</div></div>
         <div class="card clickable" onclick="goTo('treasury')"><div class="label">رصيد الخزنة</div><div class="value green">${fmt(d.treasuryBalance)} ج</div></div>
-        <div class="card clickable" onclick="goTo('distribution')"><div class="label">إجمالي تكلفة العمالة</div><div class="value gold">${fmt(d.totalLaborCost)} ج</div></div>
-        <div class="card clickable" onclick="goTo('logHours')"><div class="label">إجمالي ساعات الشغل</div><div class="value">${fmt(d.totalLaborHours)} س</div></div>
+        <div class="card"><div class="label">إجمالي تكلفة العمالة</div><div class="value gold">${fmt(d.totalLaborCost)} ج</div></div>
+        <div class="card"><div class="label">إجمالي ساعات الشغل</div><div class="value">${fmt(d.totalLaborHours)} س</div></div>
         <div class="card clickable" onclick="goTo('products')"><div class="label">تكلفة المنتجات (خامات)</div><div class="value gold">${fmt(d.totalProductsCost)} ج</div></div>
         <div class="card clickable" onclick="goTo('install')"><div class="label">تكلفة التركيب</div><div class="value gold">${fmt(d.totalInstallCost)} ج</div></div>
       </div>
@@ -868,41 +864,9 @@ async function renderDashboard(token) {
         </div>
         ${paymentsMasterTableHTML(customers, 'dash')}
       </div>
-      <div class="grid2">
-        <div class="panel"><h3>أعلى 5 مشاريع في التكلفة</h3>
-          ${d.topProjectsByCost.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>الساعات</th><th>التكلفة</th></tr></thead>
-          <tbody>${d.topProjectsByCost.map(p=>`<tr class="row-clickable" onclick="openProjectDetailModal('${String(p.project).replace(/'/g,"\\'")}')"><td>${p.project}</td><td>${fmt(p.hours)}</td><td>${fmt(p.cost)} ج</td></tr>`).join('')}</tbody></table></div>`
-          : `<div class="empty">لا يوجد بيانات ساعات مسجلة بعد</div>`}
-        </div>
-        <div class="panel"><h3>آخر سجلات الساعات</h3>
-          ${d.recentHoursEntries.length ? `<div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>الموظف</th><th>المشروع</th><th>التكلفة</th></tr></thead>
-          <tbody>${d.recentHoursEntries.map(l=>`<tr><td>${l.date}</td><td>${l.employee}</td><td>${l.project}</td><td>${fmt(l.cost)} ج</td></tr>`).join('')}</tbody></table></div>`
-          : `<div class="empty">لا يوجد سجلات بعد</div>`}
-        </div>
-      </div>
+      <!-- TODO: هنا كان قسم "أعلى 5 مشاريع" و"آخر سجلات الساعات" — اتشال بناءً على طلب، وهنحط حاجة تانية مكانه لسه هنحددها -->
     `;
   } catch(err){ showError(err); }
-}
-
-// دوس على أي مشروع من "أعلى 5 مشاريع" في نظرة عامة → Pop فيه تفاصيل المشروع بالكامل بأنيميشن
-async function openProjectDetailModal(name){
-  openCardModal('<div class="loading-row">جاري التحميل...</div>');
-  try {
-    const d = await apiGet('getProjectFullSummary', { name });
-    openCardModal(`
-      <div class="cd-head"><h3>تفاصيل مشروع: ${qEsc(d.project)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
-      <div class="cd-subcards">
-        <div class="cd-subcard"><div class="label">تكلفة العمالة</div><div class="value">${fmt(d.laborCost)} ج</div></div>
-        <div class="cd-subcard"><div class="label">ساعات العمالة</div><div class="value">${fmt(d.laborHours)} س</div></div>
-        <div class="cd-subcard"><div class="label">تكلفة الخامات</div><div class="value">${fmt(d.materialsCost)} ج</div></div>
-        <div class="cd-subcard"><div class="label">تكلفة التركيب</div><div class="value">${fmt(d.installCost||0)} ج</div></div>
-        <div class="cd-subcard"><div class="label">إجمالي التكلفة</div><div class="value">${fmt(d.totalCost)} ج</div></div>
-      </div>
-      <button class="cd-back" style="margin-top:12px;" onclick="closeCardModal(); goTo('projects');">فتح صفحة المشاريع بالكامل ←</button>
-    `);
-  } catch(err){
-    openCardModal(`<div class="cd-head"><h3>تفاصيل المشروع</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="msg err" style="display:block;">حصل خطأ: ${err.message||err}</div>`);
-  }
 }
 
 // دوس على أي عميل في "مستحقاتنا برا" → Pop معاينة سريعة بأنيميشن، مع زرار لفتح السجل كامل
@@ -996,16 +960,16 @@ async function renderEmployees(token) {
             <input autocomplete="off" type="hidden" id="e_originalName">
             <div class="field"><label>اسم الموظف</label><input autocomplete="off" id="e_name" required></div>
             <div class="form-row">
-              <div class="field"><label>طريقة القبض</label>
+              <div class="field"><label>الطريقة</label>
                 <select id="e_paymentType"><option value="اسبوعي">اسبوعي</option><option value="شهري">شهري</option></select>
               </div>
-              <div class="field"><label id="e_periodPayLabel">قبض الاسبوع (ج)</label><input autocomplete="off" type="number" id="e_periodPay" step="1" min="0" placeholder="اكتب المبلغ يتحسب الباقي أوتوماتيك"></div>
+              <div class="field"><label>تاريخ الانضمام</label><input autocomplete="off" type="date" id="e_joinDate" required></div>
             </div>
-            <div class="form-row">
-              <div class="field"><label>اليومية (ج)</label><input autocomplete="off" type="number" id="e_dailyRate" step="1" min="0"></div>
-              <div class="field"><label>أجر الساعة (ج)</label><input autocomplete="off" type="number" id="e_hourlyRate" step="1" min="0"></div>
+            <div class="form-row" id="e_periodRow">
+              <div class="field" id="e_dailyField"><label>اليومية (ج)</label><input autocomplete="off" type="number" id="e_dailyRate" step="1" min="0" placeholder="اكتب ده أو الاسبوعي وهيتحسب التاني"></div>
+              <div class="field"><label id="e_periodPayLabel">الاسبوعي (ج)</label><input autocomplete="off" type="number" id="e_periodPay" step="1" min="0" placeholder="اكتب ده أو اليومية وهيتحسب التاني"></div>
             </div>
-            <div class="field"><label>ملاحظات</label><input autocomplete="off" id="e_notes"></div>
+            <input type="hidden" id="e_hourlyRate">
             <button type="submit" class="btn btn-primary" id="empSubmitBtn">حفظ الموظف</button>
             <button type="button" class="btn btn-outline" id="empResetBtn">إضافة جديد</button>
             <div class="msg" id="empMsg"></div>
@@ -1029,10 +993,10 @@ async function renderEmployees(token) {
       const employee = {
         id: originalName || undefined, name: document.getElementById('e_name').value.trim(),
         paymentType,
+        joinDate: document.getElementById('e_joinDate').value,
         dailyRate: document.getElementById('e_dailyRate').value, hourlyRate: document.getElementById('e_hourlyRate').value,
         weeklyPay: paymentType === 'اسبوعي' ? periodPay : undefined,
-        monthlyPay: paymentType === 'شهري' ? periodPay : undefined,
-        notes: document.getElementById('e_notes').value
+        monthlyPay: paymentType === 'شهري' ? periodPay : undefined
       };
       try {
         const res = originalName ? await apiPost('updateEmployee', { employee }) : await apiPost('addEmployee', { employee });
@@ -1043,24 +1007,34 @@ async function renderEmployees(token) {
     });
   } catch(err){ showError(err); }
 }
-/* طريقة القبض بتحدد تسمية حقل "قبض الاسبوع/الشهر" وقاسم اليومية:
- * اسبوعي → القبض ÷ 6 = اليومية | شهري → القبض ÷ 26 = اليومية
- * وفي الحالتين: اليومية ÷ 9 = أجر الساعة */
+/* الطريقة بتحدد الحقول الظاهرة وقاسم اليومية:
+ * اسبوعي → بيظهر حقلين (اليومية + الاسبوعي)، واحد بس لازم يتكتب والتاني بيتحسب منه أوتوماتيك
+ *          (الاسبوعي ÷ 6 = اليومية، أو اليومية × 6 = الاسبوعي)
+ * شهري   → بيظهر قبض الشهر بس (+ تاريخ الانضمام)، واليومية بتتحسب: الشهر ÷ 26
+ * وفي الحالتين: اليومية ÷ 9 = أجر الساعة (مخزّن جوّه حقل مخفي، مش محتاج إدخال يدوي) */
 function empUpdatePeriodLabel(){
   const isMonthly = document.getElementById('e_paymentType').value === 'شهري';
-  document.getElementById('e_periodPayLabel').textContent = isMonthly ? 'قبض الشهر (ج)' : 'قبض الاسبوع (ج)';
+  document.getElementById('e_periodPayLabel').textContent = isMonthly ? 'قبض الشهر (ج)' : 'الاسبوعي (ج)';
+  document.getElementById('e_periodPay').placeholder = isMonthly ? 'اكتب قبض الشهر وهيتحسب الباقي أوتوماتيك' : 'اكتب ده أو اليومية وهيتحسب التاني';
+  // الشهري بيتكتب بس قبض الشهر — حقل اليومية بيتحسب منه ومش محتاج يظهر للإدخال
+  document.getElementById('e_dailyField').style.display = isMonthly ? 'none' : '';
+}
+function empRecalcHourly_(daily){
+  document.getElementById('e_hourlyRate').value = daily > 0 ? Math.round((daily / 9) * 100) / 100 : '';
 }
 function empCalcFromPeriodPay(){
   const isMonthly = document.getElementById('e_paymentType').value === 'شهري';
   const periodPay = Number(document.getElementById('e_periodPay').value) || 0;
   const divisor = isMonthly ? 26 : 6;
-  const daily = periodPay > 0 ? Math.round((periodPay / divisor) * 100) / 100 : '';
-  document.getElementById('e_dailyRate').value = daily;
-  document.getElementById('e_hourlyRate').value = daily !== '' ? Math.round((daily / 9) * 100) / 100 : '';
+  const daily = periodPay > 0 ? Math.round((periodPay / divisor) * 100) / 100 : 0;
+  document.getElementById('e_dailyRate').value = daily || '';
+  empRecalcHourly_(daily);
 }
 function empCalcFromDaily(){
+  // الحقل ده مش ظاهر أصلاً في الطريقة الشهرية (اليومية بتتحسب من قبض الشهر بس)
   const daily = Number(document.getElementById('e_dailyRate').value) || 0;
-  document.getElementById('e_hourlyRate').value = daily > 0 ? Math.round((daily / 9) * 100) / 100 : '';
+  document.getElementById('e_periodPay').value = daily > 0 ? Math.round(daily * 6 * 100) / 100 : '';
+  empRecalcHourly_(daily);
 }
 function empSetFilter(val){
   _empFilter = val;
@@ -1085,12 +1059,12 @@ function renderEmployeesListPanel(){
       <div class="step ${filter==='monthly'?'active':''}" onclick="empSetFilter('monthly')">قبض شهري (${monthlyCount})</div>
     </div>
     <div class="tbl-wrap"><table>
-      <thead><tr><th>الاسم</th><th>طريقة القبض</th><th>اليومية</th><th>أجر الساعة</th><th>قبض الاسبوع</th><th>قبض الشهر</th><th></th></tr></thead>
+      <thead><tr><th>الاسم</th><th>الطريقة</th><th>تاريخ الانضمام</th><th>اليومية</th><th>أجر الساعة</th><th>قبض الاسبوع</th><th>قبض الشهر</th><th></th></tr></thead>
       <tbody>${visible.length ? visible.map(e => `<tr>
-        <td>${e.name}</td><td>${e.paymentType}</td><td>${fmt(e.dailyRate)} ج</td><td>${fmt(e.hourlyRate)} ج</td><td>${fmt(e.weeklyPay)} ج</td><td>${fmt(e.monthlyPay)} ج</td>
+        <td>${e.name}</td><td>${e.paymentType}</td><td>${e.joinDate || '—'}</td><td>${fmt(e.dailyRate)} ج</td><td>${fmt(e.hourlyRate)} ج</td><td>${fmt(e.weeklyPay)} ج</td><td>${fmt(e.monthlyPay)} ج</td>
         <td><button class="btn btn-sm btn-outline" onclick='editEmployee(${JSON.stringify(e).replace(/'/g,"&#39;")})'>تعديل</button>
             <button class="btn btn-sm btn-danger" onclick="deleteEmployeeConfirm('${e.name.replace(/'/g,"\\'")}')">حذف</button></td>
-      </tr>`).join('') : `<tr><td colspan="7" class="empty">${emptyMsg}</td></tr>`}</tbody>
+      </tr>`).join('') : `<tr><td colspan="8" class="empty">${emptyMsg}</td></tr>`}</tbody>
     </table></div>
   `;
 }
@@ -1103,133 +1077,16 @@ function editEmployee(e){
   document.getElementById('e_originalName').value = e.name;
   document.getElementById('e_name').value = e.name;
   document.getElementById('e_paymentType').value = e.paymentType;
+  document.getElementById('e_joinDate').value = e.joinDate || '';
   document.getElementById('e_periodPay').value = e.paymentType === 'شهري' ? (e.monthlyPay || '') : (e.weeklyPay || '');
-  document.getElementById('e_dailyRate').value = e.dailyRate;
-  document.getElementById('e_hourlyRate').value = e.hourlyRate;
-  document.getElementById('e_notes').value = e.notes || '';
+  document.getElementById('e_dailyRate').value = e.dailyRate || '';
+  document.getElementById('e_hourlyRate').value = e.hourlyRate || '';
   empUpdatePeriodLabel();
   window.scrollTo(0,0);
 }
 async function deleteEmployeeConfirm(name){
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح "'+name+'"؟', 'حذف الموظف'))) return;
   try { await apiPost('deleteEmployee', { id: name }); renderEmployees(); } catch(err){ alert('خطأ: '+(err.message||err)); }
-}
-
-/* ================= Log Hours & Evenings ================= */
-async function renderLogHours(token) {
-  try {
-    const [{employees}, {projects}, recentData] = await Promise.all([
-      apiGet('listEmployees'), apiGet('listProjects'), apiGet('listHoursEntries', { filters:{limit:10} })
-    ]);
-    if (isStaleNav(token)) return;
-    document.getElementById('content').innerHTML = `
-      <div class="grid2">
-        <div class="panel">
-          <h3>تسجيل جديد</h3>
-          <form id="logForm">
-            <div class="form-row">
-              <div class="field"><label>الموظف</label><select id="f_employee" required><option value="">اختار الموظف</option>${employees.map(e=>`<option value="${e.name}">${e.name}</option>`).join('')}</select></div>
-              <div class="field"><label>المشروع</label><select id="f_project" required><option value="">اختار المشروع</option>${projects.map(p=>`<option value="${p}">${p}</option>`).join('')}</select></div>
-            </div>
-            <div class="form-row">
-              <div class="field"><label>التاريخ</label><input autocomplete="off" type="date" id="f_date" value="${todayStr()}"></div>
-              <div class="field"><label>ساعات عادية</label><input autocomplete="off" type="number" id="f_hours" step="0.5" min="0" placeholder="0"></div>
-            </div>
-            <div class="form-row">
-              <div class="field"><label>ساعات سهرة</label><input autocomplete="off" type="number" id="f_eveningHours" step="0.5" min="0" placeholder="0"></div>
-              <div class="field"><label>مبلغ السهرة (ج)</label><input autocomplete="off" type="number" id="f_eveningAmount" step="1" min="0" placeholder="0"></div>
-            </div>
-            <div class="field"><label>ملاحظات (اختياري)</label><textarea id="f_notes" rows="2"></textarea></div>
-            <button type="submit" class="btn btn-primary" id="submitBtn">حفظ السجل</button>
-            <div class="msg" id="formMsg"></div>
-          </form>
-        </div>
-        <div class="panel"><h3>آخر 10 سجلات</h3><div id="recentBox"></div></div>
-      </div>
-    `;
-    renderRecentLogs(recentData.entries);
-    document.getElementById('logForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const btn = document.getElementById('submitBtn'); const msg = document.getElementById('formMsg');
-      msg.className='msg'; msg.textContent=''; btn.disabled=true; btn.innerHTML='<span class="spinner"></span>جاري الحفظ...';
-      const entry = {
-        employee: document.getElementById('f_employee').value, project: document.getElementById('f_project').value,
-        date: document.getElementById('f_date').value, hours: document.getElementById('f_hours').value,
-        eveningHours: document.getElementById('f_eveningHours').value, eveningAmount: document.getElementById('f_eveningAmount').value,
-        notes: document.getElementById('f_notes').value
-      };
-      try {
-        const res = await apiPost('addHoursEntry', { entry });
-        msg.className='msg ok'; msg.textContent = 'تم الحفظ — التكلفة المحسوبة: '+fmt(res.cost)+' ج';
-        ['f_hours','f_eveningHours','f_eveningAmount','f_notes'].forEach(id => document.getElementById(id).value='');
-        const recent = await apiGet('listHoursEntries', { filters:{limit:10} });
-        renderRecentLogs(recent.entries);
-      } catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); }
-      finally { btn.disabled=false; btn.textContent='حفظ السجل'; }
-    });
-  } catch(err){ showError(err); }
-}
-function renderRecentLogs(recent){
-  const box = document.getElementById('recentBox');
-  if (!recent.length){ box.innerHTML = '<div class="empty">لسه مفيش سجلات</div>'; return; }
-  box.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>الموظف</th><th>المشروع</th><th>ساعات</th><th>سهرة</th><th>التكلفة</th><th></th></tr></thead>
-    <tbody>${recent.map(l=>`<tr><td>${l.date}</td><td>${l.employee}</td><td>${l.project}</td><td>${fmt(l.hours)}</td><td>${fmt(l.eveningAmount)} ج</td><td>${fmt(l.cost)} ج</td>
-      <td><button class="btn btn-sm btn-danger" onclick="deleteHoursEntryConfirm('${l.id}')">حذف</button></td></tr>`).join('')}</tbody></table></div>`;
-}
-async function deleteHoursEntryConfirm(id){
-  if (!(await openGenConfirm('متأكد إنك عاوز تمسح السجل ده؟', 'حذف السجل'))) return;
-  try { await apiPost('deleteHoursEntry', { id }); renderLogHours(); } catch(err){ alert('خطأ: '+(err.message||err)); }
-}
-
-/* ================= Distribution ================= */
-async function renderDistribution(token) {
-  try {
-    const [{employees}, {projects}] = await Promise.all([apiGet('listEmployees'), apiGet('listProjects')]);
-    if (isStaleNav(token)) return;
-    const wk = currentWeekRange();
-    document.getElementById('content').innerHTML = `
-      <div class="panel">
-        <div class="filters">
-          <input autocomplete="off" type="date" id="filFrom" value="${wk.from}"><span style="color:var(--muted);font-size:12px;">إلى</span><input autocomplete="off" type="date" id="filTo" value="${wk.to}">
-          <select id="filProject"><option value="">كل المشاريع</option>${projects.map(p=>`<option value="${p}">${p}</option>`).join('')}</select>
-          <select id="filEmployee"><option value="">كل الموظفين</option>${employees.map(e=>`<option value="${e.name}">${e.name}</option>`).join('')}</select>
-          <button class="btn btn-sm btn-outline" id="thisWeekBtn">الأسبوع ده</button>
-        </div>
-      </div>
-      <div id="reportBox"><div class="loading-row">جاري التحميل...</div></div>
-    `;
-    // الفلاتر بتشتغل أوتوماتيك أول ما أي حقل يتغير، من غير ما تدوس زرار
-    ['filFrom','filTo','filProject','filEmployee'].forEach(id => {
-      document.getElementById(id).addEventListener('change', loadDistributionReport);
-    });
-    document.getElementById('thisWeekBtn').addEventListener('click', () => {
-      const w = currentWeekRange();
-      document.getElementById('filFrom').value = w.from; document.getElementById('filTo').value = w.to;
-      loadDistributionReport();
-    });
-    loadDistributionReport();
-  } catch(err){ showError(err); }
-}
-async function loadDistributionReport(){
-  const filters = { from: document.getElementById('filFrom').value, to: document.getElementById('filTo').value, project: document.getElementById('filProject').value, employee: document.getElementById('filEmployee').value };
-  const box = document.getElementById('reportBox'); box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
-  try {
-    const rep = await apiGet('getDistributionReport', { filters });
-    if (!rep.projects.length){ box.innerHTML = '<div class="panel"><div class="empty">مفيش بيانات في الفترة/الفلتر ده</div></div>'; return; }
-    box.innerHTML = `
-      <div class="cards">
-        <div class="card"><div class="label">إجمالي التكلفة</div><div class="value gold">${fmt(rep.grandCost)} ج</div></div>
-        <div class="card"><div class="label">إجمالي الساعات</div><div class="value">${fmt(rep.grandHours)} س</div></div>
-        <div class="card"><div class="label">عدد السجلات</div><div class="value">${rep.entriesCount}</div></div>
-      </div>
-      ${rep.projects.map(p => `
-        <div class="panel">
-          <h3><span>${p.project} — ${fmt(p.cost)} ج (${fmt(p.hours)} ساعة + ${fmt(p.eveningAmount)} ج سهرات)</span></h3>
-          <div class="tbl-wrap"><table><thead><tr><th>الموظف</th><th>الساعات</th><th>ساعات السهر</th><th>مبلغ السهرات</th><th>عدد المرات</th><th>التكلفة</th></tr></thead>
-          <tbody>${p.employees.map(e => `<tr><td>${e.employee}</td><td>${fmt(e.hours)}</td><td>${fmt(e.eveningHours)}</td><td>${fmt(e.eveningAmount)} ج</td><td>${e.entries}</td><td>${fmt(e.cost)} ج</td></tr>`).join('')}</tbody></table></div>
-        </div>`).join('')}
-    `;
-  } catch(err){ showError(err); }
 }
 
 /* ================= مرتبات — كشف الحضور الشهري القابل للتعديل مباشرة =================
