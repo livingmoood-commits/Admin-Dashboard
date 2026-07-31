@@ -253,6 +253,22 @@
   .pill{ display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; }
   .pill.dep{ background:#e6f4ea; color:var(--green); } .pill.exp{ background:#fbe2e2; color:var(--red); }
 
+  /* ===== بار فلتر متقدم للحركات (فوق جدول "الحركات") ===== */
+  .adv-filter{ display:grid; grid-template-columns:repeat(6,1fr); gap:10px; padding:14px; background:var(--cream); border:1px solid var(--border); border-radius:10px; margin-bottom:14px; align-items:end; }
+  .adv-filter .af-field{ display:flex; flex-direction:column; gap:4px; min-width:0; }
+  .adv-filter label{ font-size:11.5px; font-weight:700; color:var(--muted); }
+  .adv-filter select, .adv-filter input{ padding:8px 9px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; font-family:inherit; background:var(--white); width:100%; min-width:0; }
+  .adv-filter .af-amount{ display:flex; gap:6px; }
+  .adv-filter .af-amount select{ flex:0 0 58px; }
+  .adv-filter .af-amount input{ flex:1; }
+  .adv-filter .af-actions{ display:flex; align-items:center; }
+  .adv-filter .af-reset{ all:unset; cursor:pointer; padding:8px 14px; border-radius:8px; font-size:12px; font-weight:700; color:var(--muted); background:var(--white); border:1px solid var(--border); text-align:center; transition:border-color .2s, color .2s; white-space:nowrap; }
+  .adv-filter .af-reset:hover{ border-color:var(--red); color:var(--red); }
+  .adv-filter-count{ font-size:12px; color:var(--muted); margin:-6px 0 12px; }
+  @media(max-width:980px){ .adv-filter{ grid-template-columns:1fr 1fr 1fr; } }
+  @media(max-width:640px){ .adv-filter{ grid-template-columns:1fr 1fr; padding:12px; } .adv-filter .af-actions{ grid-column:1/-1; } }
+  @media(max-width:380px){ .adv-filter{ grid-template-columns:1fr; } }
+
   .spinner{ display:inline-block; width:13px; height:13px; border:2px solid #ffffff55; border-top-color:#fff; border-radius:50%; animation:spin .7s linear infinite; vertical-align:middle; margin-right:6px; }
   @keyframes spin{ to{ transform:rotate(360deg); } }
   .loading-row{ text-align:center; color:var(--muted); padding:40px 20px; font-size:13px; display:flex; flex-direction:column; align-items:center; gap:12px; animation:fadeIn .25s ease; }
@@ -1340,14 +1356,18 @@ function payrollRenderTable(){
 /* شيت "كشف الحضور الاسبوعي" — كل أسابيع الشهر مع بعض، كل أسبوع بلوكه
  * (أيام + ملخص أسبوع)، فاصل غامق، بعدها ملخص الشهر، وصف إجمالي متلوّن. */
 function payrollRenderWeeklyTable_(box, data){
-  const sepTh = '<th style="width:6px;background:var(--dark);padding:0;"></th>';
-  const sepThRowspan = '<th style="width:6px;background:var(--dark);padding:0;" rowspan="2"></th>';
-  const sepTd = '<td style="background:var(--dark);padding:0;width:6px;"></td>';
+  // فاصل غامق واحد بس بعد آخر أسبوع (وقبل ملخص الشهر) — مطابق للشيت الحقيقي بالظبط
+  // (متجيبش نفسه بين كل أسبوع والتاني، ده كان الباج اللي بيخلي خلايا أول يوم في كل
+  // أسبوع تتزاح وتتلخبط مع عمود الفاصل). واللون بقى ذهبي واضح بدل ما كان نفس لون
+  // الهيدر الغامق فيختفي جواه.
+  const sepTh = '<th style="width:8px;background:var(--gold);padding:0;"></th>';
+  const sepThRowspan = '<th style="width:8px;background:var(--gold);padding:0;" rowspan="2"></th>';
+  const sepTd = '<td style="background:var(--gold);padding:0;width:8px;"></td>';
 
   const row1 = `
     <tr>
       <th rowspan="2" style="position:sticky;right:0;background:var(--dark);z-index:2;">اسم الموظف</th>
-      ${data.weekHeaderBlocks.map(wb => `<th colspan="${wb.dayHeaders.length + wb.sumHeaders.length}" style="background:#3a2f22;">الأسبوع ${qEsc(wb.label)}</th>`).join(sepThRowspan)}
+      ${data.weekHeaderBlocks.map(wb => `<th colspan="${wb.dayHeaders.length + wb.sumHeaders.length}" style="background:#3a2f22;">الأسبوع ${qEsc(wb.label)}</th>`).join('')}
       ${sepThRowspan}
       <th colspan="${data.monthSummaryHeaders.length}" style="background:#3a2f22;">إجمالي الشهر</th>
     </tr>`;
@@ -1356,7 +1376,7 @@ function payrollRenderWeeklyTable_(box, data){
       ${data.weekHeaderBlocks.map(wb => `
         ${wb.dayHeaders.map(h => `<th style="min-width:60px;white-space:pre-line;">${qEsc(h)}</th>`).join('')}
         ${wb.sumHeaders.map(h => `<th style="background:#efe6d6;color:var(--dark);min-width:80px;font-size:12.5px;">${qEsc(h)}</th>`).join('')}
-      `).join(sepTh)}
+      `).join('')}
       ${sepTh}
       ${data.monthSummaryHeaders.map(h => `<th style="background:#3a2f22;min-width:88px;">${qEsc(h)}</th>`).join('')}
     </tr>`;
@@ -1368,7 +1388,7 @@ function payrollRenderWeeklyTable_(box, data){
       const daysHtml = wk.dayCells.map((v, di) => payrollDayCellHtml_(r.row, dayStartCol + di, v)).join('');
       const sumHtml = wk.summaryCells.map((v, si) => `<td class="sm-cell ${summaryCellClass(sumHeaders[si], v)}">${qEsc(v)}</td>`).join('');
       return daysHtml + sumHtml;
-    }).join(sepTd);
+    }).join('');
     const monthSumHtml = r.monthSummaryCells.map((v, si) => `<td class="sm-cell ${summaryCellClass(data.monthSummaryHeaders[si], v)}">${qEsc(v)}</td>`).join('');
     return `<tr>
       <td style="position:sticky;right:0;background:var(--white);font-weight:700;">${qEsc(r.name)}</td>
@@ -1384,7 +1404,7 @@ function payrollRenderWeeklyTable_(box, data){
       const dayBlanks = '<td></td>'.repeat(data.weekHeaderBlocks[wi].dayHeaders.length);
       const sums = wkTotals.map(v => `<td>${qEsc(v)}</td>`).join('');
       return dayBlanks + sums;
-    }).join(sepTd);
+    }).join('');
     const monthTotalsHtml = data.totals.monthSummaryCells.map(v => `<td>${qEsc(v)}</td>`).join('');
     totalsHtml = `<tr class="tbl-totals-row">
       <td>الإجمالي</td>
@@ -1697,7 +1717,7 @@ async function payrollDeleteDetailsEmployeeConfirm_(name){
 let _treasuryMoves = [];
 let _deposits = [];
 let _editingMoveId = null;
-let _movesFilter = 'all';
+let _movesFilters = { date:'', type:'all', project:'', amountOp:'', amountVal:'', desc:'' };
 
 async function renderTreasury(token) {
   try {
@@ -1706,7 +1726,7 @@ async function renderTreasury(token) {
     _treasuryMoves = movesData.moves;
     _deposits = depositsData.moves || [];
     _editingMoveId = null;
-    _movesFilter = 'all';
+    _movesFilters = { date:'', type:'all', project:'', amountOp:'', amountVal:'', desc:'' };
     document.getElementById('content').innerHTML = `
       <div class="cards">
         <div class="card"><div class="label">الرصيد الحالي</div><div class="value green">${fmt(summary.balance)} ج</div></div>
@@ -1741,11 +1761,44 @@ async function renderTreasury(token) {
         </details>
       </div>
       <div class="panel"><h3>الحركات</h3>
-        <div class="moves-filter" id="movesFilter">
-          <button type="button" data-filter="all" class="active">حركة الخزنة (الكل)</button>
-          <button type="button" data-filter="expense">مصاريف</button>
-          <button type="button" data-filter="deposit">إيداعات</button>
+        <div class="adv-filter" id="movesAdvFilter">
+          <div class="af-field">
+            <label>اليوم</label>
+            <input type="date" id="af-date" autocomplete="off">
+          </div>
+          <div class="af-field">
+            <label>النوع</label>
+            <select id="af-type">
+              <option value="all">الكل</option>
+              <option value="expense">مصروف</option>
+              <option value="deposit">إيداع</option>
+            </select>
+          </div>
+          <div class="af-field">
+            <label>المشروع</label>
+            <select id="af-project"><option value="">الكل</option></select>
+          </div>
+          <div class="af-field">
+            <label>المبلغ</label>
+            <div class="af-amount">
+              <select id="af-amount-op">
+                <option value="">—</option>
+                <option value="gt">أكبر من</option>
+                <option value="lt">أصغر من</option>
+                <option value="eq">يساوي</option>
+              </select>
+              <input type="number" id="af-amount-val" placeholder="القيمة" autocomplete="off">
+            </div>
+          </div>
+          <div class="af-field">
+            <label>البيان</label>
+            <input type="text" id="af-desc" placeholder="ابحث في البيان..." autocomplete="off">
+          </div>
+          <div class="af-field af-actions">
+            <button type="button" class="af-reset" id="af-reset">✕ مسح الفلاتر</button>
+          </div>
         </div>
+        <div class="adv-filter-count" id="movesFilterCount"></div>
         <div id="movesBox"></div>
       </div>
       <div class="panel">
@@ -1753,11 +1806,23 @@ async function renderTreasury(token) {
         <div id="depositsBox"></div>
       </div>
     `;
+    populateMovesProjectFilter();
     renderMovesFiltered();
     renderDepositsBox();
-    document.getElementById('movesFilter').addEventListener('click', e => {
-      const btn = e.target.closest('button'); if (!btn) return;
-      _movesFilter = btn.dataset.filter;
+    document.getElementById('af-date').addEventListener('change', e => { _movesFilters.date = e.target.value; renderMovesFiltered(); });
+    document.getElementById('af-type').addEventListener('change', e => { _movesFilters.type = e.target.value; renderMovesFiltered(); });
+    document.getElementById('af-project').addEventListener('change', e => { _movesFilters.project = e.target.value; renderMovesFiltered(); });
+    document.getElementById('af-amount-op').addEventListener('change', e => { _movesFilters.amountOp = e.target.value; renderMovesFiltered(); });
+    document.getElementById('af-amount-val').addEventListener('input', e => { _movesFilters.amountVal = e.target.value; renderMovesFiltered(); });
+    document.getElementById('af-desc').addEventListener('input', e => { _movesFilters.desc = e.target.value; renderMovesFiltered(); });
+    document.getElementById('af-reset').addEventListener('click', () => {
+      _movesFilters = { date:'', type:'all', project:'', amountOp:'', amountVal:'', desc:'' };
+      document.getElementById('af-date').value = '';
+      document.getElementById('af-type').value = 'all';
+      document.getElementById('af-project').value = '';
+      document.getElementById('af-amount-op').value = '';
+      document.getElementById('af-amount-val').value = '';
+      document.getElementById('af-desc').value = '';
       renderMovesFiltered();
     });
     document.getElementById('moveForm').addEventListener('submit', async (e) => {
@@ -1784,11 +1849,35 @@ async function renderTreasury(token) {
     });
   } catch(err){ showError(err); }
 }
+// بيملى اختيارات "المشروع" في بار الفلتر من المشاريع الفعلية الموجودة في الحركات
+function populateMovesProjectFilter(){
+  const sel = document.getElementById('af-project');
+  if (!sel) return;
+  const projects = Array.from(new Set(_treasuryMoves.map(m => (m.project||'').trim()).filter(Boolean))).sort((a,b)=>a.localeCompare('ar'));
+  sel.innerHTML = '<option value="">الكل</option>' + projects.map(p => `<option value="${qEsc(p)}">${qEsc(p)}</option>`).join('');
+  sel.value = _movesFilters.project || '';
+}
+// فلترة الحركات على كل المعايير مع بعض (AND): اليوم، النوع، المشروع، المبلغ (أكبر/أصغر/يساوي)، والبيان (بحث جزئي — مش لازم يطابق بالكامل)
 function renderMovesFiltered(){
-  document.querySelectorAll('#movesFilter button').forEach(b => b.classList.toggle('active', b.dataset.filter === _movesFilter));
-  const filtered = _movesFilter === 'expense' ? _treasuryMoves.filter(m => m.type !== 'إيداع')
-                  : _movesFilter === 'deposit' ? _treasuryMoves.filter(m => m.type === 'إيداع')
-                  : _treasuryMoves;
+  const f = _movesFilters;
+  const amountVal = qNum(f.amountVal);
+  const descQ = (f.desc || '').trim().toLowerCase();
+  const filtered = _treasuryMoves.filter(m => {
+    if (f.type === 'expense' && m.type === 'إيداع') return false;
+    if (f.type === 'deposit' && m.type !== 'إيداع') return false;
+    if (f.date && m.date !== f.date) return false;
+    if (f.project && (m.project||'').trim() !== f.project) return false;
+    if (f.amountOp && f.amountVal !== '') {
+      const amt = qNum(m.amount);
+      if (f.amountOp === 'gt' && !(amt > amountVal)) return false;
+      if (f.amountOp === 'lt' && !(amt < amountVal)) return false;
+      if (f.amountOp === 'eq' && !(amt === amountVal)) return false;
+    }
+    if (descQ && !String(m.desc||'').toLowerCase().includes(descQ)) return false;
+    return true;
+  });
+  const countEl = document.getElementById('movesFilterCount');
+  if (countEl) countEl.textContent = `${filtered.length} من ${_treasuryMoves.length} حركة`;
   renderTreasuryMoves(filtered);
 }
 function renderTreasuryMoves(moves){
