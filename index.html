@@ -1108,7 +1108,8 @@ async function deleteEmployeeConfirm(name){
  * الأكشنات المطلوبة من الباك اند: payrollGetSheet / payrollSetCell / payrollGetMaster.
  * ================================================================================= */
 const PAY_AR_MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-let PAYSTATE = { year: new Date().getFullYear(), monthIndex: new Date().getMonth(), kind: 'monthly', view: 'month', data: null };
+// view: 'month' (شهري/اسبوعي حسب kind) | 'master' | 'details' (تبويب "تفاصيل" الجديد)
+let PAYSTATE = { year: new Date().getFullYear(), monthIndex: new Date().getMonth(), kind: 'monthly', view: 'month', data: null, detailsData: null };
 
 // ⚠️ تصحيح 2026-07-30: من غير الحفظ ده، أي Reload (أو حتى رجوع من صفحة تانية) كان
 // بيصفّر PAYSTATE لقيمه الافتراضية (شهر/سنة النهارده، تبويب "الشهريين")، فتحس إنه
@@ -1166,25 +1167,59 @@ async function renderPayroll(token){
         <select id="pay-month" class="d-input" style="width:auto;">${PAY_AR_MONTHS.map((m,i)=>`<option value="${i}" ${i===PAYSTATE.monthIndex?'selected':''}>${qEsc(m)}</option>`).join('')}</select>
         <input type="number" id="pay-year" value="${PAYSTATE.year}" class="d-input" style="width:90px;">
         <button class="btn btn-primary btn-sm" id="pay-load-btn">تحميل الشهر</button>
+        <button class="btn btn-sm" id="pay-build-btn" style="border:1px solid var(--gold);color:var(--gold);background:transparent;">+ بناء / تحديث الشهر</button>
         <span style="font-size:11.5px;color:var(--muted);">✎ أي تعديل في خانة يوم بيتسجل في الشيت الحقيقي على طول</span>
       </div>
       <div class="q-steps p-filter-tabs" id="pay-tabs">
         <div class="step ${(PAYSTATE.view==='month'&&PAYSTATE.kind==='monthly')?'active':''}" id="pay-tab-monthly">الموظفين الشهريين</div>
         <div class="step ${(PAYSTATE.view==='month'&&PAYSTATE.kind==='weekly')?'active':''}" id="pay-tab-weekly">الموظفين الاسبوعيين</div>
         <div class="step ${PAYSTATE.view==='master'?'active':''}" id="pay-master-btn">عرض الـ Master</div>
+        <div class="step ${PAYSTATE.view==='details'?'active':''}" id="pay-details-btn">تفاصيل</div>
       </div>
     </div>
     <div id="pay-box"><div class="loading-row">جاري التحميل...</div></div>
+
+    <!-- مودال بناء/تحديث الشهر -->
+    <div id="pay-build-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center;">
+      <div class="panel" style="max-width:380px;width:92%;">
+        <h3 style="margin-bottom:4px;">بناء / تحديث شهر ${qEsc(PAY_AR_MONTHS[PAYSTATE.monthIndex])} ${PAYSTATE.year}</h3>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:12px;">هيتعمل نسخة "تفاصيل المرتبات" تلقائي من الشهر اللي قبله لو مش موجودة، وبعدين يبني اللي تختاره تحت.</p>
+        <label style="display:flex;gap:8px;align-items:center;margin-bottom:8px;font-weight:700;">
+          <input type="checkbox" id="pb-full" checked> النظام كامل
+        </label>
+        <div style="padding-right:22px;display:flex;flex-direction:column;gap:6px;margin-bottom:14px;">
+          <label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" class="pb-part" value="monthly" checked> حضور شهري (الموظفين الشهريين)</label>
+          <label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" class="pb-part" value="weekly" checked> كشف الحضور الاسبوعي (الموظفين الاسبوعيين)</label>
+          <label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" class="pb-part" value="master" checked> Master</label>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn btn-sm" onclick="closePayBuildModal()">إلغاء</button>
+          <button class="btn btn-primary btn-sm" id="pb-confirm-btn">تأكيد البناء</button>
+        </div>
+      </div>
+    </div>
   `;
   document.getElementById('pay-load-btn').addEventListener('click', () => {
     PAYSTATE.monthIndex = parseInt(document.getElementById('pay-month').value, 10);
     PAYSTATE.year = parseInt(document.getElementById('pay-year').value, 10) || PAYSTATE.year;
+    if (PAYSTATE.view === 'master') { paySaveSession(); payrollLoadMaster(); return; }
+    if (PAYSTATE.view === 'details') { paySaveSession(); payrollLoadDetails(); return; }
     PAYSTATE.view = 'month';
     paySaveSession();
     payrollUpdateTabsUI_();
     payrollLoadSheet();
   });
-  // التبديل بين التبويبات التلاتة بقى بيحدّث بس شريط التبويب + محتوى pay-box —
+  document.getElementById('pay-build-btn').addEventListener('click', openPayBuildModal);
+  document.getElementById('pb-full').addEventListener('change', e => {
+    document.querySelectorAll('.pb-part').forEach(cb => cb.checked = e.target.checked);
+  });
+  document.querySelectorAll('.pb-part').forEach(cb => cb.addEventListener('change', () => {
+    const all = document.querySelectorAll('.pb-part');
+    document.getElementById('pb-full').checked = [...all].every(c => c.checked);
+  }));
+  document.getElementById('pb-confirm-btn').addEventListener('click', payrollConfirmBuild);
+
+  // التبديل بين التبويبات بقى بيحدّث بس شريط التبويب + محتوى pay-box —
   // من غير ما يعيد بناء الصفحة كلها (renderPayroll) زي الأول، عشان السكرول والمكان
   // اللي المستخدم واقف فيه ميتلخبطش (ميرجعش لفوق الصفحة كل ما يبدّل تبويب).
   document.getElementById('pay-tab-monthly').addEventListener('click', () => {
@@ -1205,16 +1240,58 @@ async function renderPayroll(token){
     paySaveSession();
     payrollUpdateTabsUI_(); payrollLoadMaster();
   });
-  if (PAYSTATE.view === 'master') payrollLoadMaster(); else payrollLoadSheet();
+  document.getElementById('pay-details-btn').addEventListener('click', () => {
+    if (PAYSTATE.view==='details') return;
+    PAYSTATE.view = 'details';
+    paySaveSession();
+    payrollUpdateTabsUI_(); payrollLoadDetails();
+  });
+  if (PAYSTATE.view === 'master') payrollLoadMaster();
+  else if (PAYSTATE.view === 'details') payrollLoadDetails();
+  else payrollLoadSheet();
 }
-// بتحدّث شكل التبويبات التلاتة (active/مش active) بس من غير ما تلمس باقي الصفحة أو تعمل أي reload زيادة
+// بتحدّث شكل التبويبات الأربعة (active/مش active) بس من غير ما تلمس باقي الصفحة أو تعمل أي reload زيادة
 function payrollUpdateTabsUI_(){
   const mEl = document.getElementById('pay-tab-monthly');
   const wEl = document.getElementById('pay-tab-weekly');
   const mstEl = document.getElementById('pay-master-btn');
+  const dEl = document.getElementById('pay-details-btn');
   if (mEl) mEl.className = 'step' + ((PAYSTATE.view==='month'&&PAYSTATE.kind==='monthly') ? ' active' : '');
   if (wEl) wEl.className = 'step' + ((PAYSTATE.view==='month'&&PAYSTATE.kind==='weekly') ? ' active' : '');
   if (mstEl) mstEl.className = 'step' + (PAYSTATE.view==='master' ? ' active' : '');
+  if (dEl) dEl.className = 'step' + (PAYSTATE.view==='details' ? ' active' : '');
+}
+
+/* ===== مودال بناء/تحديث الشهر ===== */
+function openPayBuildModal(){
+  const modal = document.getElementById('pay-build-modal');
+  if (modal) modal.style.display = 'flex';
+}
+function closePayBuildModal(){
+  const modal = document.getElementById('pay-build-modal');
+  if (modal) modal.style.display = 'none';
+}
+async function payrollConfirmBuild(){
+  const monthIndex = parseInt(document.getElementById('pay-month').value, 10);
+  const year = parseInt(document.getElementById('pay-year').value, 10) || PAYSTATE.year;
+  const targets = [...document.querySelectorAll('.pb-part:checked')].map(cb => cb.value);
+  if (!targets.length){ alert('اختار جزء واحد على الأقل، أو "النظام كامل"'); return; }
+  const btn = document.getElementById('pb-confirm-btn');
+  btn.disabled = true; btn.textContent = 'جاري البناء...';
+  try {
+    const res = await apiPost('payrollBuildMonth', { year, monthNum: monthIndex + 1, targets });
+    if (res.error) { alert('خطأ: ' + res.error); return; }
+    closePayBuildModal();
+    PAYSTATE.year = year; PAYSTATE.monthIndex = monthIndex;
+    paySaveSession();
+    let msg = `تم بناء: ${res.built.join('، ')}`;
+    if (res.detailsCreated) msg += `\nتم عمل نسخة "${res.detailsSheet}" جديدة` + (res.detailsCopiedFrom ? ` من "${res.detailsCopiedFrom}"` : '') + ' تلقائي.';
+    alert(msg);
+    if (PAYSTATE.view === 'master') payrollLoadMaster();
+    else if (PAYSTATE.view === 'details') payrollLoadDetails();
+    else payrollLoadSheet();
+  } catch(err) { alert('خطأ: ' + (err.message || err)); }
+  finally { btn.disabled = false; btn.textContent = 'تأكيد البناء'; }
 }
 
 async function payrollLoadSheet(){
@@ -1441,6 +1518,173 @@ async function payrollLoadMaster(){
       if (wrap) { wrap.scrollLeft = prevScroll.left; wrap.scrollTop = prevScroll.top; }
     }
   } catch(err){ showError(err); }
+}
+
+/* ================= مرتبات: تبويب "تفاصيل" (شيت "تفاصيل المرتبات شهر X") =================
+ * نفس فكرة صفحة "الموظفين" العادية بالظبط (إضافة/تعديل/حذف)، لكن هنا مربوطة بالشهر
+ * المختار فوق في فلتر مرتبات (PAYSTATE.year/monthIndex) مش شهر النظام الحالي، وبتستخدم
+ * أكشنات مخصوصة (payrollListDetailsForMonth / payrollAddDetailsEmployee / ...) عشان تقدر
+ * تفتح/تعدّل تفاصيل أي شهر (زي شهر 8 الجديد) من غير ما تأثر على شيت "تفاصيل المرتبات"
+ * بتاع صفحة الموظفين العادية. لو الشيت مش موجود بيتعمل تلقائي (نسخة من أحدث شهر سابق). */
+let _payDetailsList = [];
+let _payDetailsFilter = 'all';
+
+async function payrollLoadDetails(){
+  const box = document.getElementById('pay-box');
+  box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  try {
+    const monthNum = PAYSTATE.monthIndex + 1;
+    const data = await apiGet('payrollListDetailsForMonth', { monthNum });
+    if (data.error){ box.innerHTML = `<div class="panel"><div class="empty">خطأ: ${qEsc(data.error)}</div></div>`; return; }
+    PAYSTATE.detailsData = data;
+    _payDetailsList = data.employees || [];
+    _payDetailsFilter = 'all';
+
+    let notice = '';
+    if (data.created) {
+      notice = `<p style="font-size:12px;color:var(--gold);margin-bottom:10px;">✎ شيت "${qEsc(data.sheetName)}" اتعمل دلوقتي تلقائي` +
+        (data.copiedFromName ? ` كنسخة من "${qEsc(data.copiedFromName)}"` : '') + `.</p>`;
+    }
+
+    box.innerHTML = `
+      <div class="stack-v">
+        <div class="panel">
+          <h3>${qEsc(data.sheetName)} (${_payDetailsList.length})</h3>
+          ${notice}
+          <div id="pd-list-panel"></div>
+        </div>
+        <div class="panel">
+          <h3>إضافة / تعديل موظف — ${qEsc(PAY_AR_MONTHS[PAYSTATE.monthIndex])} ${PAYSTATE.year}</h3>
+          <form id="pdForm">
+            <input autocomplete="off" type="hidden" id="pd_originalName">
+            <div class="field"><label>اسم الموظف</label><input autocomplete="off" id="pd_name" required></div>
+            <div class="form-row">
+              <div class="field"><label>الطريقة</label>
+                <select id="pd_paymentType"><option value="اسبوعي">اسبوعي</option><option value="شهري">شهري</option></select>
+              </div>
+              <div class="field"><label>تاريخ الانضمام</label><input autocomplete="off" type="date" id="pd_joinDate" required></div>
+            </div>
+            <div class="form-row" id="pd_periodRow">
+              <div class="field" id="pd_dailyField"><label>اليومية (ج)</label><input autocomplete="off" type="number" id="pd_dailyRate" step="1" min="0" placeholder="اكتب ده أو الاسبوعي وهيتحسب التاني"></div>
+              <div class="field"><label id="pd_periodPayLabel">الاسبوعي (ج)</label><input autocomplete="off" type="number" id="pd_periodPay" step="1" min="0" placeholder="اكتب ده أو اليومية وهيتحسب التاني"></div>
+            </div>
+            <input type="hidden" id="pd_hourlyRate">
+            <button type="submit" class="btn btn-primary" id="pdSubmitBtn">حفظ الموظف</button>
+            <button type="button" class="btn btn-outline" id="pdResetBtn">إضافة جديد</button>
+            <div class="msg" id="pdMsg"></div>
+          </form>
+        </div>
+      </div>
+    `;
+    payrollRenderDetailsListPanel_();
+    document.getElementById('pdResetBtn').addEventListener('click', () => payrollResetDetailsForm_());
+    document.getElementById('pd_paymentType').addEventListener('change', () => payrollDetailsUpdatePeriodLabel_());
+    document.getElementById('pd_periodPay').addEventListener('input', () => payrollDetailsCalcFromPeriodPay_());
+    document.getElementById('pd_dailyRate').addEventListener('input', () => payrollDetailsCalcFromDaily_());
+    payrollDetailsUpdatePeriodLabel_();
+    document.getElementById('pdForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('pdSubmitBtn'); const msg = document.getElementById('pdMsg');
+      msg.className='msg'; msg.textContent=''; btn.disabled=true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
+      const originalName = document.getElementById('pd_originalName').value;
+      const paymentType = document.getElementById('pd_paymentType').value;
+      const periodPay = document.getElementById('pd_periodPay').value;
+      const employee = {
+        id: originalName || undefined, name: document.getElementById('pd_name').value.trim(),
+        paymentType,
+        joinDate: document.getElementById('pd_joinDate').value,
+        dailyRate: document.getElementById('pd_dailyRate').value, hourlyRate: document.getElementById('pd_hourlyRate').value,
+        weeklyPay: paymentType === 'اسبوعي' ? periodPay : undefined,
+        monthlyPay: paymentType === 'شهري' ? periodPay : undefined
+      };
+      try {
+        const action = originalName ? 'payrollUpdateDetailsEmployee' : 'payrollAddDetailsEmployee';
+        const res = await apiPost(action, { employee, monthNum });
+        if (res.error) throw new Error(res.error);
+        msg.className='msg ok'; msg.textContent = 'تم الحفظ بنجاح';
+        payrollLoadDetails();
+      } catch(err){ msg.className='msg err'; msg.textContent = 'خطأ: '+(err.message||err); }
+      finally { btn.disabled=false; btn.textContent='حفظ الموظف'; }
+    });
+  } catch(err){ showError(err); }
+}
+function payrollDetailsUpdatePeriodLabel_(){
+  const isMonthly = document.getElementById('pd_paymentType').value === 'شهري';
+  document.getElementById('pd_periodPayLabel').textContent = isMonthly ? 'قبض الشهر (ج)' : 'الاسبوعي (ج)';
+  document.getElementById('pd_periodPay').placeholder = isMonthly ? 'اكتب قبض الشهر وهيتحسب الباقي أوتوماتيك' : 'اكتب ده أو اليومية وهيتحسب التاني';
+  document.getElementById('pd_dailyField').style.display = isMonthly ? 'none' : '';
+}
+function payrollDetailsRecalcHourly_(daily){
+  document.getElementById('pd_hourlyRate').value = daily > 0 ? Math.round((daily / 9) * 100) / 100 : '';
+}
+function payrollDetailsCalcFromPeriodPay_(){
+  const isMonthly = document.getElementById('pd_paymentType').value === 'شهري';
+  const periodPay = Number(document.getElementById('pd_periodPay').value) || 0;
+  const divisor = isMonthly ? 26 : 6;
+  const daily = periodPay > 0 ? Math.round((periodPay / divisor) * 100) / 100 : 0;
+  document.getElementById('pd_dailyRate').value = daily || '';
+  payrollDetailsRecalcHourly_(daily);
+}
+function payrollDetailsCalcFromDaily_(){
+  const daily = Number(document.getElementById('pd_dailyRate').value) || 0;
+  document.getElementById('pd_periodPay').value = daily > 0 ? Math.round(daily * 6 * 100) / 100 : '';
+  payrollDetailsRecalcHourly_(daily);
+}
+function payrollDetailsSetFilter_(val){
+  _payDetailsFilter = val;
+  payrollRenderDetailsListPanel_();
+}
+function payrollRenderDetailsListPanel_(){
+  const panel = document.getElementById('pd-list-panel'); if (!panel) return;
+  const all = _payDetailsList;
+  const weeklyCount = all.filter(e => e.paymentType === 'اسبوعي').length;
+  const monthlyCount = all.filter(e => e.paymentType === 'شهري').length;
+  const filter = _payDetailsFilter;
+  const visible = filter === 'weekly' ? all.filter(e => e.paymentType === 'اسبوعي')
+                : filter === 'monthly' ? all.filter(e => e.paymentType === 'شهري')
+                : all;
+  const emptyMsg = filter === 'weekly' ? 'مفيش موظفين اسبوعيين'
+                 : filter === 'monthly' ? 'مفيش موظفين شهريين'
+                 : 'مفيش موظفين مسجلين في شيت التفاصيل ده';
+  panel.innerHTML = `
+    <div class="q-steps p-filter-tabs">
+      <div class="step ${filter==='all'?'active':''}" onclick="payrollDetailsSetFilter_('all')">الجميع (${all.length})</div>
+      <div class="step ${filter==='weekly'?'active':''}" onclick="payrollDetailsSetFilter_('weekly')">قبض اسبوعي (${weeklyCount})</div>
+      <div class="step ${filter==='monthly'?'active':''}" onclick="payrollDetailsSetFilter_('monthly')">قبض شهري (${monthlyCount})</div>
+    </div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>الاسم</th><th>الطريقة</th><th>تاريخ الانضمام</th><th>اليومية</th><th>أجر الساعة</th><th>قبض الاسبوع</th><th>قبض الشهر</th><th></th></tr></thead>
+      <tbody>${visible.length ? visible.map(e => `<tr>
+        <td>${e.name}</td><td>${e.paymentType}</td><td>${e.joinDate || '—'}</td><td>${fmt(e.dailyRate)} ج</td><td>${fmt(e.hourlyRate)} ج</td><td>${fmt(e.weeklyPay)} ج</td><td>${fmt(e.monthlyPay)} ج</td>
+        <td><button class="btn btn-sm btn-outline" onclick='payrollEditDetailsEmployee_(${JSON.stringify(e).replace(/'/g,"&#39;")})'>تعديل</button>
+            <button class="btn btn-sm btn-danger" onclick="payrollDeleteDetailsEmployeeConfirm_('${e.name.replace(/'/g,"\\'")}')">حذف</button></td>
+      </tr>`).join('') : `<tr><td colspan="8" class="empty">${emptyMsg}</td></tr>`}</tbody>
+    </table></div>
+  `;
+}
+function payrollResetDetailsForm_(){
+  document.getElementById('pd_originalName').value='';
+  document.getElementById('pdForm').reset();
+  payrollDetailsUpdatePeriodLabel_();
+}
+function payrollEditDetailsEmployee_(e){
+  document.getElementById('pd_originalName').value = e.name;
+  document.getElementById('pd_name').value = e.name;
+  document.getElementById('pd_paymentType').value = e.paymentType;
+  document.getElementById('pd_joinDate').value = e.joinDate || '';
+  document.getElementById('pd_periodPay').value = e.paymentType === 'شهري' ? (e.monthlyPay || '') : (e.weeklyPay || '');
+  document.getElementById('pd_dailyRate').value = e.dailyRate || '';
+  document.getElementById('pd_hourlyRate').value = e.hourlyRate || '';
+  payrollDetailsUpdatePeriodLabel_();
+  window.scrollTo(0,0);
+}
+async function payrollDeleteDetailsEmployeeConfirm_(name){
+  if (!(await openGenConfirm('متأكد إنك عاوز تمسح "'+name+'"؟', 'حذف الموظف'))) return;
+  try {
+    const res = await apiPost('payrollDeleteDetailsEmployee', { id: name, monthNum: PAYSTATE.monthIndex + 1 });
+    if (res.error) throw new Error(res.error);
+    payrollLoadDetails();
+  } catch(err){ alert('خطأ: '+(err.message||err)); }
 }
 
 /* ================= Treasury / Cash Flow ================= */
