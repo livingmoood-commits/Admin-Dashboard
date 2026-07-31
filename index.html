@@ -1199,7 +1199,7 @@ async function renderPayroll(token){
       </div>
     </div>
   `;
-  document.getElementById('pay-load-btn').addEventListener('click', () => {
+  function payrollDoLoad_(){
     PAYSTATE.monthIndex = parseInt(document.getElementById('pay-month').value, 10);
     PAYSTATE.year = parseInt(document.getElementById('pay-year').value, 10) || PAYSTATE.year;
     if (PAYSTATE.view === 'master') { paySaveSession(); payrollLoadMaster(); return; }
@@ -1208,7 +1208,13 @@ async function renderPayroll(token){
     paySaveSession();
     payrollUpdateTabsUI_();
     payrollLoadSheet();
-  });
+  }
+  document.getElementById('pay-load-btn').addEventListener('click', payrollDoLoad_);
+  // ⚠️ إضافة 2026-07-31: تغيير الشهر أو السنة بيعمل تحميل تلقائي على طول
+  // (من غير ما تحتاج تدوس "تحميل الشهر" بإيدك) — "change" بس (مش "input")
+  // عشان في خانة السنة ميحصلش طلب مع كل رقم بتكتبه، وبس لما تخلص/تدوس Enter.
+  document.getElementById('pay-month').addEventListener('change', payrollDoLoad_);
+  document.getElementById('pay-year').addEventListener('change', payrollDoLoad_);
   document.getElementById('pay-build-btn').addEventListener('click', openPayBuildModal);
   document.getElementById('pb-full').addEventListener('change', e => {
     document.querySelectorAll('.pb-part').forEach(cb => cb.checked = e.target.checked);
