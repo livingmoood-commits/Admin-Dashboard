@@ -468,6 +468,11 @@
   .toast-item.show{ opacity:1; transform:translateY(0); }
   .toast-item.success{ background:var(--green); }
   .toast-item.error{ background:var(--red); }
+
+  /* ===== تحديد خلايا متعددة + لصق موحّد (زي Google Sheets) — شغال على أي جدول في الموقع ===== */
+  td.gsel-on{ background:rgba(184,151,90,.16) !important; }
+  td.gsel-on input, td.gsel-on textarea{ background:rgba(184,151,90,.14) !important; border-color:var(--gold) !important; }
+  td.gsel-anchor{ outline:2px solid var(--gold); outline-offset:-2px; position:relative; z-index:1; }
 </style>
 </head>
 <body>
@@ -643,6 +648,150 @@ function showToast(msg, kind){
     setTimeout(() => el.remove(), 300);
   }, life);
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   تحديد خلايا متعددة + لصق موحّد (زي Google Sheets) — عام على كل الموقع
+   ══════════════════════════════════════════════════════════════════════
+   مأخوذ نفس فكرة الـ "مناطق" (regions) من كود الكوتيشن اللي اتبعت، لكن بشكل
+   عام مش مربوط بجدول معين: بيشتغل تلقائيًا على أي `<table>` في أي صفحة فيها
+   خلايا `<td>` جوّاها input/textarea — من غير أي تعديل مطلوب في أي جدول
+   موجود دلوقتي أو هيتضاف بعدين مستقبلًا.
+
+   • Ctrl/Cmd + كليك على خلية  → تضيفها للتحديد (أو تشيلها لو كانت متحددة)،
+     تقدر تحدد أي عدد خلايا متفرقة (مش لازم تكون متجاورة) في نفس الجدول.
+   • كليك عادي برا الخلايا المتحددة حاليًا → يمسح التحديد القديم.
+   • Ctrl/Cmd + V وفيه أكتر من خلية متحددة → يلصق نفس القيمة في كل الخلايا
+     المحددة دفعة واحدة (مفيد لو عايز تحط نفس التاريخ أو نفس البند في كذا سطر).
+   • Ctrl/Cmd + Enter وفيه أكتر من خلية متحددة → ياخد القيمة المكتوبة دلوقتي
+     في الخلية اللي بتكتب فيها، ويوحدها في كل الخلايا التانية المحددة من
+     غير ما تحتاج تعمل نسخ/لصق أصلًا.
+   • خلية واحدة (من غير تحديد متعدد) ولصقت نص فيه تابات/سطور (منسوخ من إكسيل
+     أو من جدول تاني في نفس الموقع) → بيتمد يمين/تحت زي اللصق في إكسيل بالظبط.
+   • نسخ/لصق عادي لخلية واحدة (Ctrl+C / Ctrl+V بيدويًا) بيفضل شغال زي ما هو
+     بشكل طبيعي من المتصفح — إحنا مش بنتدخل فيه خالص.
+   • أي حقل عنده onpaste مكتوب أصلًا في الـ HTML بتاعه (زي حقول "مصاريف
+     يومية" اللي عندها لصق وتاب مخصص جاهز) بيفضل شغال بمنطقه من غير أي تعارض. */
+const GSEL = {
+  cells: [], anchorTd: null, tableEl: null,
+
+  fieldOf(td){ return td.querySelector('input,textarea'); },
+  cellTdOf(el){
+    const td = el && el.closest ? el.closest('td') : null;
+    return (td && this.fieldOf(td)) ? td : null;
+  },
+
+  clearVisual(){ document.querySelectorAll('td.gsel-on').forEach(td => td.classList.remove('gsel-on','gsel-anchor')); },
+  applyVisual(){
+    this.clearVisual();
+    this.cells.forEach(td => td.classList.add('gsel-on'));
+    if (this.anchorTd) this.anchorTd.classList.add('gsel-anchor');
+  },
+
+  toggle(td){
+    const table = td.closest('table');
+    if (this.tableEl && this.tableEl !== table) this.clear(); // تحديد جديد في جدول مختلف يمسح القديم
+    this.tableEl = table;
+    const i = this.cells.indexOf(td);
+    if (i === -1) { this.cells.push(td); this.anchorTd = td; }
+    else {
+      this.cells.splice(i, 1);
+      if (this.anchorTd === td) this.anchorTd = this.cells[this.cells.length - 1] || null;
+    }
+    this.applyVisual();
+    if (this.cells.length > 1) showToast('حددت ' + this.cells.length + ' خلية — الصق بـ Ctrl+V أو اكتب في وحدة واضغط Ctrl+Enter لتوحيد القيمة');
+  },
+
+  clear(){ this.cells = []; this.anchorTd = null; this.tableEl = null; this.clearVisual(); },
+
+  writeCell(td, value){
+    const f = this.fieldOf(td);
+    if (!f || f.disabled || f.readOnly) return false;
+    f.value = value;
+    f.dispatchEvent(new Event('input', { bubbles: true }));
+    f.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  },
+
+  fillFromActive(){
+    if (this.cells.length < 2) return;
+    const active = document.activeElement;
+    const activeTd = this.cellTdOf(active);
+    const srcTd = (activeTd && this.cells.includes(activeTd)) ? activeTd : (this.anchorTd || this.cells[this.cells.length - 1]);
+    const srcField = this.fieldOf(srcTd);
+    if (!srcField) return;
+    const value = srcField.value;
+    let touched = 0;
+    this.cells.forEach(td => { if (this.writeCell(td, value)) touched++; });
+    if (touched) showToast('✔ اتوحدت القيمة في ' + touched + ' خلية');
+  },
+
+  pasteSameEverywhere(text){
+    const value = text.replace(/\r/g,'').replace(/\n+$/,'');
+    let touched = 0;
+    this.cells.forEach(td => { if (this.writeCell(td, value)) touched++; });
+    if (touched) showToast('✔ اتلصقت في ' + touched + ' خلية');
+  },
+
+  /* لصق جدول (تابات/سطور) بادئ من خلية واحدة — بيتمد يمين/تحت جوه حدود نفس الجدول بس */
+  pasteGridFrom(td, text){
+    const table = td.closest('table');
+    if (!table) return;
+    const lines = text.replace(/\r/g,'').split('\n').filter((l,i,a) => !(i === a.length-1 && l===''));
+    const grid = lines.map(l => l.split('\t'));
+    if (!grid.length) return;
+    const startRow = td.parentElement.rowIndex, startCol = td.cellIndex;
+    let touched = 0;
+    grid.forEach((line, dr) => {
+      const tr = table.rows[startRow + dr]; if (!tr) return;
+      line.forEach((val, dc) => {
+        const cell = tr.cells[startCol + dc]; if (!cell) return;
+        if (this.fieldOf(cell) && this.writeCell(cell, val)) touched++;
+      });
+    });
+    if (touched) showToast('✔ اتلصقت في ' + touched + ' خلية');
+  }
+};
+
+document.addEventListener('mousedown', (e) => {
+  if (e.target.closest && e.target.closest('#toast-wrap')) return;
+  const ctrlOrCmd = e.ctrlKey || e.metaKey;
+  const td = GSEL.cellTdOf(e.target);
+  if (ctrlOrCmd && td) { e.preventDefault(); GSEL.toggle(td); return; }
+  // كليك عادي برا التحديد الحالي (أو مفيش خلية أصلًا) بيمسح أي تحديد متعدد قديم؛
+  // كليك عادي جوه خلية هي أصلًا جزء من التحديد الحالي بيسيبه زي ما هو عشان تكتب فيها
+  if (!td || !GSEL.cells.includes(td)) { if (GSEL.cells.length) GSEL.clear(); }
+});
+
+document.addEventListener('keydown', (e) => {
+  const ctrlOrCmd = e.ctrlKey || e.metaKey;
+  if (!ctrlOrCmd || e.key !== 'Enter') return;
+  if (GSEL.cells.length < 2) return;
+  e.preventDefault();
+  GSEL.fillFromActive();
+});
+
+document.addEventListener('paste', (e) => {
+  const active = document.activeElement;
+
+  if (GSEL.cells.length > 1) {
+    const text = (e.clipboardData || window.clipboardData)?.getData('text/plain') || '';
+    if (!text) return;
+    e.preventDefault();
+    GSEL.pasteSameEverywhere(text);
+    return;
+  }
+
+  // خلية واحدة أو من غير تحديد أصلًا: سيب اللصق الطبيعي جوه الحقل يشتغل عادي،
+  // إلا لو النص المنسوخ جدول (تابات/سطور من إكسيل أو من جدول تاني في الموقع)
+  const td = GSEL.cellTdOf(active);
+  if (!td) return;
+  if (active.getAttribute && active.getAttribute('onpaste')) return; // الحقل ده عنده منطق لصق خاص بيه أصلًا — سيبه يشتغل
+  const text = (e.clipboardData || window.clipboardData)?.getData('text/plain') || '';
+  const isGrid = /\t|\n/.test(text.replace(/\r/g,'').replace(/\n$/,''));
+  if (!isGrid) return;
+  e.preventDefault();
+  GSEL.pasteGridFrom(td, text);
+});
 
 async function _apiFetch(url, opts) {
   const controller = new AbortController();
