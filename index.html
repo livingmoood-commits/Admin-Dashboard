@@ -162,6 +162,7 @@
   .d-quick-wrap{ position:relative; flex-shrink:0; }
   .d-quick-tag-btn{ flex-shrink:0; min-width:118px; padding:12px 18px; border:1.5px solid var(--border); border-radius:11px; font-size:14.5px; font-weight:700; font-family:inherit; background:#fdfcfa; color:var(--muted); cursor:pointer; white-space:nowrap; transition:border-color .2s, color .2s, background .2s; }
   .d-quick-tag-btn:hover, .d-quick-tag-btn.open{ border-color:var(--gold); color:var(--dark); background:#fbf7ef; }
+  .d-note-btn.has-note{ border-color:var(--gold); background:var(--gold); color:#fff; }
   /* منيو "+ سريع" بقى برضه popover واحد ثابت (position:fixed) بره الجدول لنفس سبب دروب-داون
      المشاريع: كان بيتقص/يظهر متراكب فوق أعمدة تانية جنبه لما يكون قريب من حافة الجدول. */
   .d-quick-popover{ display:none; position:fixed; z-index:200; flex-direction:column; background:#fff; border:1px solid rgba(184,151,90,.28); border-radius:14px; box-shadow:0 22px 44px rgba(30,26,21,.20), 0 2px 10px rgba(184,151,90,.10); width:max-content; min-width:180px; max-width:250px; overflow:hidden; }
@@ -2141,18 +2142,45 @@ async function deleteTreasuryMoveConfirm(id){
 function _noAutofill(prefix){ return prefix + '-' + Math.random().toString(36).slice(2, 10); }
 
 let DSTATE = { rows: [], date: lastWorkingDayStr(), days: [] };
-function dNewRow(){ return { _id: Math.random(), desc: '', amount: '', project: '' }; }
+function dNewRow(){ return { _id: Math.random(), desc: '', amount: '', project: '', note: '' }; }
 function dTotal(){ return DSTATE.rows.reduce((s, r) => s + qNum(r.amount), 0); }
+
+// ===== حماية من فقدان البيانات لو النت فصل / حصل Reload قبل الحفظ =====
+// بنحفظ نسخة (Draft) من صفوف الإدخال في localStorage أول ما أي حقل يتغيّر، وبنمسحها
+// بس بعد ما الحفظ الفعلي في الشيت ينجح. لو حصل Reload (يدوي أو تلقائي بسبب رجوع النت)
+// قبل ما تضغط "حفظ"، بنسترجع نفس الصفوف تاني أول ما الصفحة تفتح على "مصاريف يومية".
+const D_DRAFT_KEY = 'lm_dExpenseDraft';
+function dSaveDraft(){
+  try {
+    const hasContent = DSTATE.rows.some(r => String(r.desc||'').trim() || qNum(r.amount) > 0);
+    if (!hasContent) { localStorage.removeItem(D_DRAFT_KEY); return; }
+    localStorage.setItem(D_DRAFT_KEY, JSON.stringify({ rows: DSTATE.rows, date: DSTATE.date, t: Date.now() }));
+  } catch(e){ /* تجاهل */ }
+}
+let _dDraftTimer = null;
+function dScheduleDraftSave(){ clearTimeout(_dDraftTimer); _dDraftTimer = setTimeout(dSaveDraft, 400); }
+function dLoadDraft(){
+  try {
+    const raw = localStorage.getItem(D_DRAFT_KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    if (!d || !Array.isArray(d.rows)) return null;
+    return d.rows.some(r => String(r.desc||'').trim() || qNum(r.amount) > 0) ? d : null;
+  } catch(e){ return null; }
+}
+function dClearDraft(){ try { localStorage.removeItem(D_DRAFT_KEY); } catch(e){} }
 
 async function renderDailyExpenses(token) {
   try {
+    const _draft = dLoadDraft();
+    if (_draft && _draft.date) DSTATE.date = _draft.date;
     const [{ projects }, log, { days }] = await Promise.all([
       apiGet('listProjects'),
       apiGet('getDailyExpenses', { date: DSTATE.date }),
       apiGet('listDailyExpenseDays')
     ]);
     if (isStaleNav(token)) return;
-    DSTATE.rows = [dNewRow(), dNewRow(), dNewRow()];
+    DSTATE.rows = _draft ? _draft.rows : [dNewRow(), dNewRow(), dNewRow()];
     DSTATE.days = days || [];
     DPROJECT_NAMES = Array.from(new Set(
       ['مصروفات عامة', ...projects].map(p => String(p || '').trim()).filter(Boolean)
@@ -2175,6 +2203,7 @@ async function renderDailyExpenses(token) {
         </div>
         <div class="d-suggest-popover" id="d-suggest-popover"></div>
         <div class="d-quick-popover" id="d-quick-popover"></div>
+        <div class="d-quick-popover" id="d-note-popover"></div>
         <div style="display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap;">
           <button type="button" class="btn btn-outline btn-sm" id="d-add-row">+ إضافة سطر</button>
           <div class="d-bulk-add">
@@ -2196,11 +2225,16 @@ async function renderDailyExpenses(token) {
     dRenderRows();
     dRenderDaysList();
     dRenderTodayLog(log.rows || []);
-    document.getElementById('d-add-row').addEventListener('click', () => { DSTATE.rows.push(dNewRow()); dRenderRows(); });
+    if (_draft) {
+      const m = document.getElementById('d-msg');
+      if (m) { m.className = 'msg err'; m.textContent = '⚠️ استرجعنا سطور كانت متكتوبة ولسه مش متسجلة (بعد فصل نت أو Reload) — راجعها واضغط حفظ'; }
+    }
+    document.getElementById('d-add-row').addEventListener('click', () => { DSTATE.rows.push(dNewRow()); dRenderRows(); dSaveDraft(); });
     document.getElementById('d-bulk-add-btn').addEventListener('click', () => {
       const n = Math.max(1, Math.min(200, parseInt(document.getElementById('d-bulk-count').value, 10) || 1));
       for (let i = 0; i < n; i++) DSTATE.rows.push(dNewRow());
       dRenderRows();
+      dSaveDraft();
     });
     document.getElementById('d-save-all').addEventListener('click', dSaveAll);
     document.getElementById('d-date-bar').addEventListener('change', e => dLoadDayLog(e.target.value || todayStr()));
@@ -2220,6 +2254,7 @@ function dRenderDaysList(){
 }
 async function dLoadDayLog(dateStr){
   DSTATE.date = dateStr || todayStr();
+  dSaveDraft();
   const dateBar = document.getElementById('d-date-bar'); if (dateBar) dateBar.value = DSTATE.date;
   document.getElementById('d-log-heading').textContent = `مصاريف اليوم المسجلة فعليًا في الشيت (${DSTATE.date})`;
   dRenderDaysList();
@@ -2243,6 +2278,7 @@ function dRenderRows(){
           <input type="text" class="d-input" autocomplete="off" data-lpignore="true" data-1p-ignore name="${_noAutofill('desc')}" id="d-desc-${r._id}" data-col="0" value="${qEsc(r.desc)}" oninput="dSetDescLive(${r._id}, this.value)" onkeydown="dHandleTab(event)" onpaste="dHandlePaste(event, ${r._id}, 0)" placeholder="مثال: فطار، بنزين، مسامير...">
           <div class="d-quick-wrap">
             <button type="button" class="d-quick-tag-btn" title="إضافة سريعة بعد المكتوب" onclick="dToggleQuickTag(${r._id}, this)">+ سريع</button>
+            <button type="button" id="d-note-btn-${r._id}" class="d-quick-tag-btn d-note-btn${r.note ? ' has-note' : ''}" style="min-width:0;padding:12px 14px;" title="${r.note ? 'فيه ملاحظة — دوس تعدّلها' : 'إضافة ملاحظة (بتتسجل Note على الخلية في الشيت)'}" onclick="dToggleNotePopup(${r._id}, this)">📝</button>
           </div>
         </div>
       </td>
@@ -2349,9 +2385,14 @@ function dHandleProjectKeydown(e, rowId){
   }
 }
 function _dQuickPopover(){ return document.getElementById('d-quick-popover'); }
+function _dNotePopover(){ return document.getElementById('d-note-popover'); }
+// بتقفل قايمة "+ سريع" وبوكس الملاحظة مع بعض — بتتنادى من كل الأماكن اللي كانت
+// بتقفل قايمة "+ سريع" بس (سكرول، تغيير حجم الشاشة، ضغطة بره الاتنين، إلخ).
 function dCloseAllQuickTags(){
   const box = _dQuickPopover(); if (box){ box.classList.remove('open'); box.dataset.rowId = ''; }
   document.querySelectorAll('.d-quick-tag-btn.open').forEach(b => b.classList.remove('open'));
+  const nbox = _dNotePopover(); if (nbox){ nbox.classList.remove('open'); nbox.dataset.rowId = ''; }
+  document.querySelectorAll('.d-note-btn.open').forEach(b => b.classList.remove('open'));
 }
 /* دعم كيبورد لقايمة "+ سريع" (زي بالظبط قايمة اقتراحات المشروع): ↓/↑ للتنقل، Enter
  * للاختيار (أول عنصر تلقائي لو لسه محددتش حاجة بالسهم)، Esc للإغلاق. القايمة بتتفتح
@@ -2408,6 +2449,38 @@ function dToggleQuickTag(id, btnEl){
 function dSetDescLive(id, v){
   const r = DSTATE.rows.find(r => r._id === id); if (!r) return;
   r.desc = v; // بدون إعادة رسم الجدول، عشان مايقطعش التاكتب/الـ Ctrl+Z جوه الحقل
+  dScheduleDraftSave();
+}
+/* بوكس الملاحظة: نص حر بيتسجل كـ Note (تعليق) على خانة "البيان" بتاعة السطر ده في
+ * الشيت — بنفس فكرة "آخر حفظ بواسطة" اللي بتتحط تلقائي، بس ده نص المستخدم بيكتبه هو. */
+function dToggleNotePopup(id, btnEl){
+  const box = _dNotePopover(); if (!box) return;
+  const wasOpenForThisRow = box.classList.contains('open') && String(box.dataset.rowId) === String(id);
+  dCloseAllQuickTags();
+  if (wasOpenForThisRow) return;
+  const r = DSTATE.rows.find(r => r._id === id); if (!r) return;
+  box.innerHTML = `<div style="padding:10px;">
+      <textarea id="d-note-ta-${id}" rows="3" style="width:100%;resize:vertical;border:1.5px solid var(--border);border-radius:9px;padding:8px;font-family:inherit;font-size:13px;box-sizing:border-box;" placeholder="اكتب ملاحظتك هنا..." oninput="dSetNoteLive(${id}, this.value)">${qEsc(r.note || '')}</textarea>
+    </div><div class="d-pop-hint">هتتسجل كملاحظة (Note) على خانة "البيان" في الشيت</div>`;
+  box.dataset.rowId = id;
+  box.style.width = '240px';
+  const rect = btnEl.getBoundingClientRect();
+  const spaceBelow = window.innerHeight - rect.bottom;
+  const openUp = spaceBelow < 220 && rect.top > spaceBelow;
+  box.style.left = ''; box.style.right = '';
+  box.style.right = (window.innerWidth - rect.right) + 'px';
+  if (openUp){ box.style.top = ''; box.style.bottom = (window.innerHeight - rect.top + 6) + 'px'; }
+  else { box.style.bottom = ''; box.style.top = (rect.bottom + 6) + 'px'; }
+  box.classList.add('open');
+  btnEl.classList.add('open');
+  setTimeout(() => { const ta = document.getElementById('d-note-ta-' + id); if (ta) ta.focus(); }, 50);
+}
+function dSetNoteLive(id, v){
+  const r = DSTATE.rows.find(r => r._id === id); if (!r) return;
+  r.note = v;
+  dScheduleDraftSave();
+  const btn = document.getElementById('d-note-btn-' + id);
+  if (btn) btn.classList.toggle('has-note', !!String(v || '').trim());
 }
 function dPickQuickTag(id, tag){
   dCloseAllQuickTags();
@@ -2426,9 +2499,10 @@ function dPickQuickTag(id, tag){
   }
   if (!inserted) { if (input) input.value = newVal; }
   r.desc = newVal;
+  dScheduleDraftSave();
 }
 document.addEventListener('click', function(e){
-  if (!e.target.closest('.d-quick-wrap') && !e.target.closest('.d-quick-popover')) dCloseAllQuickTags();
+  if (!e.target.closest('.d-quick-wrap') && !e.target.closest('.d-quick-popover') && !e.target.closest('.d-note-popover')) dCloseAllQuickTags();
 });
 function dUpdateTotalBadge(){
   const totalEl = document.getElementById('d-total');
@@ -2441,11 +2515,13 @@ function dSetField(id, f, v){
   const r = DSTATE.rows.find(r => r._id === id); if (!r) return;
   r[f] = f === 'amount' ? qNum(v) : v;
   if (f === 'amount') dUpdateTotalBadge();
+  dScheduleDraftSave();
 }
 function dDelRow(id){
   DSTATE.rows = DSTATE.rows.filter(r => r._id !== id);
   if (!DSTATE.rows.length) DSTATE.rows = [dNewRow()];
   dRenderRows();
+  dSaveDraft();
 }
 // نقل صف لفوق (-1) أو لتحت (+1) في ترتيب الجدول
 function dMoveRow(id, dir){
@@ -2456,6 +2532,7 @@ function dMoveRow(id, dir){
   DSTATE.rows[idx] = DSTATE.rows[target];
   DSTATE.rows[target] = tmp;
   dRenderRows();
+  dSaveDraft();
 }
 /* لصق زي إكسيل: تقدر تنسخ كذا خلية/سطر من إكسيل أو جوجل شيت (أو من نفس الجدول) وتلصقها
  * دفعة واحدة، وهي هتتوزع تلقائي على الأعمدة والصفوف بدايةً من الخلية اللي انت واقف فيها،
@@ -2482,13 +2559,14 @@ function dHandlePaste(e, rowId, colIndex){
     });
   });
   dRenderRows();
+  dSaveDraft();
 }
 async function dSaveAll(){
   const valid = DSTATE.rows.filter(r => String(r.desc).trim() && qNum(r.amount) > 0);
   const msg = document.getElementById('d-msg'); const btn = document.getElementById('d-save-all');
   if (!valid.length){ msg.className = 'msg err'; msg.textContent = 'من فضلك اكتب وصف ومبلغ لسطر واحد على الأقل'; return; }
   btn.disabled = true; msg.className = 'msg'; msg.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
-  const rows = valid.map(r => ({ desc: String(r.desc).trim(), amount: qNum(r.amount), project: String(r.project || '').trim() || 'مصروفات عامة', date: DSTATE.date }));
+  const rows = valid.map(r => ({ desc: String(r.desc).trim(), amount: qNum(r.amount), project: String(r.project || '').trim() || 'مصروفات عامة', date: DSTATE.date, note: String(r.note || '').trim() }));
   const total = rows.reduce((s, r) => s + r.amount, 0);
   let saved = 0;
   // بنتجمع فيها رد المزامنة مع المرتبات لكل سطر (payrollSync)، عشان لو سطر بصيغة
@@ -2525,6 +2603,7 @@ async function dSaveAll(){
     dRenderTodayLog(log.rows || []);
     DSTATE.rows = [dNewRow(), dNewRow(), dNewRow()];
     dRenderRows();
+    dClearDraft();
   } catch(err){
     msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err) + (saved ? ` (اتسجل ${saved} قبل ما يحصل الخطأ)` : '');
   } finally { btn.disabled = false; }
