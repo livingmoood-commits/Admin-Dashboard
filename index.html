@@ -3022,6 +3022,7 @@ function pwColumnShellHtml(p){
         <table style="width:100%;"><tbody id="pw-pending-${qId(p.name)}"></tbody></table>
       </div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap;">
+        <input type="text" inputmode="numeric" class="d-input" id="pw-bulk-${qId(p.name)}" value="1" style="width:44px;text-align:center;padding:6px 4px;" onkeypress="return /[0-9]/.test(event.key)">
         <button type="button" class="btn btn-outline btn-sm" onclick="pwAddPendingRow('${qEscJs(p.name)}')">+ إضافة بند</button>
         <button type="button" class="btn btn-primary btn-sm" onclick="pwSaveColumn('${qEscJs(p.name)}')">حفظ</button>
       </div>
@@ -3071,7 +3072,12 @@ function pwRenderPending(partnerName){
     </tr>`).join('');
 }
 
-function pwAddPendingRow(partnerName){ PWSTATE.pending[partnerName].push(pwNewRow()); pwRenderPending(partnerName); }
+function pwAddPendingRow(partnerName){
+  const countInput = document.getElementById('pw-bulk-' + qId(partnerName));
+  const n = countInput ? Math.max(1, Math.min(50, parseInt(countInput.value, 10) || 1)) : 1;
+  for (let i = 0; i < n; i++) PWSTATE.pending[partnerName].push(pwNewRow());
+  pwRenderPending(partnerName);
+}
 function pwRemovePendingRow(partnerName, id){
   PWSTATE.pending[partnerName] = PWSTATE.pending[partnerName].filter(r => r._id !== id);
   if (!PWSTATE.pending[partnerName].length) PWSTATE.pending[partnerName].push(pwNewRow());
