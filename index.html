@@ -3297,9 +3297,9 @@ function pwLiveRefreshTotal(partnerName){
 function pwGenBatchId(){ return 'b' + Date.now() + '_' + Math.random().toString(36).slice(2, 10); }
 
 async function pwSaveColumn(partnerName){
-  const valid = PWSTATE.pending[partnerName].filter(r => String(r.item).trim() && qNum(r.amount) > 0);
+  const valid = PWSTATE.pending[partnerName].filter(r => qNum(r.amount) > 0);
   const msg = document.getElementById('pw-msg-' + qId(partnerName));
-  if (!valid.length){ msg.className = 'msg err'; msg.textContent = 'اكتب بند ومبلغ لسطر واحد على الأقل'; return; }
+  if (!valid.length){ msg.className = 'msg err'; msg.textContent = 'اكتب مبلغ لسطر واحد على الأقل'; return; }
 
   // ⚠️ منع التكرار: لو فيه حفظ شغال بالفعل لنفس الشريك (ضغطة تانية بالغلط قبل ما
   // الأولى تخلص)، بنتجاهلها بدل ما نبعت نفس البنود مرتين للسيرفر.
