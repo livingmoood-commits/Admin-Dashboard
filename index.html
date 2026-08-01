@@ -3294,6 +3294,8 @@ function pwLiveRefreshTotal(partnerName){
   const grandEl = document.getElementById('pw-grand-total'); if (grandEl) grandEl.textContent = fmt(grand) + ' ج';
 }
 
+function pwGenBatchId(){ return 'b' + Date.now() + '_' + Math.random().toString(36).slice(2, 10); }
+
 async function pwSaveColumn(partnerName){
   const valid = PWSTATE.pending[partnerName].filter(r => String(r.item).trim() && qNum(r.amount) > 0);
   const msg = document.getElementById('pw-msg-' + qId(partnerName));
@@ -3315,9 +3317,20 @@ async function pwSaveColumn(partnerName){
     // ⚡ نداء واحد بس فيه كل البنود (batch) بدل نداء منفصل لكل بند — أسرع بكتير
     // خصوصًا لما بتضيف أكتر من بند مرة واحدة.
     const items = valid.map(r => ({ partner: partnerName, date: r.date, item: r.item.trim(), amount: qNum(r.amount) }));
-    const res = await apiPost('addPartnerWithdrawals', { items });
+
+    // ⚠️ منع التكرار عند إعادة المحاولة: لو نفس البنود بالظبط فشلت قبل كده (مثلاً بسبب
+    // مشكلة سيرفر مؤقتة)، بنستخدم نفس الـ batchId تاني عشان السيرفر — لو كان فعلاً كتبها
+    // قبل كده والرد بس هو اللي ضاع — يتجاهل التكرار بدل ما يسجلها مرة تانية في الشيت.
+    const snapshot = JSON.stringify(items);
+    PWSTATE._lastBatch = PWSTATE._lastBatch || {};
+    const prevBatch = PWSTATE._lastBatch[partnerName];
+    const batchId = (prevBatch && prevBatch.snapshot === snapshot) ? prevBatch.batchId : pwGenBatchId();
+    PWSTATE._lastBatch[partnerName] = { snapshot, batchId };
+
+    const res = await apiPost('addPartnerWithdrawals', { items, batchId });
     const saved = (res && res.count) || items.length;
     msg.className = 'msg ok'; msg.textContent = `✔ اتسجل ${saved} بند`;
+    delete PWSTATE._lastBatch[partnerName]; // نجحت الدفعة، مانحتاجش نفتكر الـ batchId بتاعها تاني
     // ⚠️ بنشيل بس الصفوف اللي فعلاً اتحفظت (valid) — أي صف تاني كان لسه ناقص
     // (بند من غير مبلغ، أو العكس) بيفضل زي ما هو من غير ما يتمسح، وما بنضيفش
     // صف فاضي جديد تلقائي؛ ده بيحصل بس لما المستخدم يدوس "+ إضافة بند" بنفسه.
@@ -3326,6 +3339,8 @@ async function pwSaveColumn(partnerName){
     pwRenderColumn(partnerName);
     pwRefreshTotalsUI(); // بتحدث كل الأعمدة + الإجمالي الكلي فوق
   } catch(err){
+    // ⚠️ مش بنمسح PWSTATE._lastBatch[partnerName] هنا عن قصد — لو المستخدم دوس "حفظ" تاني
+    // بنفس البنود، الـ batchId هيتبعت زي ما هو والسيرفر يقدر يكتشف إنها نفس المحاولة.
     msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err);
   } finally {
     PWSTATE.saving[partnerName] = false;
