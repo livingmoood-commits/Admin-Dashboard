@@ -461,9 +461,17 @@
   .cd-list-row:last-child{ border-bottom:none; }
   .cd-list-row .n{ font-weight:700; }
   .cd-list-row .p{ color:var(--gold-dim); font-weight:800; white-space:nowrap; }
+
+  /* ===== Toast (بديل showToast(, 'error') الافتراضي القبيح بتاع المتصفح) ===== */
+  #toast-wrap{ position:fixed; bottom:22px; left:50%; transform:translateX(-50%); z-index:999; display:flex; flex-direction:column; gap:8px; align-items:center; pointer-events:none; }
+  .toast-item{ min-width:220px; max-width:92vw; padding:12px 18px; border-radius:10px; background:var(--dark); color:#f0e6d8; font-size:13px; font-weight:600; box-shadow:0 8px 24px rgba(0,0,0,.25); display:flex; align-items:center; gap:8px; opacity:0; transform:translateY(10px); transition:opacity .25s var(--bounce), transform .25s var(--bounce); white-space:pre-line; text-align:center; }
+  .toast-item.show{ opacity:1; transform:translateY(0); }
+  .toast-item.success{ background:var(--green); }
+  .toast-item.error{ background:var(--red); }
 </style>
 </head>
 <body>
+<div id="toast-wrap"></div>
 
 <datalist id="q-cat-list"></datalist>
 
@@ -616,6 +624,23 @@ function _refreshInBackground(action, params, key, url) {
     _lsSet(key, data);
     if (pageAtCall && tokenAtCall === _navToken && PAGES[pageAtCall]) PAGES[pageAtCall].render(tokenAtCall);
   }).catch(() => { /* فشل تحديث الخلفية — البيانات المعروضة (القديمة) تفضل زي ما هي، مفيش داعي نزعج المستخدم */ });
+}
+
+// بديل خفيف لـ showToast(, 'error') الافتراضي بتاع المتصفح (الشكل القبيح اللي بيظهر عليه اسم
+// الدومين) — رسالة صغيرة بنفس ستايل التطبيق، بتختفي لوحدها من غير ما توقف المستخدم.
+function showToast(msg, kind){
+  const wrap = document.getElementById('toast-wrap');
+  if (!wrap) { console.log(msg); return; }
+  const el = document.createElement('div');
+  el.className = 'toast-item' + (kind ? ' ' + kind : '');
+  el.textContent = msg;
+  wrap.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  const life = kind === 'error' ? 4200 : 3000;
+  setTimeout(() => {
+    el.classList.remove('show');
+    setTimeout(() => el.remove(), 300);
+  }, life);
 }
 
 async function _apiFetch(url, opts) {
@@ -1113,7 +1138,7 @@ function editEmployee(e){
 }
 async function deleteEmployeeConfirm(name){
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح "'+name+'"؟', 'حذف الموظف'))) return;
-  try { await apiPost('deleteEmployee', { id: name }); renderEmployees(); } catch(err){ alert('خطأ: '+(err.message||err)); }
+  try { await apiPost('deleteEmployee', { id: name }); renderEmployees(); } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 
 /* ================= مرتبات — كشف الحضور الشهري القابل للتعديل مباشرة =================
@@ -1297,22 +1322,22 @@ async function payrollConfirmBuild(){
   const monthIndex = parseInt(document.getElementById('pay-month').value, 10);
   const year = parseInt(document.getElementById('pay-year').value, 10) || PAYSTATE.year;
   const targets = [...document.querySelectorAll('.pb-part:checked')].map(cb => cb.value);
-  if (!targets.length){ alert('اختار جزء واحد على الأقل، أو "النظام كامل"'); return; }
+  if (!targets.length){ showToast('اختار جزء واحد على الأقل، أو "النظام كامل"', 'error'); return; }
   const btn = document.getElementById('pb-confirm-btn');
   btn.disabled = true; btn.textContent = 'جاري البناء...';
   try {
     const res = await apiPost('payrollBuildMonth', { year, monthNum: monthIndex + 1, targets });
-    if (res.error) { alert('خطأ: ' + res.error); return; }
+    if (res.error) { showToast('خطأ: ' + res.error, 'error'); return; }
     closePayBuildModal();
     PAYSTATE.year = year; PAYSTATE.monthIndex = monthIndex;
     paySaveSession();
     let msg = `تم بناء: ${res.built.join('، ')}`;
     if (res.detailsCreated) msg += `\nتم عمل نسخة "${res.detailsSheet}" جديدة` + (res.detailsCopiedFrom ? ` من "${res.detailsCopiedFrom}"` : '') + ' تلقائي.';
-    alert(msg);
+    showToast(msg, 'success');
     if (PAYSTATE.view === 'master') payrollLoadMaster();
     else if (PAYSTATE.view === 'details') payrollLoadDetails();
     else payrollLoadSheet();
-  } catch(err) { alert('خطأ: ' + (err.message || err)); }
+  } catch(err) { showToast('خطأ: ' + (err.message || err), 'error'); }
   finally { btn.disabled = false; btn.textContent = 'تأكيد البناء'; }
 }
 
@@ -1570,6 +1595,10 @@ async function payrollLoadDetails(){
     if (data.created) {
       notice = `<p style="font-size:12px;color:var(--gold);margin-bottom:10px;">✎ شيت "${qEsc(data.sheetName)}" اتعمل دلوقتي تلقائي` +
         (data.copiedFromName ? ` كنسخة من "${qEsc(data.copiedFromName)}"` : '') + `.</p>`;
+    } else if (data.exists === false) {
+      // ⚠️ إصلاح: شيت "تفاصيل" الشهر ده لسه متعملش — بيتعمل بس لما تضيف أول موظف
+      // أو تدوس "بناء/تحديث الشهر"، مش بمجرد ما تفتح الفلتر وتشوفه.
+      notice = `<p style="font-size:12px;color:var(--muted);margin-bottom:10px;">شيت "${qEsc(data.sheetName)}" لسه مش موجود — هيتعمل تلقائي أول ما تضيف موظف هنا، أو تدوس "+ بناء / تحديث الشهر".</p>`;
     }
 
     box.innerHTML = `
@@ -1710,7 +1739,7 @@ async function payrollDeleteDetailsEmployeeConfirm_(name){
     const res = await apiPost('payrollDeleteDetailsEmployee', { id: name, monthNum: PAYSTATE.monthIndex + 1 });
     if (res.error) throw new Error(res.error);
     payrollLoadDetails();
-  } catch(err){ alert('خطأ: '+(err.message||err)); }
+  } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 
 /* ================= Treasury / Cash Flow ================= */
@@ -1845,7 +1874,7 @@ async function renderTreasury(token) {
     document.getElementById('setCapitalBtn').addEventListener('click', async () => {
       const amount = document.getElementById('capitalInput').value;
       if (!amount) return;
-      try { await apiPost('setTreasuryCapital', { amount }); renderTreasury(); } catch(err){ alert('خطأ: '+(err.message||err)); }
+      try { await apiPost('setTreasuryCapital', { amount }); renderTreasury(); } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
     });
   } catch(err){ showError(err); }
 }
@@ -1926,7 +1955,7 @@ function cancelMoveEdit(){
 }
 async function deleteTreasuryMoveConfirm(id){
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح الحركة دي؟ (هيتم إعادة حساب الرصيد تلقائي)', 'حذف الحركة'))) return;
-  try { await apiPost('deleteTreasuryMove', { id }); renderTreasury(); } catch(err){ alert('خطأ: '+(err.message||err)); }
+  try { await apiPost('deleteTreasuryMove', { id }); renderTreasury(); } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 
 /* ================= مصاريف يومية — إدخال سريع سطر لكل مصروف
@@ -2588,7 +2617,7 @@ function renderProductsList(products){
 }
 async function deleteProductConfirm(id){
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح المنتج ده؟', 'حذف المنتج'))) return;
-  try { await apiPost('deleteProduct', { id }); renderProducts(); } catch(err){ alert('خطأ: '+(err.message||err)); }
+  try { await apiPost('deleteProduct', { id }); renderProducts(); } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 
 /* ================= Installation Cost (تكلفة التركيب) ================= */
@@ -2720,7 +2749,7 @@ function renderInstallList(items){
 }
 async function deleteInstallConfirm(id){
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح عملية التركيب دي؟', 'حذف عملية التركيب'))) return;
-  try { await apiPost('deleteInstall', { id }); renderInstall(); } catch(err){ alert('خطأ: '+(err.message||err)); }
+  try { await apiPost('deleteInstall', { id }); renderInstall(); } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 
 /* ================= Debts (ديون) ================= */
@@ -2884,18 +2913,18 @@ async function payDebtPrompt(id, remaining){
   const val = await openGenPrompt('المبلغ المسدد دلوقتي (من إجمالي الباقي '+fmt(remaining)+' ج):', remaining, 'سداد دين');
   if (val === null) return;
   const amount = qNum(val);
-  if (!(amount > 0)) return alert('اكتب مبلغ صحيح أكبر من صفر');
+  if (!(amount > 0)) return showToast('اكتب مبلغ صحيح أكبر من صفر', 'error');
   try {
     const { debts } = await apiGet('listDebts');
     const d = debts.find(x => x.id === id); if (!d) return;
     const newPaid = d.paid + amount;
     await apiPost('updateDebt', { debt: { id, total: d.total, paid: newPaid } });
     renderDebts();
-  } catch(err){ alert('خطأ: '+(err.message||err)); }
+  } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 async function deleteDebtConfirm(id){
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح الدين ده؟', 'حذف الدين'))) return;
-  try { await apiPost('deleteDebt', { id }); renderDebts(); } catch(err){ alert('خطأ: '+(err.message||err)); }
+  try { await apiPost('deleteDebt', { id }); renderDebts(); } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 
 /* ================= Fixed Expenses ================= */
@@ -2939,7 +2968,7 @@ async function renderFixedExp(token) {
 }
 async function deleteFixedExpConfirm(id){
   if (!(await openGenConfirm('متأكد؟', 'حذف'))) return;
-  try { await apiPost('deleteFixedExpense', { id }); renderFixedExp(); } catch(err){ alert('خطأ: '+(err.message||err)); }
+  try { await apiPost('deleteFixedExpense', { id }); renderFixedExp(); } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 
 /* ================= Quotation (عروض الأسعار) — full app ================= */
@@ -3088,7 +3117,7 @@ async function qDeleteCustomer(name){
     await apiPost('quoteDeleteCustomer', { name });
     if (_navToken !== navSnap || _qActionToken !== myTok) return;
     qRenderHome();
-  } catch(err){ alert('خطأ: '+(err.message||err)); }
+  } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 
 function qGoHome(){ try{ sessionStorage.removeItem('lm_quoteSession'); }catch(e){} QSTATE = { subpage:'home', customer:null, rows:[], discount:{percent:0,amount:0}, dollar:QCFG.defaultDollar }; qRenderHome(); }
@@ -3655,7 +3684,7 @@ async function pDeleteCustomer(name){
     await apiPost('payDeleteCustomer', { name });
     if (_navToken !== navSnap || _pActionToken !== myTok) return;
     pRenderHome();
-  } catch(err){ alert('خطأ: '+(err.message||err)); }
+  } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 
 function pGoHome(){ try{ sessionStorage.removeItem('lm_paySession'); }catch(e){} PSTATE = { subpage:'home', customer:null, rows:[] }; pRenderHome(); }
