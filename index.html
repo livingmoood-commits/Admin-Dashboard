@@ -2491,19 +2491,36 @@ async function dSaveAll(){
   const rows = valid.map(r => ({ desc: String(r.desc).trim(), amount: qNum(r.amount), project: String(r.project || '').trim() || 'مصروفات عامة', date: DSTATE.date }));
   const total = rows.reduce((s, r) => s + r.amount, 0);
   let saved = 0;
+  // بنتجمع فيها رد المزامنة مع المرتبات لكل سطر (payrollSync)، عشان لو سطر بصيغة
+  // "اسم الموظف - مسحوبات" اتسجل في شيت اليوم لكن اتسجلش في المرتبات (اسم مش مطابق،
+  // شيت الشهر لسه مبنيش، إلخ) — نبلّغ المستخدم بدل ما يفضل الفشل صامت من غير ما حد يلاحظ.
+  let payrollSyncResults = [];
   try {
     // بنحاول الأول نبعت كل الأسطر في طلب واحد بس (أسرع بكتير من طلب لكل سطر لوحده)،
     // ولو السيرفر لسه معندوش الأكشن ده (addDailyExpenseRows) بنرجع تلقائي للطريقة القديمة سطر سطر.
     try {
-      await apiPost('addDailyExpenseRows', { rows });
+      const res = await apiPost('addDailyExpenseRows', { rows });
       saved = rows.length;
+      payrollSyncResults = res.payrollSync || [];
     } catch (batchErr) {
       for (const row of rows) {
-        await apiPost('addDailyExpenseRow', { row });
+        const res = await apiPost('addDailyExpenseRow', { row });
+        payrollSyncResults.push(res.payrollSync);
         saved++;
       }
     }
-    msg.className = 'msg ok'; msg.textContent = `✔ اتسجل ${saved} مصروف بإجمالي ${fmt(total)} ج`;
+    // matched=true يعني السطر كان أصلًا بصيغة "اسم الموظف - مسحوبات..." ومفروض يتزامن —
+    // لو matched بس synced=false، ده فشل حقيقي (مش مجرد سطر مصروف عادي مش مقصود يتزامن).
+    const failedSyncs = rows
+      .map((r, i) => ({ row: r, sync: payrollSyncResults[i] }))
+      .filter(x => x.sync && x.sync.matched && !x.sync.synced);
+    if (failedSyncs.length) {
+      const details = failedSyncs.map(x => `«${x.row.desc}»: ${x.sync.reason || 'سبب غير معروف'}`).join(' — ');
+      msg.className = 'msg err';
+      msg.textContent = `✔ اتسجل ${saved} مصروف بإجمالي ${fmt(total)} ج، بس فيه مسحوبات ماتسجلتش في المرتبات: ${details}`;
+    } else {
+      msg.className = 'msg ok'; msg.textContent = `✔ اتسجل ${saved} مصروف بإجمالي ${fmt(total)} ج`;
+    }
     const log = await apiGet('getDailyExpenses', { date: DSTATE.date });
     dRenderTodayLog(log.rows || []);
     DSTATE.rows = [dNewRow(), dNewRow(), dNewRow()];
