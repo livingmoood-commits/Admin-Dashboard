@@ -1528,12 +1528,17 @@ async function payrollLoadSheet(){
 }
 /* خلية يوم واحدة — textarea بدل input: تقدر تدوس Enter عادي جوه الخلية
  * وتكتب كود تاني في سطر جديد (بديل Alt+Enter بتاع الشيتس)، وده بيتسجل
- * بنفس الفاصل (\n) اللي دالة PAYCODE_SUM في سكريبت المرتبات بتفهمه. */
-function payrollDayCellHtml_(row, col, value){
+ * بنفس الفاصل (\n) اللي دالة PAYCODE_SUM في سكريبت المرتبات بتفهمه.
+ * empIdx/dayIdx (ترتيب الموظف/اليوم في الجدول المعروض، مش row/col الفعليين في
+ * الشيت) بيتحطوا في data-* عشان دالة اللصق الذكي (payrollHandlePaste) تعرف
+ * تتحرك صح بين الخلايا المجاورة لو المستخدم لصق نطاق من إكسل/جوجل شيتس. */
+function payrollDayCellHtml_(row, col, value, empIdx, dayIdx){
   return `<td style="padding:2px;"><textarea class="d-input pay-cell ${payCellClass(value)}" rows="2"
+    data-row="${row}" data-col="${col}" data-emp-idx="${empIdx}" data-day-idx="${dayIdx}"
     style="text-align:center;font-size:11px;padding:4px 2px;resize:vertical;min-width:70px;line-height:1.35;"
     oninput="payCellRecolor(this)"
-    onchange="payrollCellEdited(${row}, ${col}, this)">${qEsc(value)}</textarea></td>`;
+    onchange="payrollCellEdited(${row}, ${col}, this)"
+    onpaste="payrollHandlePaste(event, ${empIdx}, ${dayIdx})">${qEsc(value)}</textarea></td>`;
 }
 
 /* توزيع حسب نوع الشيت (شهري = بلوك واحد متصل / اسبوعي = كذا بلوك أسبوع) */
@@ -1572,11 +1577,13 @@ function payrollRenderWeeklyTable_(box, data){
       ${data.monthSummaryHeaders.map(h => `<th style="background:#3a2f22;min-width:112px;">${qEsc(h)}</th>`).join('')}
     </tr>`;
 
-  const bodyRows = data.rows.map(r => {
+  const bodyRows = data.rows.map((r, empIdx) => {
+    let dayCursor = 0;
     const weeksHtml = r.weeks.map((wk, wi) => {
       const dayStartCol = data.weekHeaderBlocks[wi].dayStartCol;
       const sumHeaders = data.weekHeaderBlocks[wi].sumHeaders;
-      const daysHtml = wk.dayCells.map((v, di) => payrollDayCellHtml_(r.row, dayStartCol + di, v)).join('');
+      const daysHtml = wk.dayCells.map((v, di) => payrollDayCellHtml_(r.row, dayStartCol + di, v, empIdx, dayCursor + di)).join('');
+      dayCursor += wk.dayCells.length;
       const sumHtml = wk.summaryCells.map((v, si) => `<td class="sm-cell ${summaryCellClass(sumHeaders[si], v)}">${qEsc(v)}</td>`).join('');
       return daysHtml + sumHtml;
     }).join('');
@@ -1620,10 +1627,10 @@ function payrollRenderWeeklyTable_(box, data){
 
 /* شيت "حضور شهر" — بلوك واحد متصل من أيام الشهر + صف إجمالي متلوّن */
 function payrollRenderMonthlyTable_(box, data){
-  const bodyRows = data.rows.map(r => `
+  const bodyRows = data.rows.map((r, empIdx) => `
     <tr>
       <td style="position:sticky;right:0;background:var(--white);font-weight:700;">${qEsc(r.name)}</td>
-      ${r.dayCells.map((v, i) => payrollDayCellHtml_(r.row, data.dayStart + i, v)).join('')}
+      ${r.dayCells.map((v, i) => payrollDayCellHtml_(r.row, data.dayStart + i, v, empIdx, i)).join('')}
       ${r.summaryCells.map((v, si) => `<td class="sm-cell ${summaryCellClass(data.summaryHeaders[si], v)}">${qEsc(v)}</td>`).join('')}
     </tr>`).join('');
 
@@ -2224,8 +2231,8 @@ async function dLoadDayLog(dateStr){
   } catch(err){ box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message||err}</div>`; }
 }
 let DPROJECT_NAMES = [];
-const D_QUICK_TAGS = ['مسحوبات', 'مرتبات', 'أكل', 'مشتريات', 'صيانة', 'مواصلات', 'بنزين', 'أخرى'];
-const D_QUICK_TAG_ICONS = { 'مسحوبات':'💸','مرتبات':'💰', 'أكل':'🍔', 'مشتريات':'🛒', 'صيانة':'🔧', 'مواصلات':'🚗',  'بنزين':'⛽', 'أخرى':'✨' };
+const D_QUICK_TAGS = ['مسحوبات', 'مسحوبات ش ق', 'مرتبات', 'أكل', 'مشتريات', 'صيانة', 'مواصلات', 'بنزين', 'أخرى'];
+const D_QUICK_TAG_ICONS = { 'مسحوبات':'💸', 'مسحوبات ش ق':'🗓️', 'مرتبات':'💰', 'أكل':'🍔', 'مشتريات':'🛒', 'صيانة':'🔧', 'مواصلات':'🚗',  'بنزين':'⛽', 'أخرى':'✨' };
 function dRenderRows(){
   const tb = document.getElementById('d-body'); if (!tb) return;
   tb.innerHTML = DSTATE.rows.map((r, i) => `
