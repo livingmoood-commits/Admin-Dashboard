@@ -3143,8 +3143,23 @@ async function deleteFixedExpConfirm(id){
  * محفوظ فعليًا في الشيت بيتعرض تحت جاهز للتعديل/الحذف بالخانة على طول. */
 const PW_PARTNERS = ['عمر برعي', 'احمد خلف', 'محمود برعي'];
 let PWSTATE = { data: null, pending: {}, _rid: 1 };
-PW_PARTNERS.forEach(p => { PWSTATE.pending[p] = [pwNewRow()]; });
-function pwNewRow(){ return { _id: PWSTATE._rid++, date: todayStr(), item: '', amount: '' }; }
+PW_PARTNERS.forEach(p => { PWSTATE.pending[p] = [pwNewRow(p)]; });
+// ⚠️ البند بيكمل تلقائي: أي صف جديد بياخد نفس اسم البند اللي كتبته آخر مرة لنفس
+// الشريك (سواء لسه في صف مؤقت ماتحفظش، أو آخر بند اتحفظ فعلاً) — زي "شخصي" اللي
+// بيتكرر في الشيت، مش لازم تكتبه من الأول كل مرة.
+function pwNewRow(partnerName){ return { _id: PWSTATE._rid++, date: todayStr(), item: pwLastItemFor(partnerName), amount: '' }; }
+function pwLastItemFor(partnerName){
+  if (!partnerName) return '';
+  const pending = PWSTATE.pending && PWSTATE.pending[partnerName];
+  if (pending && pending.length) {
+    for (let i = pending.length - 1; i >= 0; i--) {
+      if (String(pending[i].item || '').trim()) return pending[i].item;
+    }
+  }
+  const p = PWSTATE.data && PWSTATE.data.partners && PWSTATE.data.partners.find(x => x.name === partnerName);
+  if (p && p.items && p.items.length) return p.items[0].item || '';
+  return '';
+}
 
 async function renderPartnerWithdrawals(token){
   document.getElementById('content').innerHTML = '<div class="loading-row">جاري التحميل...</div>';
@@ -3187,8 +3202,8 @@ function pwColumnShellHtml(p){
       </div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap;">
         <input type="text" inputmode="numeric" class="d-input" id="pw-bulk-${qId(p.name)}" value="1" style="width:44px;text-align:center;padding:6px 4px;" onkeypress="return /[0-9]/.test(event.key)">
-        <button type="button" class="btn btn-outline btn-sm" onclick="pwAddPendingRow('${qEscJs(p.name)}')">+ إضافة بند</button>
-        <button type="button" class="btn btn-primary btn-sm" onclick="pwSaveColumn('${qEscJs(p.name)}')">حفظ</button>
+        <button type="button" id="pw-addbtn-${qId(p.name)}" class="btn btn-outline btn-sm" onclick="pwAddPendingRow('${qEscJs(p.name)}')">+ إضافة بند</button>
+        <button type="button" id="pw-savebtn-${qId(p.name)}" class="btn btn-primary btn-sm" onclick="pwSaveColumn('${qEscJs(p.name)}')">حفظ</button>
       </div>
       <div class="msg" id="pw-msg-${qId(p.name)}"></div>
     </div>`;
@@ -3214,7 +3229,7 @@ function pwRenderColumn(partnerName){
       : p.items.map((it, i) => `
         <tr>
           <td style="text-align:center;color:var(--muted);font-size:11px;">${i + 1}</td>
-          <td><input type="date" class="d-input" style="font-size:11.5px;padding:4px;" value="${qEsc(it.date)}" onchange="pwUpdateItem('${it.id}','${qEscJs(partnerName)}','date',this.value)"></td>
+          <td><input type="date" class="d-input" style="font-size:11.5px;padding:4px;" value="${qEsc(it.date)}" onfocus="this.select()" onchange="pwUpdateItem('${it.id}','${qEscJs(partnerName)}','date',this.value)"></td>
           <td><input type="text" class="d-input" style="font-size:12px;padding:4px;" value="${qEsc(it.item)}" onchange="pwUpdateItem('${it.id}','${qEscJs(partnerName)}','item',this.value)"></td>
           <td><input type="text" inputmode="numeric" class="d-input ltr-num" style="font-size:12px;padding:4px;" value="${it.amount || ''}" onkeypress="return /[0-9.]/.test(event.key)" onchange="pwUpdateItem('${it.id}','${qEscJs(partnerName)}','amount',this.value)"></td>
           <td><button type="button" class="btn-icon" title="حذف" onclick="pwDeleteItem('${it.id}','${qEscJs(partnerName)}')">🗑</button></td>
@@ -3229,7 +3244,7 @@ function pwRenderPending(partnerName){
   wrap.innerHTML = rows.map((r, i) => `
     <tr>
       <td style="width:22px;text-align:center;color:var(--muted);font-size:11px;">${i + 1}</td>
-      <td style="width:96px;"><input type="date" class="d-input" style="font-size:11.5px;padding:4px;" value="${qEsc(r.date)}" onchange="pwSetPending('${qEscJs(partnerName)}',${r._id},'date',this.value)"></td>
+      <td style="width:96px;"><input type="date" class="d-input" style="font-size:11.5px;padding:4px;" value="${qEsc(r.date)}" onfocus="this.select()" onchange="pwSetPending('${qEscJs(partnerName)}',${r._id},'date',this.value)"></td>
       <td><input type="text" class="d-input" style="font-size:12px;padding:4px;" placeholder="اسم البند" value="${qEsc(r.item)}" oninput="pwSetPending('${qEscJs(partnerName)}',${r._id},'item',this.value)"></td>
       <td style="width:90px;"><input type="text" inputmode="numeric" class="d-input ltr-num" style="font-size:12px;padding:4px;" placeholder="المبلغ" value="${r.amount}" onkeypress="return /[0-9.]/.test(event.key)" oninput="pwSetPending('${qEscJs(partnerName)}',${r._id},'amount',this.value)"></td>
       <td style="width:26px;"><button type="button" class="btn-icon" title="إلغاء" onclick="pwRemovePendingRow('${qEscJs(partnerName)}',${r._id})">✕</button></td>
@@ -3239,12 +3254,12 @@ function pwRenderPending(partnerName){
 function pwAddPendingRow(partnerName){
   const countInput = document.getElementById('pw-bulk-' + qId(partnerName));
   const n = countInput ? Math.max(1, Math.min(50, parseInt(countInput.value, 10) || 1)) : 1;
-  for (let i = 0; i < n; i++) PWSTATE.pending[partnerName].push(pwNewRow());
+  for (let i = 0; i < n; i++) PWSTATE.pending[partnerName].push(pwNewRow(partnerName));
   pwRenderPending(partnerName);
 }
 function pwRemovePendingRow(partnerName, id){
   PWSTATE.pending[partnerName] = PWSTATE.pending[partnerName].filter(r => r._id !== id);
-  if (!PWSTATE.pending[partnerName].length) PWSTATE.pending[partnerName].push(pwNewRow());
+  if (!PWSTATE.pending[partnerName].length) PWSTATE.pending[partnerName].push(pwNewRow(partnerName));
   pwRenderPending(partnerName);
   pwLiveRefreshTotal(partnerName); // لو الصف اللي اتشال كان فيه مبلغ متكتّب، الإجمالي المؤقت لازم يرجع يصغّر فورًا
 }
@@ -3278,20 +3293,36 @@ async function pwSaveColumn(partnerName){
   const valid = PWSTATE.pending[partnerName].filter(r => String(r.item).trim() && qNum(r.amount) > 0);
   const msg = document.getElementById('pw-msg-' + qId(partnerName));
   if (!valid.length){ msg.className = 'msg err'; msg.textContent = 'اكتب بند ومبلغ لسطر واحد على الأقل'; return; }
+
+  // ⚠️ منع التكرار: لو فيه حفظ شغال بالفعل لنفس الشريك (ضغطة تانية بالغلط قبل ما
+  // الأولى تخلص)، بنتجاهلها بدل ما نبعت نفس البنود مرتين للسيرفر.
+  PWSTATE.saving = PWSTATE.saving || {};
+  if (PWSTATE.saving[partnerName]) return;
+  PWSTATE.saving[partnerName] = true;
+
+  const saveBtn = document.getElementById('pw-savebtn-' + qId(partnerName));
+  const addBtn  = document.getElementById('pw-addbtn-' + qId(partnerName));
+  if (saveBtn) saveBtn.disabled = true;
+  if (addBtn)  addBtn.disabled  = true;
+
   msg.className = 'msg'; msg.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
-  let saved = 0;
   try {
-    for (const r of valid) {
-      await apiPost('addPartnerWithdrawal', { item: { partner: partnerName, date: r.date, item: r.item.trim(), amount: qNum(r.amount) } });
-      saved++;
-    }
+    // ⚡ نداء واحد بس فيه كل البنود (batch) بدل نداء منفصل لكل بند — أسرع بكتير
+    // خصوصًا لما بتضيف أكتر من بند مرة واحدة.
+    const items = valid.map(r => ({ partner: partnerName, date: r.date, item: r.item.trim(), amount: qNum(r.amount) }));
+    const res = await apiPost('addPartnerWithdrawals', { items });
+    const saved = (res && res.count) || items.length;
     msg.className = 'msg ok'; msg.textContent = `✔ اتسجل ${saved} بند`;
-    PWSTATE.pending[partnerName] = [pwNewRow()];
+    PWSTATE.pending[partnerName] = [pwNewRow(partnerName)];
     PWSTATE.data = await apiGet('listPartnerWithdrawals');
     pwRenderColumn(partnerName);
     pwRefreshTotalsUI(); // بتحدث كل الأعمدة + الإجمالي الكلي فوق
   } catch(err){
-    msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err) + (saved ? ` (اتسجل ${saved} قبل الخطأ)` : '');
+    msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err);
+  } finally {
+    PWSTATE.saving[partnerName] = false;
+    if (saveBtn) saveBtn.disabled = false;
+    if (addBtn)  addBtn.disabled  = false;
   }
 }
 
