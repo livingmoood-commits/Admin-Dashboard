@@ -3029,8 +3029,15 @@ function pwColumnShellHtml(p){
     </div>`;
 }
 
-// اسم الشريك فيه مسافات — بنولد منه id صالح لعناصر HTML
-function qId(name){ return String(name).replace(/[^a-zA-Z0-9]/g, '_'); }
+// اسم الشريك فيه مسافات (وعربي) — بنولد منه id صالح لعناصر HTML.
+// ⚠️ إصلاح 2026-08-01: النسخة القديمة كانت بتشيل كل حرف عربي وتحوله '_'،
+// فأي شريكين اسمهم بنفس عدد الحروف (زي "عمر برعي" و"احمد خلف" — الاتنين 8 حروف)
+// كانوا بيطلعوا بنفس الـ id بالظبط ("________")، فالمتصفح كان بيلخبط بينهم في
+// العرض (بند بيتضاف لواحد بيظهر عند التاني). دلوقتي الـ id مبني على ترتيب
+// الشريك في PW_PARTNERS بدل اسمه، فمستحيل يتكرر مهما كان الاسم.
+const PW_ID_BY_NAME = {};
+PW_PARTNERS.forEach((p, i) => { PW_ID_BY_NAME[p] = 'p' + i; });
+function qId(name){ return PW_ID_BY_NAME[name] || ('x' + String(name).replace(/[^a-zA-Z0-9]/g, '_')); }
 function qEscJs(s){ return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 
 function pwRenderColumn(partnerName){
