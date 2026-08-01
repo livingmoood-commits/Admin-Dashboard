@@ -793,6 +793,21 @@ document.addEventListener('paste', (e) => {
   GSEL.pasteGridFrom(td, text);
 });
 
+/* ⚠️ إصلاح: حقول التاريخ (input[type=date]) في المتصفح بتقسّم القيمة لـ 3 خانات منفصلة
+ * (يوم/شهر/سنة) — لما تدوس Ctrl+C وأنت واقف جوه خانة واحدة بس (زي السنة)، المتصفح كان
+ * بينسخلك الخانة دي بس مش التاريخ كله. دلوقتي أي Ctrl+C وأنت جوه أي حقل تاريخ (في أي حتة
+ * في الموقع، جوه جدول أو برا) بينسخ التاريخ كامل بصيغة yyyy-mm-dd — مش محتاج تحدد حاجة
+ * أصلًا، دوس جوه الحقل وCtrl+C على طول. اللصق شغال عادي زي ما هو من غير أي تغيير. */
+document.addEventListener('copy', (e) => {
+  const active = document.activeElement;
+  if (!active || active.tagName !== 'INPUT' || active.type !== 'date' || !active.value) return;
+  e.clipboardData.setData('text/plain', active.value);
+  e.preventDefault();
+  showToast('✔ اتنسخ التاريخ: ' + active.value);
+});
+
+
+
 async function _apiFetch(url, opts) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 45000); // فشل بسرعة معقولة بدل ما يعلّق للأبد، مع هامش أكبر لأي ملف كبير فيه شيتات كتير
@@ -3215,8 +3230,8 @@ function pwRenderPending(partnerName){
     <tr>
       <td style="width:22px;text-align:center;color:var(--muted);font-size:11px;">${i + 1}</td>
       <td style="width:96px;"><input type="date" class="d-input" style="font-size:11.5px;padding:4px;" value="${qEsc(r.date)}" onchange="pwSetPending('${qEscJs(partnerName)}',${r._id},'date',this.value)"></td>
-      <td><input type="text" class="d-input" style="font-size:12px;padding:4px;" placeholder="اسم البند" value="${qEsc(r.item)}" onchange="pwSetPending('${qEscJs(partnerName)}',${r._id},'item',this.value)"></td>
-      <td style="width:90px;"><input type="text" inputmode="numeric" class="d-input ltr-num" style="font-size:12px;padding:4px;" placeholder="المبلغ" value="${r.amount}" onkeypress="return /[0-9.]/.test(event.key)" onchange="pwSetPending('${qEscJs(partnerName)}',${r._id},'amount',this.value)"></td>
+      <td><input type="text" class="d-input" style="font-size:12px;padding:4px;" placeholder="اسم البند" value="${qEsc(r.item)}" oninput="pwSetPending('${qEscJs(partnerName)}',${r._id},'item',this.value)"></td>
+      <td style="width:90px;"><input type="text" inputmode="numeric" class="d-input ltr-num" style="font-size:12px;padding:4px;" placeholder="المبلغ" value="${r.amount}" onkeypress="return /[0-9.]/.test(event.key)" oninput="pwSetPending('${qEscJs(partnerName)}',${r._id},'amount',this.value)"></td>
       <td style="width:26px;"><button type="button" class="btn-icon" title="إلغاء" onclick="pwRemovePendingRow('${qEscJs(partnerName)}',${r._id})">✕</button></td>
     </tr>`).join('');
 }
@@ -3231,9 +3246,32 @@ function pwRemovePendingRow(partnerName, id){
   PWSTATE.pending[partnerName] = PWSTATE.pending[partnerName].filter(r => r._id !== id);
   if (!PWSTATE.pending[partnerName].length) PWSTATE.pending[partnerName].push(pwNewRow());
   pwRenderPending(partnerName);
+  pwLiveRefreshTotal(partnerName); // لو الصف اللي اتشال كان فيه مبلغ متكتّب، الإجمالي المؤقت لازم يرجع يصغّر فورًا
 }
 function pwSetPending(partnerName, id, field, value){
   const r = PWSTATE.pending[partnerName].find(x => x._id === id); if (r) r[field] = value;
+  pwLiveRefreshTotal(partnerName); // ⚠️ الإجمالي بيتحدث لحظيًا وأنت لسه بتكتب، مش لازم تحفظ الأول
+}
+
+/* مجموع البنود اللي "صالحة للحفظ" (ليها بند مكتوب ومبلغ أكبر من صفر) جوه صفوف الإضافة
+ * المؤقتة (اللي لسه ماتحفظتش)، بنفس شرط pwSaveColumn بالظبط عشان الرقم المعروض يطابق
+ * اللي هيتحفظ فعليًا لو دُست "حفظ" دلوقتي. */
+function pwPendingValidSum(partnerName){
+  return (PWSTATE.pending[partnerName] || []).reduce((s, r) =>
+    s + (String(r.item).trim() && qNum(r.amount) > 0 ? qNum(r.amount) : 0), 0);
+}
+
+/* بتحدّث إجمالي العمود ده فورًا (إجمالي البنود المحفوظة + البنود اللي لسه بتتكتب)،
+ * وكمان الإجمالي الكلي فوق للشركاء التلاتة — كل ده لحظي بمجرد الكتابة، من غير أي حفظ. */
+function pwLiveRefreshTotal(partnerName){
+  if (!PWSTATE.data) return;
+  const p = PWSTATE.data.partners.find(x => x.name === partnerName);
+  const savedTotal = p ? p.total : 0;
+  const liveTotal = savedTotal + pwPendingValidSum(partnerName);
+  const t = document.getElementById('pw-total-' + qId(partnerName)); if (t) t.textContent = fmt(liveTotal);
+
+  const grand = PWSTATE.data.partners.reduce((s, pp) => s + pp.total + pwPendingValidSum(pp.name), 0);
+  const grandEl = document.getElementById('pw-grand-total'); if (grandEl) grandEl.textContent = fmt(grand) + ' ج';
 }
 
 async function pwSaveColumn(partnerName){
