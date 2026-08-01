@@ -216,6 +216,11 @@
   .d-log-del-btn{ all:unset; cursor:pointer; width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:13px; transition:background .15s, color .15s, transform .15s var(--bounce); }
   .d-log-del-btn:hover{ background:#fbe9e7; color:var(--red); }
   .d-log-del-btn:active{ transform:scale(.88); }
+  .d-log-note-btn, .d-log-move-btn{ all:unset; cursor:pointer; width:24px; height:24px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; color:var(--muted); font-size:12px; transition:background .15s, color .15s, transform .15s var(--bounce); vertical-align:middle; }
+  .d-log-note-btn:hover, .d-log-move-btn:hover{ background:var(--panel-2, #f2f2f2); color:var(--text); }
+  .d-log-note-btn:active, .d-log-move-btn:active{ transform:scale(.88); }
+  .d-log-note-btn.has-note{ color:var(--gold); }
+  .d-log-move-btn[disabled]{ opacity:.25; cursor:default; pointer-events:none; }
   .d-log-row.removing{ transition:opacity .2s, transform .2s; opacity:0; transform:scale(.97); }
 
   /* ===== تلوين خلايا "حضور شهر/اسبوعي" حسب كود الحركة المكتوب فيها ===== */
@@ -1705,7 +1710,10 @@ async function payrollLoadMaster(){
   box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
     const data = await apiGet('payrollGetMaster', { year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex });
-    if (!data.exists){ box.innerHTML = `<div class="panel"><div class="empty">شيت "${qEsc(data.sheetName)}" لسه مش موجود — ابنيه الأول من منيو "نظام المرتبات" في الشيت.</div></div>`; return; }
+    if (data && data.error) { box.innerHTML = `<div class="panel"><div class="msg err" style="display:block;">خطأ: ${qEsc(data.error)}</div></div>`; return; }
+    if (!data || !data.exists || !Array.isArray(data.headers) || !Array.isArray(data.rows)){
+      box.innerHTML = `<div class="panel"><div class="empty">شيت "${qEsc(data && data.sheetName || '')}" لسه مش موجود — ابنيه الأول من منيو "نظام المرتبات" في الشيت.</div></div>`; return;
+    }
 
     // هيدر واضح "الموظفين الشهريين" / "الموظفين الاسبوعيين" قبل كل مجموعة
     // (نفس ترتيب البناء: الشهريين أولاً وبعدهم الاسبوعيين) + صف الإجمالي منفصل ومتلوّن وثابت تحت
@@ -2620,22 +2628,79 @@ function dRenderTodayLog(rows){
       <div class="msg" id="d-today-msg" style="margin:0;"></div>
     </div>
     <div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">اضغط في أي خانة وعدّل — بيتحفظ لوحده أول ما تخرج من الخانة</div>
-    <div class="tbl-wrap tbl-wrap-scroll"><table><thead><tr><th>البيان</th><th style="width:110px;">المبلغ</th><th style="width:110px;">التاريخ</th><th style="width:170px;">المشروع</th><th style="width:36px;"></th></tr></thead>
-    <tbody id="d-today-tbody">${D_TODAY_ROWS.map(dTodayRowHtml).join('')}</tbody></table></div>`;
+    <div class="tbl-wrap tbl-wrap-scroll"><table><thead><tr><th>البيان</th><th style="width:110px;">المبلغ</th><th style="width:110px;">التاريخ</th><th style="width:170px;">المشروع</th><th style="width:110px;"></th></tr></thead>
+    <tbody id="d-today-tbody">${D_TODAY_ROWS.map((r, i) => dTodayRowHtml(r, i, D_TODAY_ROWS.length)).join('')}</tbody></table></div>`;
 }
 function dTodayTotal(){ return D_TODAY_ROWS.reduce((s, r) => s + (Number(r.amount) || 0), 0); }
 function dUpdateTodayTotalBadge(){
   const el = document.getElementById('d-today-total');
   if (el) el.textContent = fmt(dTodayTotal());
 }
-function dTodayRowHtml(r){
+function dTodayRowHtml(r, idx, total){
+  const hasNote = !!String(r.note || '').trim();
   return `<tr class="d-log-row" id="d-today-row-${r.row}">
     <td><input type="text" class="d-log-input d-log-desc" autocomplete="off" data-lpignore="true" data-1p-ignore value="${qEsc(r.desc)}" onchange="dTodaySave(${r.row}, 'desc', this)"></td>
     <td><input type="text" inputmode="numeric" class="d-log-input d-log-amount ltr-num" autocomplete="off" data-lpignore="true" data-1p-ignore value="${r.amount || ''}" onkeypress="return /[0-9.]/.test(event.key)" onchange="dTodaySave(${r.row}, 'amount', this)"></td>
     <td style="text-align:center;color:var(--muted);font-size:12.5px;">${qEsc(r.date || '—')}</td>
     <td><input type="text" class="d-log-input" autocomplete="off" data-lpignore="true" data-1p-ignore value="${qEsc(r.project)}" placeholder="مصروفات عامة" onchange="dTodaySave(${r.row}, 'project', this)"></td>
-    <td style="text-align:center;"><button type="button" class="d-log-del-btn" title="حذف المصروف ده" onclick="dTodayDelete(${r.row})">✕</button></td>
+    <td style="text-align:center;white-space:nowrap;">
+      <button type="button" class="d-log-note-btn${hasNote ? ' has-note' : ''}" id="d-today-note-btn-${r.row}" title="ملاحظة" onclick="dTodayToggleNote(${r.row}, this)">📝</button>
+      <button type="button" class="d-log-move-btn" title="نقل لفوق" ${idx === 0 ? 'disabled' : ''} onclick="dTodayMove(${r.row}, 'up')">▲</button>
+      <button type="button" class="d-log-move-btn" title="نقل لتحت" ${idx === total - 1 ? 'disabled' : ''} onclick="dTodayMove(${r.row}, 'down')">▼</button>
+      <button type="button" class="d-log-del-btn" title="حذف المصروف ده" onclick="dTodayDelete(${r.row})">✕</button>
+    </td>
   </tr>`;
+}
+/* بوكس ملاحظة سطر متسجل فعليًا (زي dToggleNotePopup بالظبط بس للسطور المتسجلة، مش المسودة) —
+ * بيستخدم نفس عنصر الـ popover (_dNotePopover) وبيفرّقه عن وضع المسودة بـ dataset.todayRow */
+function dTodayToggleNote(rowNum, btnEl){
+  const box = _dNotePopover(); if (!box) return;
+  const wasOpenForThisRow = box.classList.contains('open') && box.dataset.todayRow === String(rowNum);
+  dCloseAllQuickTags();
+  if (wasOpenForThisRow) return;
+  const rec = D_TODAY_ROWS.find(r => r.row === rowNum); if (!rec) return;
+  box.innerHTML = `<div style="padding:10px;">
+      <textarea id="d-today-note-ta-${rowNum}" rows="3" style="width:100%;resize:vertical;border:1.5px solid var(--border);border-radius:9px;padding:8px;font-family:inherit;font-size:13px;box-sizing:border-box;" placeholder="اكتب ملاحظتك هنا..." onchange="dTodaySaveNote(${rowNum}, this)">${qEsc(rec.note || '')}</textarea>
+    </div><div class="d-pop-hint">هتتحفظ كملاحظة (Note) على خانة "البيان" في الشيت — أول ما تخرج من الخانة</div>`;
+  delete box.dataset.rowId;
+  box.dataset.todayRow = String(rowNum);
+  box.style.width = '240px';
+  const rect = btnEl.getBoundingClientRect();
+  const spaceBelow = window.innerHeight - rect.bottom;
+  const openUp = spaceBelow < 220 && rect.top > spaceBelow;
+  box.style.left = ''; box.style.right = '';
+  box.style.right = (window.innerWidth - rect.right) + 'px';
+  if (openUp){ box.style.top = ''; box.style.bottom = (window.innerHeight - rect.top + 6) + 'px'; }
+  else { box.style.bottom = ''; box.style.top = (rect.bottom + 6) + 'px'; }
+  box.classList.add('open');
+  btnEl.classList.add('open');
+  setTimeout(() => { const ta = document.getElementById('d-today-note-ta-' + rowNum); if (ta) ta.focus(); }, 50);
+}
+async function dTodaySaveNote(rowNum, textareaEl){
+  const rec = D_TODAY_ROWS.find(r => r.row === rowNum); if (!rec) return;
+  const value = textareaEl.value;
+  if (String(value) === String(rec.note || '')) return;
+  try {
+    await apiPost('updateDailyExpenseRow', { date: DSTATE.date, row: rowNum, note: value });
+    rec.note = value;
+    const btn = document.getElementById('d-today-note-btn-' + rowNum);
+    if (btn) btn.classList.toggle('has-note', !!String(value || '').trim());
+  } catch(err){
+    _dTodayMsg('err', '✕ تعذر حفظ الملاحظة: ' + (err.message || err));
+  }
+}
+// نقل سطر متسجل خانة لفوق/لتحت جوه شيت اليوم (بيبدّل بيانات السطر مع اللي جنبه فعليًا في الشيت)
+async function dTodayMove(rowNum, dir){
+  const tr = document.getElementById('d-today-row-' + rowNum);
+  if (tr) tr.classList.add('saving');
+  try {
+    await apiPost('reorderDailyExpenseRow', { date: DSTATE.date, row: rowNum, direction: dir });
+    const log = await apiGet('getDailyExpenses', { date: DSTATE.date });
+    dRenderTodayLog(log.rows || []);
+  } catch(err){
+    if (tr) tr.classList.remove('saving');
+    _dTodayMsg('err', '✕ تعذر النقل: ' + (err.message || err));
+  }
 }
 function _dTodayMsg(type, text){
   const el = document.getElementById('d-today-msg'); if (!el) return;
