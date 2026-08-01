@@ -3318,7 +3318,10 @@ async function pwSaveColumn(partnerName){
     const res = await apiPost('addPartnerWithdrawals', { items });
     const saved = (res && res.count) || items.length;
     msg.className = 'msg ok'; msg.textContent = `✔ اتسجل ${saved} بند`;
-    PWSTATE.pending[partnerName] = [pwNewRow(partnerName)];
+    // ⚠️ بنشيل بس الصفوف اللي فعلاً اتحفظت (valid) — أي صف تاني كان لسه ناقص
+    // (بند من غير مبلغ، أو العكس) بيفضل زي ما هو من غير ما يتمسح، وما بنضيفش
+    // صف فاضي جديد تلقائي؛ ده بيحصل بس لما المستخدم يدوس "+ إضافة بند" بنفسه.
+    PWSTATE.pending[partnerName] = PWSTATE.pending[partnerName].filter(r => !valid.includes(r));
     PWSTATE.data = await apiGet('listPartnerWithdrawals');
     pwRenderColumn(partnerName);
     pwRefreshTotalsUI(); // بتحدث كل الأعمدة + الإجمالي الكلي فوق
