@@ -3241,9 +3241,13 @@ function pwRenderColumn(partnerName){
 function pwRenderPending(partnerName){
   const wrap = document.getElementById('pw-pending-' + qId(partnerName)); if (!wrap) return;
   const rows = PWSTATE.pending[partnerName];
+  // ⚠️ رقم البند بيكمل من عدد البنود المحفوظة بالفعل، مش بيرجع 1 كل مرة —
+  // لو عندك 14 بند محفوظ، أول صف جديد هيبقى رقمه 15 مش 1.
+  const p = PWSTATE.data && PWSTATE.data.partners && PWSTATE.data.partners.find(x => x.name === partnerName);
+  const base = p ? p.count : 0;
   wrap.innerHTML = rows.map((r, i) => `
     <tr>
-      <td style="width:22px;text-align:center;color:var(--muted);font-size:11px;">${i + 1}</td>
+      <td style="width:22px;text-align:center;color:var(--muted);font-size:11px;">${base + i + 1}</td>
       <td style="width:96px;"><input type="date" class="d-input" style="font-size:11.5px;padding:4px;" value="${qEsc(r.date)}" onfocus="this.select()" onchange="pwSetPending('${qEscJs(partnerName)}',${r._id},'date',this.value)"></td>
       <td><input type="text" class="d-input" style="font-size:12px;padding:4px;" placeholder="اسم البند" value="${qEsc(r.item)}" oninput="pwSetPending('${qEscJs(partnerName)}',${r._id},'item',this.value)"></td>
       <td style="width:90px;"><input type="text" inputmode="numeric" class="d-input ltr-num" style="font-size:12px;padding:4px;" placeholder="المبلغ" value="${r.amount}" onkeypress="return /[0-9.]/.test(event.key)" oninput="pwSetPending('${qEscJs(partnerName)}',${r._id},'amount',this.value)"></td>
