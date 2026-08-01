@@ -3883,6 +3883,14 @@ function arabicOrdinalFem(n){
   if (n < 1000) return threeDigits(n);
   return 'رقم ' + n; // لأعداد كبيرة جدًا (نادر الحدوث) بنرجع لصياغة رقمية واضحة بدل صياغة معقدة
 }
+// ⚠️ FIX: فلتر دفاعي — بيشيل أي صف "ملخص" (الإجمالي الكلي/إجمالي المستلم/الباقي) لو
+// حصل ودخل غلط جوه rows، سواء جاي من الشيت (بيانات قديمة قبل إصلاح السيرفر) أو من
+// كاش sessionStorage القديم المحفوظ في المتصفح من قبل الإصلاح. من غيره كان ممكن
+// يفضل "فريز" — يرجع يظهر تاني حتى بعد ما تمسحه، لأنه بيتحمّل تاني من الكاش/الشيت.
+const _P_SUMMARY_NAMES = ['الإجمالي الكلي', 'إجمالي المستلم', 'الباقي'];
+function pStripSummaryRows(rows){
+  return (rows || []).filter(r => _P_SUMMARY_NAMES.indexOf(String(r.name||'').trim()) === -1);
+}
 function pOrdinalName(i){ const n = i + 1; return 'الدفعة ' + arabicOrdinalFem(n) + ' (' + n + ')'; }
 const P_OLD_ORDINALS = ['الأولى','الثانية','الثالثة','الرابعة','الخامسة','السادسة','السابعة','الثامنة','التاسعة','العاشرة',
   'الحادية عشر','الثانية عشر','الثالثة عشر','الرابعة عشر','الخامسة عشر','السادسة عشر','السابعة عشر','الثامنة عشر','التاسعة عشر','العشرون'];
@@ -3914,6 +3922,7 @@ function pRestoreSession(){
     const s = JSON.parse(raw);
     if (!s || !s.customer || (s.subpage !== 'editor' && s.subpage !== 'preview')) return false;
     PSTATE = s;
+    PSTATE.rows = pStripSummaryRows(PSTATE.rows);
     PSTATE.rows = (PSTATE.rows && PSTATE.rows.length) ? PSTATE.rows.map((r,i) => ({...r, name: pMigrateRowName(r.name, i), _id:Math.random()})) : [pNewRow(0)];
     return true;
   } catch(e){ return false; }
@@ -4055,7 +4064,7 @@ async function pOpenCustomer(c){
   try {
     const d = await apiGet('payGetCashFlow', { name: c.name });
     if (_navToken !== navSnap || _pActionToken !== myTok) return; // المستخدم غيّر الصفحة/فتح حاجة تانية قبل ما الطلب يخلص
-    PSTATE.rows = (d.rows || []).map((r,i) => ({...r, name: pMigrateRowName(r.name, i), _id:Math.random()}));
+    PSTATE.rows = pStripSummaryRows(d.rows).map((r,i) => ({...r, name: pMigrateRowName(r.name, i), _id:Math.random()}));
     if (!PSTATE.rows.length) PSTATE.rows = [pNewRow(0)];
     PSTATE.customer.completed = !!d.completed;
     PSTATE.subpage = 'editor';
