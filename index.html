@@ -2253,7 +2253,7 @@ function dRenderRows(){
       <td style="white-space:nowrap;">
         <button class="btn btn-sm btn-outline" tabindex="-1" title="نقل لفوق" onclick="dMoveRow(${r._id},-1)" ${i===0?'disabled':''}>&#9650;</button>
         <button class="btn btn-sm btn-outline" tabindex="-1" title="نقل لتحت" onclick="dMoveRow(${r._id},1)" ${i===DSTATE.rows.length-1?'disabled':''}>&#9660;</button>
-        <button class="btn btn-sm btn-danger" tabindex="-1" onclick="dDelRow(${r._id})">✕</button>
+        <button class="btn btn-sm btn-danger" type="button" tabindex="-1" onmousedown="event.preventDefault(); dDelRow(${r._id});">✕</button>
       </td>
     </tr>`).join('');
   dUpdateTotalBadge();
@@ -3592,7 +3592,7 @@ function qRenderRows(){
       <td><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" value="${r.price}" onchange="qSetNumField(${r._id},'price',this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
       <td class="num-cell">${fmt(qTot(r))}</td>
       <td><textarea placeholder="ملاحظة..." onchange="qSetField(${r._id},'notes',this.value)">${qEsc(r.notes)}</textarea></td>
-      <td><button class="btn btn-sm btn-danger" onclick="qDelRow(${r._id})">✕</button></td>
+      <td><button type="button" class="btn btn-sm btn-danger" onmousedown="event.preventDefault(); qDelRow(${r._id});">✕</button></td>
     </tr>`).join('');
   qRefreshTotals();
 }
@@ -4154,7 +4154,7 @@ function pRenderRows(){
       <td class="num-cell">${pct!==''?pct.toFixed(0)+'%':'—'}</td>
       <td><input autocomplete="off" type="date" value="${pToISO(r.date)}" onchange="pSetDate(${r._id},this.value)" style="direction:ltr;width:132px;"></td>
       <td><input type="text" autocomplete="off" name="p-method-${r._id}" value="${qEsc(r.method||'')}" onchange="pSetField(${r._id},'method',this.value)" placeholder="اختياري"></td>
-      <td><button class="btn btn-sm btn-danger" onclick="pDelRow(${r._id})">✕</button></td>
+      <td><button type="button" class="btn btn-sm btn-danger" onmousedown="event.preventDefault(); pDelRow(${r._id});">✕</button></td>
     </tr>`;
   }).join('');
   pRefreshTotals();
