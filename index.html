@@ -227,10 +227,6 @@
   .d-log-row.removing{ transition:opacity .2s, transform .2s; opacity:0; transform:scale(.97); }
 
   /* ===== تلوين خلايا "حضور شهر/اسبوعي" حسب كود الحركة المكتوب فيها ===== */
-  .reorder-btns{ display:flex; flex-direction:column; gap:2px; }
-  .btn-reorder{ border:1px solid var(--border); background:var(--white); color:var(--gold-dim); width:22px; height:18px; line-height:1; font-size:9px; border-radius:4px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background .15s,color .15s; }
-  .btn-reorder:hover:not(:disabled){ background:var(--gold); color:var(--white); border-color:var(--gold); }
-  .btn-reorder:disabled{ opacity:.25; cursor:default; }
   .pay-cell{ transition:background .15s, border-color .15s, color .15s; font-weight:700; }
   .pay-cell.pay-add{ background:#e6f4ea !important; border-color:var(--green) !important; color:var(--green) !important; }
   .pay-cell.pay-ded{ background:#fbe9e7 !important; border-color:var(--red) !important; color:var(--red) !important; }
@@ -1344,9 +1340,6 @@ function renderEmployeesListPanel(){
   const emptyMsg = filter === 'weekly' ? 'مفيش موظفين اسبوعيين'
                  : filter === 'monthly' ? 'مفيش موظفين شهريين'
                  : 'مفيش موظفين مسجلين في شيت المرتبات';
-  // ترتيب اطلع/انزل بيشتغل بس في تبويب "الجميع" (لأنه بيحرك الترتيب الفعلي في الشيت،
-  // ومحتاجين نعرف مين اللي فوق/تحت مين فعليًا — الفلاتر التانية بتفرز العرض بس).
-  const canReorder = filter === 'all';
   panel.innerHTML = `
     <div class="q-steps p-filter-tabs">
       <div class="step ${filter==='all'?'active':''}" onclick="empSetFilter('all')">الجميع (${all.length})</div>
@@ -1354,25 +1347,14 @@ function renderEmployeesListPanel(){
       <div class="step ${filter==='monthly'?'active':''}" onclick="empSetFilter('monthly')">قبض شهري (${monthlyCount})</div>
     </div>
     <div class="tbl-wrap"><table>
-      <thead><tr><th></th><th>الاسم</th><th>الطريقة</th><th>تاريخ الانضمام</th><th>اليومية</th><th>أجر الساعة</th><th>قبض الاسبوع</th><th>قبض الشهر</th><th></th></tr></thead>
-      <tbody>${visible.length ? visible.map((e,i) => `<tr>
-        <td>${canReorder ? `<span class="reorder-btns">
-            <button class="btn-reorder" title="اطلع" ${i===0?'disabled':''} onclick="empReorder('${e.name.replace(/'/g,"\\'")}','up')">&#9650;</button>
-            <button class="btn-reorder" title="انزل" ${i===visible.length-1?'disabled':''} onclick="empReorder('${e.name.replace(/'/g,"\\'")}','down')">&#9660;</button>
-          </span>` : ''}</td>
+      <thead><tr><th>الاسم</th><th>الطريقة</th><th>تاريخ الانضمام</th><th>اليومية</th><th>أجر الساعة</th><th>قبض الاسبوع</th><th>قبض الشهر</th><th></th></tr></thead>
+      <tbody>${visible.length ? visible.map(e => `<tr>
         <td>${e.name}</td><td>${e.paymentType}</td><td>${e.joinDate || '—'}</td><td>${fmt(e.dailyRate)} ج</td><td>${fmt(e.hourlyRate)} ج</td><td>${fmt(e.weeklyPay)} ج</td><td>${fmt(e.monthlyPay)} ج</td>
         <td><button class="btn btn-sm btn-outline" onclick='editEmployee(${JSON.stringify(e).replace(/'/g,"&#39;")})'>تعديل</button>
             <button class="btn btn-sm btn-danger" onclick="deleteEmployeeConfirm('${e.name.replace(/'/g,"\\'")}')">حذف</button></td>
-      </tr>`).join('') : `<tr><td colspan="9" class="empty">${emptyMsg}</td></tr>`}</tbody>
+      </tr>`).join('') : `<tr><td colspan="8" class="empty">${emptyMsg}</td></tr>`}</tbody>
     </table></div>
   `;
-}
-async function empReorder(name, direction){
-  try {
-    const res = await apiPost('payrollReorderDetailsEmployee', { monthNum: EMPSTATE.monthIndex + 1, name, direction });
-    if (res.error) throw new Error(res.error);
-    empLoadDetails();
-  } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 function resetEmployeeForm(){
   document.getElementById('e_originalName').value='';
@@ -1648,7 +1630,11 @@ function payrollRenderWeeklyTable_(box, data){
   // (متجيبش نفسه بين كل أسبوع والتاني، ده كان الباج اللي بيخلي خلايا أول يوم في كل
   // أسبوع تتزاح وتتلخبط مع عمود الفاصل). واللون بقى ذهبي واضح بدل ما كان نفس لون
   // الهيدر الغامق فيختفي جواه.
-  const sepTh = '<th style="width:8px;background:var(--gold);padding:0;"></th>';
+  // ⚠️ إصلاح: كان فيه هنا كمان "sepTh" بيتحط في الصف التاني من الهيدر بالإضافة
+  // لـ sepThRowspan (اللي أصلاً rowspan="2" وبياخد مكانه في الصفين مع بعض)،
+  // فكان بيعمل عمود زيادة وهمي في صف الهيدر التاني بس، مش موجود في صف الهيدر
+  // الأول ولا في صفوف البيانات — وده كان يخلي كل هيدرات "إجمالي الشهر" (ساعات
+  // الأوفر، قيمة الأوفر...) تتزاح عمود كامل عن قيمها الحقيقية تحتها. اتشال خالص.
   const sepThRowspan = '<th style="width:8px;background:var(--gold);padding:0;" rowspan="2"></th>';
   const sepTd = '<td style="background:var(--gold);padding:0;width:8px;"></td>';
 
@@ -1665,7 +1651,6 @@ function payrollRenderWeeklyTable_(box, data){
         ${wb.dayHeaders.map(h => `<th style="min-width:70px;white-space:pre-line;">${qEsc(h)}</th>`).join('')}
         ${wb.sumHeaders.map(h => `<th style="background:#efe6d6;color:var(--dark);min-width:100px;font-size:12.5px;">${qEsc(h)}</th>`).join('')}
       `).join('')}
-      ${sepTh}
       ${data.monthSummaryHeaders.map(h => `<th style="background:#3a2f22;min-width:112px;">${qEsc(h)}</th>`).join('')}
     </tr>`;
 
@@ -1714,7 +1699,8 @@ function payrollRenderWeeklyTable_(box, data){
         </table>
       </div>
       ${payrollLegendHtml_()}
-    </div>`;
+    </div>
+    ${payrollQuickAddPanelHtml_(data)}`;
 }
 
 /* شيت "حضور شهر" — بلوك واحد متصل من أيام الشهر + صف إجمالي متلوّن */
@@ -1744,7 +1730,8 @@ function payrollRenderMonthlyTable_(box, data){
         </table>
       </div>
       ${payrollLegendHtml_()}
-    </div>`;
+    </div>
+    ${payrollQuickAddPanelHtml_(data)}`;
 }
 
 function payrollLegendHtml_(){
@@ -1761,6 +1748,103 @@ function payrollLegendHtml_(){
       <span class="pay-legend-chip pay-other">كود تاني (زي خي أو شق) — بيتلوّن بلون عام لحد ما تتأكد منه</span>
     </div>`;
 }
+
+/* ================= "إضافة سريعة" — فورم بديل لكتابة الكود يدوي جوه الخلية =================
+ * اختار الموظف، دوس على كذا يوم (من الأيام الظاهرة فعليًا في الشهر/الأسبوع المفتوح
+ * بس — مش شهر تقويمي)، ولكل يوم تقدر تضيف أكتر من أكشن (إضافة/خصم/مسحوبات/غياب)
+ * بمبلغه. عند الحفظ بتتكتب في نفس خلايا الشيت الحقيقي بنفس فورمات PAYCODE_SUM.
+ * ============================================================================= */
+let PAY_QA = { dates: [], actions: {} };
+let payrollQaLabels_ = {};
+
+function payrollQuickAddPanelHtml_(data){
+  const empNames = data.rows.map(r => r.name);
+  const dayList = data.kind === 'monthly'
+    ? data.dayHeaders.map((h,i) => ({ label: h.replace('\n',' '), iso: data.dayDates[i] }))
+    : [].concat(...data.weekHeaderBlocks.map(wb => wb.dayHeaders.map((h,i) => ({ label: h.replace('\n',' '), iso: wb.dayDates[i] }))));
+  PAY_QA = { dates: [], actions: {} };
+  payrollQaLabels_ = {};
+  return `
+  <div class="panel" style="margin-top:14px;">
+    <h3 style="margin-bottom:4px;">+ إضافة سريعة</h3>
+    <p style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">اختار الموظف والأيام، ولكل يوم ضيف كذا أكشن لو محتاج — من غير ما تكتب أي كود بإيدك.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+      <select id="qa-emp" class="d-input" style="width:auto;min-width:180px;">
+        ${empNames.map(n => `<option value="${qEsc(n)}">${qEsc(n)}</option>`).join('')}
+      </select>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">اختار يوم واحد أو أكتر:</div>
+    <div id="qa-days" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
+      ${dayList.map(d => `<button type="button" class="btn btn-sm qa-day-chip" data-iso="${d.iso}" onclick="payrollQaToggleDay('${d.iso}','${qEsc(d.label)}')">${qEsc(d.label)}</button>`).join('')}
+    </div>
+    <div id="qa-days-editors"></div>
+    <button class="btn btn-primary btn-sm" id="qa-save-btn" onclick="payrollQaSave()" style="margin-top:8px;">حفظ الإضافة</button>
+  </div>`;
+}
+
+function payrollQaToggleDay(iso, label){
+  const chip = document.querySelector(`.qa-day-chip[data-iso="${iso}"]`);
+  const idx = PAY_QA.dates.indexOf(iso);
+  if (idx === -1) {
+    PAY_QA.dates.push(iso);
+    PAY_QA.actions[iso] = [{ type: 'ج', amount: '' }];
+    payrollQaLabels_[iso] = label;
+    if (chip) chip.classList.add('btn-primary');
+  } else {
+    PAY_QA.dates.splice(idx, 1);
+    delete PAY_QA.actions[iso];
+    if (chip) chip.classList.remove('btn-primary');
+  }
+  payrollQaRenderEditors_();
+}
+
+function payrollQaRenderEditors_(){
+  const box = document.getElementById('qa-days-editors'); if (!box) return;
+  box.innerHTML = PAY_QA.dates.map(iso => `
+    <div class="panel" style="background:#faf7f0;margin-bottom:8px;padding:10px;">
+      <div style="font-weight:700;margin-bottom:6px;">${qEsc(payrollQaLabels_[iso] || iso)}</div>
+      <div id="qa-actions-${iso.replace(/-/g,'_')}">
+        ${PAY_QA.actions[iso].map((a, ai) => payrollQaActionRowHtml_(iso, ai, a)).join('')}
+      </div>
+      <button type="button" class="btn btn-sm" onclick="payrollQaAddAction('${iso}')">+ أكشن تاني في نفس اليوم</button>
+    </div>`).join('');
+}
+
+function payrollQaActionRowHtml_(iso, ai, a){
+  const opts = [['ج','إضافة'],['خ','خصم'],['م','مسحوبات'],['غ','غياب يوم كامل']];
+  return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+    <select class="d-input" style="width:auto;" onchange="payrollQaSetType('${iso}',${ai},this.value)">
+      ${opts.map(o => `<option value="${o[0]}" ${a.type===o[0]?'selected':''}>${o[1]}</option>`).join('')}
+    </select>
+    ${a.type==='غ' ? '' : `<input type="number" class="d-input" style="width:100px;" placeholder="المبلغ" value="${a.amount}" oninput="payrollQaSetAmount('${iso}',${ai},this.value)">`}
+    <button type="button" class="btn btn-sm" onclick="payrollQaRemoveAction('${iso}',${ai})">✕</button>
+  </div>`;
+}
+function payrollQaSetType(iso, ai, val){ PAY_QA.actions[iso][ai].type = val; payrollQaRenderEditors_(); }
+function payrollQaSetAmount(iso, ai, val){ PAY_QA.actions[iso][ai].amount = val; }
+function payrollQaAddAction(iso){ PAY_QA.actions[iso].push({ type:'ج', amount:'' }); payrollQaRenderEditors_(); }
+function payrollQaRemoveAction(iso, ai){
+  PAY_QA.actions[iso].splice(ai,1);
+  if (!PAY_QA.actions[iso].length) PAY_QA.actions[iso].push({ type:'ج', amount:'' });
+  payrollQaRenderEditors_();
+}
+
+async function payrollQaSave(){
+  const empEl = document.getElementById('qa-emp');
+  const emp = empEl ? empEl.value : '';
+  if (!PAY_QA.dates.length) { showToast('اختار يوم واحد على الأقل', 'error'); return; }
+  const entries = PAY_QA.dates.map(iso => ({ date: iso, actions: PAY_QA.actions[iso] }));
+  const btn = document.getElementById('qa-save-btn');
+  btn.disabled = true; btn.textContent = 'جاري الحفظ...';
+  try {
+    const res = await apiPost('payrollQuickAddEntries', { year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex, kind: PAYSTATE.kind, employeeName: emp, entries });
+    if (res.error) { showToast('خطأ: ' + res.error, 'error'); return; }
+    showToast('تم الحفظ', 'success');
+    payrollLoadSheet(); // بيعيد رسم الجدول (وبيعمل reset لفورم الإضافة تلقائي عن طريق payrollQuickAddPanelHtml_)
+  } catch(err) { showToast('خطأ: ' + (err.message || err), 'error'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = 'حفظ الإضافة'; } }
+}
+
 async function payrollCellEdited(row, col, inputEl){
   const val = inputEl.value.trim();
   inputEl.disabled = true;
@@ -1969,7 +2053,6 @@ function payrollRenderDetailsListPanel_(){
   const emptyMsg = filter === 'weekly' ? 'مفيش موظفين اسبوعيين'
                  : filter === 'monthly' ? 'مفيش موظفين شهريين'
                  : 'مفيش موظفين مسجلين في شيت التفاصيل ده';
-  const canReorder = filter === 'all';
   panel.innerHTML = `
     <div class="q-steps p-filter-tabs">
       <div class="step ${filter==='all'?'active':''}" onclick="payrollDetailsSetFilter_('all')">الجميع (${all.length})</div>
@@ -1977,25 +2060,14 @@ function payrollRenderDetailsListPanel_(){
       <div class="step ${filter==='monthly'?'active':''}" onclick="payrollDetailsSetFilter_('monthly')">قبض شهري (${monthlyCount})</div>
     </div>
     <div class="tbl-wrap"><table>
-      <thead><tr><th></th><th>الاسم</th><th>الطريقة</th><th>تاريخ الانضمام</th><th>اليومية</th><th>أجر الساعة</th><th>قبض الاسبوع</th><th>قبض الشهر</th><th></th></tr></thead>
-      <tbody>${visible.length ? visible.map((e,i) => `<tr>
-        <td>${canReorder ? `<span class="reorder-btns">
-            <button class="btn-reorder" title="اطلع" ${i===0?'disabled':''} onclick="payrollReorderDetailsEmployee_('${e.name.replace(/'/g,"\\'")}','up')">&#9650;</button>
-            <button class="btn-reorder" title="انزل" ${i===visible.length-1?'disabled':''} onclick="payrollReorderDetailsEmployee_('${e.name.replace(/'/g,"\\'")}','down')">&#9660;</button>
-          </span>` : ''}</td>
+      <thead><tr><th>الاسم</th><th>الطريقة</th><th>تاريخ الانضمام</th><th>اليومية</th><th>أجر الساعة</th><th>قبض الاسبوع</th><th>قبض الشهر</th><th></th></tr></thead>
+      <tbody>${visible.length ? visible.map(e => `<tr>
         <td>${e.name}</td><td>${e.paymentType}</td><td>${e.joinDate || '—'}</td><td>${fmt(e.dailyRate)} ج</td><td>${fmt(e.hourlyRate)} ج</td><td>${fmt(e.weeklyPay)} ج</td><td>${fmt(e.monthlyPay)} ج</td>
         <td><button class="btn btn-sm btn-outline" onclick='payrollEditDetailsEmployee_(${JSON.stringify(e).replace(/'/g,"&#39;")})'>تعديل</button>
             <button class="btn btn-sm btn-danger" onclick="payrollDeleteDetailsEmployeeConfirm_('${e.name.replace(/'/g,"\\'")}')">حذف</button></td>
-      </tr>`).join('') : `<tr><td colspan="9" class="empty">${emptyMsg}</td></tr>`}</tbody>
+      </tr>`).join('') : `<tr><td colspan="8" class="empty">${emptyMsg}</td></tr>`}</tbody>
     </table></div>
   `;
-}
-async function payrollReorderDetailsEmployee_(name, direction){
-  try {
-    const res = await apiPost('payrollReorderDetailsEmployee', { monthNum: PAYSTATE.monthIndex + 1, name, direction });
-    if (res.error) throw new Error(res.error);
-    payrollLoadDetails();
-  } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 function payrollResetDetailsForm_(){
   document.getElementById('pd_originalName').value='';
@@ -3217,10 +3289,7 @@ function renderDebtsPage(debts){
             <div class="field"><label>الوصف</label><input autocomplete="off" id="dbt_desc" placeholder="اختياري"></div>
           </div>
           <div class="form-row">
-            <div class="field"><label>المشروع</label><input autocomplete="off" id="dbt_project" placeholder="اختياري"></div>
             <div class="field"><label>الإجمالي</label><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" id="dbt_total" placeholder="0" onkeypress="return /[0-9.]/.test(event.key)"></div>
-          </div>
-          <div class="form-row">
             <div class="field"><label>مسدد مبدئيًا (لو فيه)</label><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" id="dbt_paid" placeholder="0" onkeypress="return /[0-9.]/.test(event.key)"></div>
           </div>
           <div class="field"><label>ملاحظات</label><textarea id="dbt_notes" rows="2"></textarea></div>
@@ -3229,16 +3298,11 @@ function renderDebtsPage(debts){
         </form>
       </div>
       <div class="panel">
-        <h3>تجميع حسب الجهة</h3>
-        <div id="debtsGroupedBox"></div>
-      </div>
-      <div class="panel">
         <h3>الديون المسجلة (${debts.length})</h3>
         <div id="debtsListBox"></div>
       </div>
     </div>
   `;
-  renderDebtsGrouped(debts);
   renderDebtsList(debts);
   document.getElementById('debtForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -3247,7 +3311,6 @@ function renderDebtsPage(debts){
     const debt = {
       creditor: document.getElementById('dbt_creditor').value.trim(),
       desc: document.getElementById('dbt_desc').value.trim(),
-      project: document.getElementById('dbt_project').value.trim(),
       total: qNum(document.getElementById('dbt_total').value),
       paid: qNum(document.getElementById('dbt_paid').value),
       notes: document.getElementById('dbt_notes').value
@@ -3294,23 +3357,18 @@ function editDebtStart(id){
       <div class="field"><label>الوصف</label><input autocomplete="off" id="ed_desc" value="${qEsc(d.desc||'')}"></div>
     </div>
     <div class="form-row">
-      <div class="field"><label>المشروع</label><input autocomplete="off" id="ed_project" value="${qEsc(d.project||'')}" placeholder="اختياري"></div>
       <div class="field"><label>الإجمالي</label><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" id="ed_total" value="${d.total}" onkeypress="return /[0-9.]/.test(event.key)"></div>
-    </div>
-    <div class="form-row">
       <div class="field"><label>المسدد</label><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" id="ed_paid" value="${d.paid}" onkeypress="return /[0-9.]/.test(event.key)"></div>
     </div>
     <div class="field"><label>ملاحظات</label><textarea id="ed_notes" rows="2">${qEsc(d.notes||'')}</textarea></div>
     <div class="msg" id="edDebtMsg" style="margin-top:10px;"></div>
     <div class="q-confirm-btns" style="margin-top:14px;">
-      <button class="btn btn-primary" id="edDebtSaveBtn" onclick="saveDebtEdit('${d.id}')">حفظ التعديل</button>
+      <button class="btn btn-primary" onclick="saveDebtEdit('${d.id}')">حفظ التعديل</button>
       <button class="btn btn-outline" onclick="closeCardModal()">إلغاء</button>
     </div>
   `);
 }
 async function saveDebtEdit(id){
-  const btn = document.getElementById('edDebtSaveBtn');
-  if (btn && btn.disabled) return; // منع دوسة تانية وهو لسه بيحفظ (بتعمل دين مكرر لو اتضغط بسرعة)
   const msg = document.getElementById('edDebtMsg');
   const creditor = document.getElementById('ed_creditor').value.trim();
   if (!creditor){ msg.className='msg err'; msg.textContent='اسم الجهة الدائنة مطلوب'; return; }
@@ -3318,58 +3376,16 @@ async function saveDebtEdit(id){
     id,
     creditor,
     desc: document.getElementById('ed_desc').value.trim(),
-    project: document.getElementById('ed_project').value.trim(),
     total: qNum(document.getElementById('ed_total').value),
     paid: qNum(document.getElementById('ed_paid').value),
     notes: document.getElementById('ed_notes').value
   };
   msg.className='msg'; msg.textContent='';
-  if (btn){ btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...'; }
   try {
     await apiPost('updateDebt', { debt });
     closeCardModal();
     renderDebts();
-  } catch(err){
-    msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err);
-    if (btn){ btn.disabled = false; btn.textContent = 'حفظ التعديل'; }
-  }
-}
-// جدول تجميع الديون حسب الجهة الدائنة — كل الديون اللي ليها نفس اسم الجهة (بعد التريم)
-// بتتلم في صف واحد بإجمالي مبالغها، ودوس على الصف يفتح تفاصيل ديون الجهة دي لوحدها.
-function renderDebtsGrouped(debts){
-  const box = document.getElementById('debtsGroupedBox');
-  if (!box) return;
-  if (!debts.length){ box.innerHTML = '<div class="empty">مفيش ديون مسجلة</div>'; return; }
-  const groups = {};
-  debts.forEach(d => {
-    const key = String(d.creditor || '').trim() || '(بدون اسم)';
-    if (!groups[key]) groups[key] = { creditor: key, count: 0, total: 0, paid: 0, remaining: 0 };
-    groups[key].count++;
-    groups[key].total += d.total || 0;
-    groups[key].paid += d.paid || 0;
-    groups[key].remaining += d.remaining || 0;
-  });
-  const list = Object.values(groups).sort((a,b) => b.remaining - a.remaining);
-  box.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>الجهة</th><th>عدد الديون</th><th>الإجمالي</th><th>المسدد</th><th>الباقي</th></tr></thead>
-    <tbody>${list.map(g => `<tr style="cursor:pointer;" onclick="openDebtsCreditorBreakdown('${g.creditor.replace(/'/g,"\\'")}')">
-      <td>${qEsc(g.creditor)}</td><td>${g.count}</td><td>${fmt(g.total)} ج</td><td>${fmt(g.paid)} ج</td>
-      <td style="color:${g.remaining>0.01?'var(--red)':'var(--green)'};font-weight:700;">${fmt(g.remaining)} ج</td>
-    </tr>`).join('')}</tbody></table></div>`;
-}
-// Pop بتفاصيل كل ديون جهة معينة — دوس على أي دين فيها يودّيك لتعديله على طول
-function openDebtsCreditorBreakdown(creditor){
-  const debts = (_debtsCache || []).filter(d => (String(d.creditor||'').trim() || '(بدون اسم)') === creditor);
-  const totalRemaining = debts.reduce((s,d)=>s+(d.remaining||0), 0);
-  const rows = debts.length ? debts.map(d => `
-    <div class="cd-list-row" style="cursor:pointer;" onclick="closeCardModal(); editDebtStart('${d.id}')">
-      <span class="n">${qEsc(d.desc || d.creditor)}${d.project ? ' <span style="color:var(--muted);font-size:11px;">('+qEsc(d.project)+')</span>' : ''}</span>
-      <span class="p">${fmt(d.remaining)} ج باقي (من ${fmt(d.total)} ج)</span>
-    </div>`).join('') : '<div class="empty">مفيش ديون لِلجهة دي</div>';
-  openCardModal(`
-    <div class="cd-head"><h3>${qEsc(creditor)} (${debts.length})</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:10px;">إجمالي الباقي: <b style="color:var(--dark);">${fmt(totalRemaining)} ج</b></div>
-    <div>${rows}</div>
-  `);
+  } catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); }
 }
 function renderDebtsList(debts){
   const box = document.getElementById('debtsListBox');
@@ -3377,9 +3393,9 @@ function renderDebtsList(debts){
   const totalAll = debts.reduce((s,d)=>s+d.total, 0);
   const paidAll = debts.reduce((s,d)=>s+d.paid, 0);
   const remainingAll = debts.reduce((s,d)=>s+d.remaining, 0);
-  box.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>الجهة</th><th>الوصف</th><th>المشروع</th><th>الإجمالي</th><th>المسدد</th><th>الباقي</th><th>الحالة</th><th></th></tr></thead>
+  box.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>الجهة</th><th>الوصف</th><th>الإجمالي</th><th>المسدد</th><th>الباقي</th><th>الحالة</th><th></th></tr></thead>
     <tbody>${debts.map(d=>`<tr>
-      <td>${qEsc(d.creditor)}</td><td>${qEsc(d.desc||'—')}</td><td>${qEsc(d.project||'—')}</td><td>${fmt(d.total)} ج</td><td>${fmt(d.paid)} ج</td>
+      <td>${qEsc(d.creditor)}</td><td>${qEsc(d.desc||'—')}</td><td>${fmt(d.total)} ج</td><td>${fmt(d.paid)} ج</td>
       <td style="color:${d.remaining>0.01?'var(--red)':'var(--green)'};font-weight:700;">${fmt(d.remaining)} ج</td>
       <td><span class="pill ${d.settled?'dep':'exp'}">${d.settled?'مسدد':'باقي'}</span></td>
       <td style="display:flex;gap:6px;">
@@ -3389,7 +3405,7 @@ function renderDebtsList(debts){
       </td>
     </tr>`).join('')}</tbody>
     <tfoot><tr class="tbl-totals-row">
-      <td colspan="3">الإجمالي (${debts.length})</td>
+      <td colspan="2">الإجمالي (${debts.length})</td>
       <td>${fmt(totalAll)} ج</td>
       <td>${fmt(paidAll)} ج</td>
       <td>${fmt(remainingAll)} ج</td>
