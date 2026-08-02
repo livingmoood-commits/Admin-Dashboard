@@ -1242,6 +1242,7 @@ async function empLoadDetails(token){
     const monthNum = EMPSTATE.monthIndex + 1;
     const data = await apiGet('payrollListDetailsForMonth', { monthNum });
     if (isStaleNav(token)) return;
+    if (_currentPage !== 'employees') return; // ⚠️ إصلاح: كان بيكمل يكتب في عناصر صفحة تانية (زي مرتبات) لو المستخدم غيّر الصفحة قبل ما الطلب يخلص — نفس الحماية الموجودة في payrollLoadDetails بالظبط
     if (data.error){ box.innerHTML = `<div class="panel"><div class="empty">خطأ: ${qEsc(data.error)}</div></div>`; return; }
     _empList = data.employees || [];
     _empFilter = 'all';
@@ -1371,9 +1372,12 @@ function renderEmployeesListPanel(){
     </div>
     <div class="tbl-wrap"><table>
       <thead><tr><th>الاسم</th><th>الطريقة</th><th>تاريخ الانضمام</th><th>اليومية</th><th>أجر الساعة</th><th>سعر السهرة</th><th>قبض الاسبوع</th><th>قبض الشهر</th><th></th></tr></thead>
-      <tbody>${visible.length ? visible.map(e => `<tr>
+      <tbody>${visible.length ? visible.map((e,i) => `<tr>
         <td>${e.name}</td><td>${e.paymentType}</td><td>${e.joinDate || '—'}</td><td>${fmt(e.dailyRate)} ج</td><td>${fmt(e.hourlyRate)} ج</td><td>${e.eveningRate ? fmt(e.eveningRate)+' ج' : '—'}</td><td>${fmt(e.weeklyPay)} ج</td><td>${fmt(e.monthlyPay)} ج</td>
-        <td><button class="btn btn-sm btn-outline" onclick='editEmployee(${JSON.stringify(e).replace(/'/g,"&#39;")})'>تعديل</button>
+        <td style="white-space:nowrap;">
+            <button class="btn btn-sm" title="نقل لفوق" ${i===0?'disabled':''} onclick="empMoveEmployee_('${e.name.replace(/'/g,"\\'")}','up')">▲</button>
+            <button class="btn btn-sm" title="نقل لتحت" ${i===visible.length-1?'disabled':''} onclick="empMoveEmployee_('${e.name.replace(/'/g,"\\'")}','down')">▼</button>
+            <button class="btn btn-sm btn-outline" onclick='editEmployee(${JSON.stringify(e).replace(/'/g,"&#39;")})'>تعديل</button>
             <button class="btn btn-sm btn-danger" onclick="deleteEmployeeConfirm('${e.name.replace(/'/g,"\\'")}')">حذف</button></td>
       </tr>`).join('') : `<tr><td colspan="9" class="empty">${emptyMsg}</td></tr>`}</tbody>
     </table></div>
@@ -1395,6 +1399,13 @@ function editEmployee(e){
   document.getElementById('e_eveningRate').value = e.eveningRate || '';
   empUpdatePeriodLabel();
   window.scrollTo(0,0);
+}
+async function empMoveEmployee_(name, direction){
+  try {
+    const res = await apiPost('payrollReorderDetailsEmployee', { name, direction, monthNum: EMPSTATE.monthIndex + 1 });
+    if (res.error) throw new Error(res.error);
+    empLoadDetails();
+  } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 async function deleteEmployeeConfirm(name){
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح "'+name+'"؟', 'حذف الموظف'))) return;
@@ -2155,6 +2166,7 @@ async function payrollLoadDetails(){
               <div class="field"><label id="pd_periodPayLabel">الاسبوعي (ج)</label><input autocomplete="off" type="number" id="pd_periodPay" step="1" min="0" placeholder="اكتب ده أو اليومية وهيتحسب التاني"></div>
             </div>
             <input type="hidden" id="pd_hourlyRate">
+            <div class="field"><label>سعر السهرة العادي (ج) — اختياري</label><input autocomplete="off" type="number" id="pd_eveningRate" step="1" min="0" placeholder="بيتملي أوتوماتيك في فورم السهرة، وتقدر تعدله كل مرة"></div>
             <button type="submit" class="btn btn-primary" id="pdSubmitBtn">حفظ الموظف</button>
             <button type="button" class="btn btn-outline" id="pdResetBtn">إضافة جديد</button>
             <div class="msg" id="pdMsg"></div>
@@ -2180,6 +2192,7 @@ async function payrollLoadDetails(){
         paymentType,
         joinDate: document.getElementById('pd_joinDate').value,
         dailyRate: document.getElementById('pd_dailyRate').value, hourlyRate: document.getElementById('pd_hourlyRate').value,
+        eveningRate: document.getElementById('pd_eveningRate').value,
         weeklyPay: paymentType === 'اسبوعي' ? periodPay : undefined,
         monthlyPay: paymentType === 'شهري' ? periodPay : undefined
       };
@@ -2239,12 +2252,15 @@ function payrollRenderDetailsListPanel_(){
       <div class="step ${filter==='monthly'?'active':''}" onclick="payrollDetailsSetFilter_('monthly')">قبض شهري (${monthlyCount})</div>
     </div>
     <div class="tbl-wrap"><table>
-      <thead><tr><th>الاسم</th><th>الطريقة</th><th>تاريخ الانضمام</th><th>اليومية</th><th>أجر الساعة</th><th>قبض الاسبوع</th><th>قبض الشهر</th><th></th></tr></thead>
-      <tbody>${visible.length ? visible.map(e => `<tr>
-        <td>${e.name}</td><td>${e.paymentType}</td><td>${e.joinDate || '—'}</td><td>${fmt(e.dailyRate)} ج</td><td>${fmt(e.hourlyRate)} ج</td><td>${fmt(e.weeklyPay)} ج</td><td>${fmt(e.monthlyPay)} ج</td>
-        <td><button class="btn btn-sm btn-outline" onclick='payrollEditDetailsEmployee_(${JSON.stringify(e).replace(/'/g,"&#39;")})'>تعديل</button>
+      <thead><tr><th>الاسم</th><th>الطريقة</th><th>تاريخ الانضمام</th><th>اليومية</th><th>أجر الساعة</th><th>سعر السهرة</th><th>قبض الاسبوع</th><th>قبض الشهر</th><th></th></tr></thead>
+      <tbody>${visible.length ? visible.map((e,i) => `<tr>
+        <td>${e.name}</td><td>${e.paymentType}</td><td>${e.joinDate || '—'}</td><td>${fmt(e.dailyRate)} ج</td><td>${fmt(e.hourlyRate)} ج</td><td>${e.eveningRate ? fmt(e.eveningRate)+' ج' : '—'}</td><td>${fmt(e.weeklyPay)} ج</td><td>${fmt(e.monthlyPay)} ج</td>
+        <td style="white-space:nowrap;">
+            <button class="btn btn-sm" title="نقل لفوق" ${i===0?'disabled':''} onclick="payrollMoveDetailsEmployee_('${e.name.replace(/'/g,"\\'")}','up')">▲</button>
+            <button class="btn btn-sm" title="نقل لتحت" ${i===visible.length-1?'disabled':''} onclick="payrollMoveDetailsEmployee_('${e.name.replace(/'/g,"\\'")}','down')">▼</button>
+            <button class="btn btn-sm btn-outline" onclick='payrollEditDetailsEmployee_(${JSON.stringify(e).replace(/'/g,"&#39;")})'>تعديل</button>
             <button class="btn btn-sm btn-danger" onclick="payrollDeleteDetailsEmployeeConfirm_('${e.name.replace(/'/g,"\\'")}')">حذف</button></td>
-      </tr>`).join('') : `<tr><td colspan="8" class="empty">${emptyMsg}</td></tr>`}</tbody>
+      </tr>`).join('') : `<tr><td colspan="9" class="empty">${emptyMsg}</td></tr>`}</tbody>
     </table></div>
   `;
 }
@@ -2261,8 +2277,16 @@ function payrollEditDetailsEmployee_(e){
   document.getElementById('pd_periodPay').value = e.paymentType === 'شهري' ? (e.monthlyPay || '') : (e.weeklyPay || '');
   document.getElementById('pd_dailyRate').value = e.dailyRate || '';
   document.getElementById('pd_hourlyRate').value = e.hourlyRate || '';
+  document.getElementById('pd_eveningRate').value = e.eveningRate || '';
   payrollDetailsUpdatePeriodLabel_();
   window.scrollTo(0,0);
+}
+async function payrollMoveDetailsEmployee_(name, direction){
+  try {
+    const res = await apiPost('payrollReorderDetailsEmployee', { name, direction, monthNum: PAYSTATE.monthIndex + 1 });
+    if (res.error) throw new Error(res.error);
+    payrollLoadDetails();
+  } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 async function payrollDeleteDetailsEmployeeConfirm_(name){
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح "'+name+'"؟', 'حذف الموظف'))) return;
