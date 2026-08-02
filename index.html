@@ -3217,7 +3217,10 @@ function renderDebtsPage(debts){
             <div class="field"><label>الوصف</label><input autocomplete="off" id="dbt_desc" placeholder="اختياري"></div>
           </div>
           <div class="form-row">
+            <div class="field"><label>المشروع</label><input autocomplete="off" id="dbt_project" placeholder="اختياري"></div>
             <div class="field"><label>الإجمالي</label><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" id="dbt_total" placeholder="0" onkeypress="return /[0-9.]/.test(event.key)"></div>
+          </div>
+          <div class="form-row">
             <div class="field"><label>مسدد مبدئيًا (لو فيه)</label><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" id="dbt_paid" placeholder="0" onkeypress="return /[0-9.]/.test(event.key)"></div>
           </div>
           <div class="field"><label>ملاحظات</label><textarea id="dbt_notes" rows="2"></textarea></div>
@@ -3244,6 +3247,7 @@ function renderDebtsPage(debts){
     const debt = {
       creditor: document.getElementById('dbt_creditor').value.trim(),
       desc: document.getElementById('dbt_desc').value.trim(),
+      project: document.getElementById('dbt_project').value.trim(),
       total: qNum(document.getElementById('dbt_total').value),
       paid: qNum(document.getElementById('dbt_paid').value),
       notes: document.getElementById('dbt_notes').value
@@ -3290,7 +3294,10 @@ function editDebtStart(id){
       <div class="field"><label>الوصف</label><input autocomplete="off" id="ed_desc" value="${qEsc(d.desc||'')}"></div>
     </div>
     <div class="form-row">
+      <div class="field"><label>المشروع</label><input autocomplete="off" id="ed_project" value="${qEsc(d.project||'')}" placeholder="اختياري"></div>
       <div class="field"><label>الإجمالي</label><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" id="ed_total" value="${d.total}" onkeypress="return /[0-9.]/.test(event.key)"></div>
+    </div>
+    <div class="form-row">
       <div class="field"><label>المسدد</label><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" id="ed_paid" value="${d.paid}" onkeypress="return /[0-9.]/.test(event.key)"></div>
     </div>
     <div class="field"><label>ملاحظات</label><textarea id="ed_notes" rows="2">${qEsc(d.notes||'')}</textarea></div>
@@ -3309,6 +3316,7 @@ async function saveDebtEdit(id){
     id,
     creditor,
     desc: document.getElementById('ed_desc').value.trim(),
+    project: document.getElementById('ed_project').value.trim(),
     total: qNum(document.getElementById('ed_total').value),
     paid: qNum(document.getElementById('ed_paid').value),
     notes: document.getElementById('ed_notes').value
@@ -3348,7 +3356,7 @@ function openDebtsCreditorBreakdown(creditor){
   const totalRemaining = debts.reduce((s,d)=>s+(d.remaining||0), 0);
   const rows = debts.length ? debts.map(d => `
     <div class="cd-list-row" style="cursor:pointer;" onclick="closeCardModal(); editDebtStart('${d.id}')">
-      <span class="n">${qEsc(d.desc || d.creditor)}</span>
+      <span class="n">${qEsc(d.desc || d.creditor)}${d.project ? ' <span style="color:var(--muted);font-size:11px;">('+qEsc(d.project)+')</span>' : ''}</span>
       <span class="p">${fmt(d.remaining)} ج باقي (من ${fmt(d.total)} ج)</span>
     </div>`).join('') : '<div class="empty">مفيش ديون لِلجهة دي</div>';
   openCardModal(`
@@ -3363,9 +3371,9 @@ function renderDebtsList(debts){
   const totalAll = debts.reduce((s,d)=>s+d.total, 0);
   const paidAll = debts.reduce((s,d)=>s+d.paid, 0);
   const remainingAll = debts.reduce((s,d)=>s+d.remaining, 0);
-  box.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>الجهة</th><th>الوصف</th><th>الإجمالي</th><th>المسدد</th><th>الباقي</th><th>الحالة</th><th></th></tr></thead>
+  box.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>الجهة</th><th>الوصف</th><th>المشروع</th><th>الإجمالي</th><th>المسدد</th><th>الباقي</th><th>الحالة</th><th></th></tr></thead>
     <tbody>${debts.map(d=>`<tr>
-      <td>${qEsc(d.creditor)}</td><td>${qEsc(d.desc||'—')}</td><td>${fmt(d.total)} ج</td><td>${fmt(d.paid)} ج</td>
+      <td>${qEsc(d.creditor)}</td><td>${qEsc(d.desc||'—')}</td><td>${qEsc(d.project||'—')}</td><td>${fmt(d.total)} ج</td><td>${fmt(d.paid)} ج</td>
       <td style="color:${d.remaining>0.01?'var(--red)':'var(--green)'};font-weight:700;">${fmt(d.remaining)} ج</td>
       <td><span class="pill ${d.settled?'dep':'exp'}">${d.settled?'مسدد':'باقي'}</span></td>
       <td style="display:flex;gap:6px;">
@@ -3375,7 +3383,7 @@ function renderDebtsList(debts){
       </td>
     </tr>`).join('')}</tbody>
     <tfoot><tr class="tbl-totals-row">
-      <td colspan="2">الإجمالي (${debts.length})</td>
+      <td colspan="3">الإجمالي (${debts.length})</td>
       <td>${fmt(totalAll)} ج</td>
       <td>${fmt(paidAll)} ج</td>
       <td>${fmt(remainingAll)} ج</td>
