@@ -240,6 +240,16 @@
   .pay-legend-chip.pay-draw{ background:#fff4e0; color:#8a6408; border-color:#b8860b; }
   .pay-legend-chip.pay-absent{ background:#f1e8f7; color:#5e2f80; border-color:#7b3fa0; }
   .pay-legend-chip.pay-other{ background:#eef3f8; color:#2b5580; border-color:#3a6ea5; }
+
+  /* ⚠️ إضافة: هايلايت "إضافة سريعة" — بيوري في الجدول فوق فين هيتكتب اللي بتضيفه:
+     - عمود التاريخ المختار (th + كل خلاياه) بيتحط له إطار ذهبي.
+     - صف الموظف المختار بيتنوّر بلون فاتح، واسمه بيتلوّن بالذهبي.
+     - الخلية اللي هي فعليًا تقاطع (الموظف × التاريخ) بتاخد إطار أحمر واضح وبيتعمل لها سكرول. */
+  th.qa-col-hl{ outline:2px solid var(--gold); outline-offset:-2px; }
+  textarea.pay-cell.qa-col-hl{ box-shadow:inset 0 0 0 2px var(--gold) !important; }
+  tr.qa-emp-hl td{ background:#fdf6e3; }
+  td.pay-emp-name.qa-emp-hl{ background:var(--gold) !important; color:var(--white) !important; }
+  textarea.pay-cell.qa-target-hl{ box-shadow:inset 0 0 0 3px var(--red) !important; }
   /* تلوين أعمدة شيت الـ Master (إجمالي الشهر لكل موظف) — بيتلوّن بس لما القيمة فعلاً != 0،
      عشان "0" في عمود إجمالي معناه "مفيش حاجة اتسجلت" مش غياب زي خانة اليوم الفردية. */
   /* خلايا الملخص (قيمة الأوفر/أيام الغياب/خصم أيام/إضافات/خصومات/مسحوبات/صافي) —
@@ -1442,6 +1452,11 @@ function payCellRecolor(inputEl){
 
 async function renderPayroll(token){
   payRestoreSession();
+  // ⚠️ إضافة: قائمة المشاريع لازمة لاختيار "سهرة لمشروع" في فورم الإضافة السريعة —
+  // بتتحمّل مرة واحدة بس (مش بتتكرر مع كل تبديل شهر/تبويب).
+  if (!PAY_PROJECTS.length) {
+    try { const pr = await apiGet('listProjects'); PAY_PROJECTS = pr.projects || []; } catch(e) { /* مش حرج — لو فشلت الفورم هيشتغل عادي من غير قائمة مشاريع */ }
+  }
   document.getElementById('content').innerHTML = `
     <div class="panel">
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
@@ -1606,9 +1621,10 @@ async function payrollLoadSheet(){
  * empIdx/dayIdx (ترتيب الموظف/اليوم في الجدول المعروض، مش row/col الفعليين في
  * الشيت) بيتحطوا في data-* عشان دالة اللصق الذكي (payrollHandlePaste) تعرف
  * تتحرك صح بين الخلايا المجاورة لو المستخدم لصق نطاق من إكسل/جوجل شيتس. */
-function payrollDayCellHtml_(row, col, value, empIdx, dayIdx){
+function payrollDayCellHtml_(row, col, value, empIdx, dayIdx, iso, empName){
   return `<td style="padding:2px;"><textarea class="d-input pay-cell ${payCellClass(value)}" rows="2"
     data-row="${row}" data-col="${col}" data-emp-idx="${empIdx}" data-day-idx="${dayIdx}"
+    data-iso="${qEsc(iso || '')}" data-emp="${qEsc(empName || '')}"
     style="text-align:center;font-size:11px;padding:4px 2px;resize:vertical;min-width:70px;line-height:1.35;"
     oninput="payCellRecolor(this)"
     onchange="payrollCellEdited(${row}, ${col}, this)"
@@ -1648,7 +1664,7 @@ function payrollRenderWeeklyTable_(box, data){
   const row2 = `
     <tr>
       ${data.weekHeaderBlocks.map(wb => `
-        ${wb.dayHeaders.map(h => `<th style="min-width:70px;white-space:pre-line;">${qEsc(h)}</th>`).join('')}
+        ${wb.dayHeaders.map((h,hi) => `<th data-iso="${qEsc((wb.dayDates||[])[hi] || '')}" style="min-width:70px;white-space:pre-line;">${qEsc(h)}</th>`).join('')}
         ${wb.sumHeaders.map(h => `<th style="background:#efe6d6;color:var(--dark);min-width:100px;font-size:12.5px;">${qEsc(h)}</th>`).join('')}
       `).join('')}
       ${data.monthSummaryHeaders.map(h => `<th style="background:#3a2f22;min-width:112px;">${qEsc(h)}</th>`).join('')}
@@ -1658,15 +1674,16 @@ function payrollRenderWeeklyTable_(box, data){
     let dayCursor = 0;
     const weeksHtml = r.weeks.map((wk, wi) => {
       const dayStartCol = data.weekHeaderBlocks[wi].dayStartCol;
+      const dayDates = data.weekHeaderBlocks[wi].dayDates || [];
       const sumHeaders = data.weekHeaderBlocks[wi].sumHeaders;
-      const daysHtml = wk.dayCells.map((v, di) => payrollDayCellHtml_(r.row, dayStartCol + di, v, empIdx, dayCursor + di)).join('');
+      const daysHtml = wk.dayCells.map((v, di) => payrollDayCellHtml_(r.row, dayStartCol + di, v, empIdx, dayCursor + di, dayDates[di], r.name)).join('');
       dayCursor += wk.dayCells.length;
       const sumHtml = wk.summaryCells.map((v, si) => `<td class="sm-cell ${summaryCellClass(sumHeaders[si], v)}">${qEsc(v)}</td>`).join('');
       return daysHtml + sumHtml;
     }).join('');
     const monthSumHtml = r.monthSummaryCells.map((v, si) => `<td class="sm-cell ${summaryCellClass(data.monthSummaryHeaders[si], v)}">${qEsc(v)}</td>`).join('');
-    return `<tr>
-      <td style="position:sticky;right:0;background:var(--white);font-weight:700;">${qEsc(r.name)}</td>
+    return `<tr data-emp="${qEsc(r.name)}">
+      <td class="pay-emp-name" data-emp="${qEsc(r.name)}" style="position:sticky;right:0;background:var(--white);font-weight:700;">${qEsc(r.name)}</td>
       ${weeksHtml}
       ${sepTd}
       ${monthSumHtml}
@@ -1701,14 +1718,15 @@ function payrollRenderWeeklyTable_(box, data){
       ${payrollLegendHtml_()}
     </div>
     ${payrollQuickAddPanelHtml_(data)}`;
+  payrollQaHighlight_();
 }
 
 /* شيت "حضور شهر" — بلوك واحد متصل من أيام الشهر + صف إجمالي متلوّن */
 function payrollRenderMonthlyTable_(box, data){
   const bodyRows = data.rows.map((r, empIdx) => `
-    <tr>
-      <td style="position:sticky;right:0;background:var(--white);font-weight:700;">${qEsc(r.name)}</td>
-      ${r.dayCells.map((v, i) => payrollDayCellHtml_(r.row, data.dayStart + i, v, empIdx, i)).join('')}
+    <tr data-emp="${qEsc(r.name)}">
+      <td class="pay-emp-name" data-emp="${qEsc(r.name)}" style="position:sticky;right:0;background:var(--white);font-weight:700;">${qEsc(r.name)}</td>
+      ${r.dayCells.map((v, i) => payrollDayCellHtml_(r.row, data.dayStart + i, v, empIdx, i, (data.dayDates||[])[i], r.name)).join('')}
       ${r.summaryCells.map((v, si) => `<td class="sm-cell ${summaryCellClass(data.summaryHeaders[si], v)}">${qEsc(v)}</td>`).join('')}
     </tr>`).join('');
 
@@ -1723,7 +1741,7 @@ function payrollRenderMonthlyTable_(box, data){
         <table>
           <thead><tr>
             <th style="position:sticky;right:0;background:var(--dark);z-index:2;">اسم الموظف</th>
-            ${data.dayHeaders.map(h => `<th style="min-width:62px;white-space:pre-line;">${qEsc(h)}</th>`).join('')}
+            ${data.dayHeaders.map((h,i) => `<th data-iso="${qEsc((data.dayDates||[])[i] || '')}" style="min-width:62px;white-space:pre-line;">${qEsc(h)}</th>`).join('')}
             ${data.summaryHeaders.map(h => `<th style="background:#3a2f22;min-width:112px;">${qEsc(h)}</th>`).join('')}
           </tr></thead>
           <tbody>${bodyRows}${totalsHtml}</tbody>
@@ -1732,6 +1750,7 @@ function payrollRenderMonthlyTable_(box, data){
       ${payrollLegendHtml_()}
     </div>
     ${payrollQuickAddPanelHtml_(data)}`;
+  payrollQaHighlight_();
 }
 
 function payrollLegendHtml_(){
@@ -1751,11 +1770,16 @@ function payrollLegendHtml_(){
 
 /* ================= "إضافة سريعة" — فورم بديل لكتابة الكود يدوي جوه الخلية =================
  * اختار الموظف، دوس على كذا يوم (من الأيام الظاهرة فعليًا في الشهر/الأسبوع المفتوح
- * بس — مش شهر تقويمي)، ولكل يوم تقدر تضيف أكتر من أكشن (إضافة/خصم/مسحوبات/غياب)
- * بمبلغه. عند الحفظ بتتكتب في نفس خلايا الشيت الحقيقي بنفس فورمات PAYCODE_SUM.
+ * بس — مش شهر تقويمي)، ولكل يوم تقدر تضيف أكتر من أكشن (إضافة/خصم/مسحوبات/غياب/سهرة
+ * لمشروع)، وكمان ملاحظات احتياطي حرة. عند الحفظ بتتكتب في نفس خلايا الشيت الحقيقي
+ * بنفس فورمات PAYCODE_SUM، وأي "سهرة" بتتسجل كمان في شيت "ساعات_وسهرات" لوحدها.
+ * ⚠️ إضافة: بمجرد ما تختار الموظف و/أو التاريخ، الجدول فوق بينوّر عمود التاريخ
+ * وصف/اسم الموظف المختار (وخلية التقاطع بينهم بإطار أحمر واضح + سكرول ليها)،
+ * عشان تفضل شايف بالظبط هينزل فين قبل ما تحفظ.
  * ============================================================================= */
-let PAY_QA = { dates: [], actions: {} };
+let PAY_QA = { dates: [], actions: {}, notes: {} };
 let payrollQaLabels_ = {};
+let PAY_PROJECTS = []; // بتتحمّل مرة واحدة في renderPayroll — مستخدمة في اختيار مشروع "سهرة"
 
 function payrollQuickAddPanelHtml_(data){
   const empNames = data.rows.map(r => r.name);
@@ -1775,14 +1799,14 @@ function payrollQuickAddPanelHtml_(data){
   const dayList = data.kind === 'monthly'
     ? data.dayHeaders.map((h,i) => ({ label: h.replace('\n',' '), iso: data.dayDates[i] }))
     : [].concat(...data.weekHeaderBlocks.map(wb => wb.dayHeaders.map((h,i) => ({ label: h.replace('\n',' '), iso: wb.dayDates[i] }))));
-  PAY_QA = { dates: [], actions: {} };
+  PAY_QA = { dates: [], actions: {}, notes: {} };
   payrollQaLabels_ = {};
   return `
   <div class="panel" style="margin-top:14px;">
     <h3 style="margin-bottom:4px;">+ إضافة سريعة</h3>
-    <p style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">اختار الموظف والأيام، ولكل يوم ضيف كذا أكشن لو محتاج — من غير ما تكتب أي كود بإيدك.</p>
+    <p style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">اختار الموظف والأيام، ولكل يوم ضيف كذا أكشن لو محتاج — من غير ما تكتب أي كود بإيدك. الجدول فوق هينوّر عمود التاريخ واسم الموظف عشان تبقى شايف هينزل فين.</p>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
-      <select id="qa-emp" class="d-input" style="width:auto;min-width:180px;">
+      <select id="qa-emp" class="d-input" style="width:auto;min-width:180px;" onchange="payrollQaHighlight_()">
         ${empNames.map(n => `<option value="${qEsc(n)}">${qEsc(n)}</option>`).join('')}
       </select>
     </div>
@@ -1795,20 +1819,51 @@ function payrollQuickAddPanelHtml_(data){
   </div>`;
 }
 
+// ⚠️ إضافة: بينوّر في الجدول فوق عمود كل تاريخ مختار + اسم/صف الموظف المختار،
+// وبيحط إطار أحمر على خلية التقاطع بالظبط (ويعمل لها سكرول) عشان الاختيار
+// يبقى واضح بصريًا قبل الحفظ. بتتنادى عند تغيير الموظف أو تبديل أي يوم.
+function payrollQaClearHighlight_(){
+  document.querySelectorAll('.qa-col-hl').forEach(el => el.classList.remove('qa-col-hl'));
+  document.querySelectorAll('.qa-emp-hl').forEach(el => el.classList.remove('qa-emp-hl'));
+  document.querySelectorAll('.qa-target-hl').forEach(el => el.classList.remove('qa-target-hl'));
+}
+function payrollQaHighlight_(){
+  payrollQaClearHighlight_();
+  const empEl = document.getElementById('qa-emp');
+  const emp = empEl ? empEl.value : '';
+  if (!emp) return;
+  const esc = (window.CSS && CSS.escape) ? CSS.escape : (s => String(s).replace(/["\\]/g, '\\$&'));
+  document.querySelectorAll(`[data-emp="${esc(emp)}"]`).forEach(el => el.classList.add('qa-emp-hl'));
+  PAY_QA.dates.forEach(iso => {
+    if (!iso) return;
+    document.querySelectorAll(`[data-iso="${esc(iso)}"]`).forEach(el => el.classList.add('qa-col-hl'));
+  });
+  let firstTarget = null;
+  PAY_QA.dates.forEach(iso => {
+    if (!iso) return;
+    const target = document.querySelector(`textarea.pay-cell[data-emp="${esc(emp)}"][data-iso="${esc(iso)}"]`);
+    if (target) { target.classList.add('qa-target-hl'); if (!firstTarget) firstTarget = target; }
+  });
+  if (firstTarget) firstTarget.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+}
+
 function payrollQaToggleDay(iso, label){
   const chip = document.querySelector(`.qa-day-chip[data-iso="${iso}"]`);
   const idx = PAY_QA.dates.indexOf(iso);
   if (idx === -1) {
     PAY_QA.dates.push(iso);
     PAY_QA.actions[iso] = [{ type: 'ج', amount: '' }];
+    PAY_QA.notes[iso] = '';
     payrollQaLabels_[iso] = label;
     if (chip) chip.classList.add('btn-primary');
   } else {
     PAY_QA.dates.splice(idx, 1);
     delete PAY_QA.actions[iso];
+    delete PAY_QA.notes[iso];
     if (chip) chip.classList.remove('btn-primary');
   }
   payrollQaRenderEditors_();
+  payrollQaHighlight_();
 }
 
 function payrollQaRenderEditors_(){
@@ -1820,21 +1875,55 @@ function payrollQaRenderEditors_(){
         ${PAY_QA.actions[iso].map((a, ai) => payrollQaActionRowHtml_(iso, ai, a)).join('')}
       </div>
       <button type="button" class="btn btn-sm" onclick="payrollQaAddAction('${iso}')">+ أكشن تاني في نفس اليوم</button>
+      <div style="margin-top:8px;">
+        <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;">ملاحظات احتياطي (اختياري — بتتسجل في الـ Note بتاعة الخلية زيادة عن أي سهرة)</label>
+        <textarea class="d-input" rows="2" style="font-size:12px;" placeholder="أي ملاحظة إضافية على اليوم ده..." oninput="payrollQaSetNote('${iso}', this.value)">${qEsc(PAY_QA.notes[iso] || '')}</textarea>
+      </div>
     </div>`).join('');
 }
 
 function payrollQaActionRowHtml_(iso, ai, a){
-  const opts = [['ج','إضافة'],['خ','خصم'],['م','مسحوبات'],['غ','غياب يوم كامل']];
-  return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
-    <select class="d-input" style="width:auto;" onchange="payrollQaSetType('${iso}',${ai},this.value)">
+  const opts = [['ج','إضافة'],['خ','خصم'],['م','مسحوبات'],['غ','غياب يوم كامل'],['سهرة','سهرة (لمشروع)']];
+  const typeSelect = `<select class="d-input" style="width:auto;" onchange="payrollQaSetType('${iso}',${ai},this.value)">
       ${opts.map(o => `<option value="${o[0]}" ${a.type===o[0]?'selected':''}>${o[1]}</option>`).join('')}
-    </select>
-    ${a.type==='غ' ? '' : `<input type="number" class="d-input" style="width:100px;" placeholder="المبلغ" value="${a.amount}" oninput="payrollQaSetAmount('${iso}',${ai},this.value)">`}
+    </select>`;
+
+  if (a.type === 'غ') {
+    return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+      ${typeSelect}
+      <button type="button" class="btn btn-sm" onclick="payrollQaRemoveAction('${iso}',${ai})">✕</button>
+    </div>`;
+  }
+
+  if (a.type === 'سهرة') {
+    return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
+      ${typeSelect}
+      <select class="d-input" style="width:auto;min-width:140px;" onchange="payrollQaSetProject('${iso}',${ai},this.value)">
+        <option value="">اختار المشروع</option>
+        ${PAY_PROJECTS.map(p => `<option value="${qEsc(p)}" ${a.project===p?'selected':''}>${qEsc(p)}</option>`).join('')}
+      </select>
+      <input type="number" step="0.5" min="0" class="d-input" style="width:100px;" placeholder="ساعات (اختياري)" value="${a.hours||''}" oninput="payrollQaSetHours('${iso}',${ai},this.value)">
+      <input type="number" class="d-input" style="width:100px;" placeholder="مبلغ السهرة (ج)" value="${a.amount||''}" oninput="payrollQaSetAmount('${iso}',${ai},this.value)">
+      <button type="button" class="btn btn-sm" onclick="payrollQaRemoveAction('${iso}',${ai})">✕</button>
+    </div>`;
+  }
+
+  return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+    ${typeSelect}
+    <input type="number" class="d-input" style="width:100px;" placeholder="المبلغ" value="${a.amount}" oninput="payrollQaSetAmount('${iso}',${ai},this.value)">
     <button type="button" class="btn btn-sm" onclick="payrollQaRemoveAction('${iso}',${ai})">✕</button>
   </div>`;
 }
-function payrollQaSetType(iso, ai, val){ PAY_QA.actions[iso][ai].type = val; payrollQaRenderEditors_(); }
+function payrollQaSetType(iso, ai, val){
+  const cur = PAY_QA.actions[iso][ai] || {};
+  if (val === 'سهرة') PAY_QA.actions[iso][ai] = { type: 'سهرة', project: cur.project || '', hours: cur.hours || '', amount: cur.amount || '' };
+  else PAY_QA.actions[iso][ai] = { type: val, amount: cur.amount || '' };
+  payrollQaRenderEditors_();
+}
 function payrollQaSetAmount(iso, ai, val){ PAY_QA.actions[iso][ai].amount = val; }
+function payrollQaSetProject(iso, ai, val){ PAY_QA.actions[iso][ai].project = val; }
+function payrollQaSetHours(iso, ai, val){ PAY_QA.actions[iso][ai].hours = val; }
+function payrollQaSetNote(iso, val){ PAY_QA.notes[iso] = val; }
 function payrollQaAddAction(iso){ PAY_QA.actions[iso].push({ type:'ج', amount:'' }); payrollQaRenderEditors_(); }
 function payrollQaRemoveAction(iso, ai){
   PAY_QA.actions[iso].splice(ai,1);
@@ -1846,7 +1935,7 @@ async function payrollQaSave(){
   const empEl = document.getElementById('qa-emp');
   const emp = empEl ? empEl.value : '';
   if (!PAY_QA.dates.length) { showToast('اختار يوم واحد على الأقل', 'error'); return; }
-  const entries = PAY_QA.dates.map(iso => ({ date: iso, actions: PAY_QA.actions[iso] }));
+  const entries = PAY_QA.dates.map(iso => ({ date: iso, actions: PAY_QA.actions[iso], notes: PAY_QA.notes[iso] || '' }));
   const btn = document.getElementById('qa-save-btn');
   btn.disabled = true; btn.textContent = 'جاري الحفظ...';
   try {
