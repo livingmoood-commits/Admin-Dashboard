@@ -1400,12 +1400,27 @@ function editEmployee(e){
   empUpdatePeriodLabel();
   window.scrollTo(0,0);
 }
+// ⚠️ قفل بسيط بيمنع أي نقل تاني (سواء نفس الزرار كذا دوسة سريعة، أو زرار
+// تاني في نفس اللحظة) لحد ما النقل الحالي يخلص — عشان منبعتش أكتر من طلب
+// نقل في نفس الوقت ونكسّر الترتيب. بنعطّل كل زراير "▲/▼" فورًا وقت الدوسة.
+let _empMoveBusy = false;
 async function empMoveEmployee_(name, direction){
+  if (_empMoveBusy) return;
+  _empMoveBusy = true;
+  document.querySelectorAll('#emp-list-panel button[title="نقل لفوق"], #emp-list-panel button[title="نقل لتحت"]')
+    .forEach(b => b.disabled = true);
   try {
     const res = await apiPost('payrollReorderDetailsEmployee', { name, direction, monthNum: EMPSTATE.monthIndex + 1 });
     if (res.error) throw new Error(res.error);
-    empLoadDetails();
-  } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
+    await empLoadDetails();
+  } catch(err){
+    showToast('خطأ: '+(err.message||err), 'error');
+    // فشل النقل — نرجّع الزراير قابلة للدوس تاني (لو نجح، empLoadDetails() فوق
+    // أصلاً بيرسم الجدول من جديد بزراير جديدة مش معطّلة)
+    document.querySelectorAll('#emp-list-panel button[title="نقل لفوق"], #emp-list-panel button[title="نقل لتحت"]')
+      .forEach(b => b.disabled = false);
+  }
+  finally { _empMoveBusy = false; }
 }
 async function deleteEmployeeConfirm(name){
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح "'+name+'"؟', 'حذف الموظف'))) return;
@@ -2281,12 +2296,24 @@ function payrollEditDetailsEmployee_(e){
   payrollDetailsUpdatePeriodLabel_();
   window.scrollTo(0,0);
 }
+// ⚠️ نفس فكرة _empMoveBusy بالظبط (منفصل عن صفحة "الموظفين") — يمنع أي نقل
+// تاني لحد ما الحالي يخلص، ويعطّل زراير "▲/▼" فورًا وقت الدوسة.
+let _payMoveBusy = false;
 async function payrollMoveDetailsEmployee_(name, direction){
+  if (_payMoveBusy) return;
+  _payMoveBusy = true;
+  document.querySelectorAll('#pd-list-panel button[title="نقل لفوق"], #pd-list-panel button[title="نقل لتحت"]')
+    .forEach(b => b.disabled = true);
   try {
     const res = await apiPost('payrollReorderDetailsEmployee', { name, direction, monthNum: PAYSTATE.monthIndex + 1 });
     if (res.error) throw new Error(res.error);
-    payrollLoadDetails();
-  } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
+    await payrollLoadDetails();
+  } catch(err){
+    showToast('خطأ: '+(err.message||err), 'error');
+    document.querySelectorAll('#pd-list-panel button[title="نقل لفوق"], #pd-list-panel button[title="نقل لتحت"]')
+      .forEach(b => b.disabled = false);
+  }
+  finally { _payMoveBusy = false; }
 }
 async function payrollDeleteDetailsEmployeeConfirm_(name){
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح "'+name+'"؟', 'حذف الموظف'))) return;
