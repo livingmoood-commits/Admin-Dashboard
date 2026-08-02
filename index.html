@@ -852,6 +852,11 @@ async function _apiFetch(url, opts) {
   if (data.error) throw new Error(data.error);
   return data;
 }
+// لو الخطأ "Unknown GET/POST action" معناه الأغلب إن فيه نسخة أقدم من الباك اند منشورة (Deploy)،
+
+// مش مزامنة مع آخر نسخة اتعدلت في محرر Apps Script.
+
+function _isUnknownActionError(msg){ return /Unknown (GET|POST) action/i.test(String(msg || '')); }
 
 async function apiGet(action, params) {
   params = params || {};
@@ -1002,6 +1007,12 @@ function goTo(page) {
 function isStaleNav(token){ return token !== undefined && token !== _navToken; }
 function showError(err){
   const msg = (err && err.message) || String(err);
+  if (_isUnknownActionError(msg)) {
+    document.getElementById('content').innerHTML = `<div class="panel"><div class="msg err" style="display:block;">
+      ⚠️ ${msg} — السبب الغالب إن رابط الـ Web App لسة قديمة مش مطابقة لآخر تعديل في الكود. لازم تدخل محرر Apps Script → Deploy → Manage deployments → دوس على قلم التعديل (✒️) → Version: New version → Deploy، وبعدكدا ريفرش الصفحة.
+    </div></div>`;
+    return;
+  }
   if (_isNetworkError(msg)) {
     document.getElementById('content').innerHTML = `<div class="panel"><div class="msg err" style="display:block;">
       ⚠️ السبب مفيش اتصال بالإنترنت دلوقتي. هتترفريش الصفحة تلقائيًا أول ما النت يرجع.
@@ -1464,6 +1475,11 @@ async function renderPayroll(token){
   if (!Object.keys(PAY_EVENING_RATES).length) {
     try { const er = await apiGet('getEveningRates'); PAY_EVENING_RATES = er.rates || {}; } catch(e) { /* مش حرج */ }
   }
+  // ⚠️ إصلاح باج: بعد الـ await فوق (أول مرة بس)، ممكن المستخدم يكون
+  // خرج من صفحة "مرتبات" ودخل صفحة تانية (زي "الخزنة") قبل ما الطلب يرجع. من غير الفحص ده، كان الكود
+  // بيكتب فوق محتوى الصفحة التانية اللي المستخدم واقف فيها دلوقتي (نفس باج
+  // "فاتح الخزنة وبيفتحلي مرتبات") — كل صفحات الموقع التانية عندها نفس الفحص ده إلا الصفحة دي، فبنضيفه هنا.
+  if (isStaleNav(token)) return;
   document.getElementById('content').innerHTML = `
     <div class="panel">
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
@@ -1613,6 +1629,7 @@ async function payrollLoadSheet(){
   box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
     const data = await apiGet('payrollGetSheet', { year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex, kind: PAYSTATE.kind });
+    if (_currentPage !== 'payroll') return; // المستخدم غيّر الصفحة وإحنا لسه بنستنى الرد
     PAYSTATE.data = data;
     if (!data.exists){ box.innerHTML = `<div class="panel"><div class="empty">شيت "${qEsc(data.sheetName)}" لسه مش موجود — ابنيه الأول من منيو "نظام المرتبات" في الشيت.</div></div>`; return; }
     payrollRenderTable();
@@ -2040,6 +2057,7 @@ async function payrollLoadMaster(){
   box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
     const data = await apiGet('payrollGetMaster', { year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex });
+    if (_currentPage !== 'payroll') return; // المستخدم غيّر الصفحة وإحنا لسه بنستنى الرد
     if (data && data.error) { box.innerHTML = `<div class="panel"><div class="msg err" style="display:block;">خطأ: ${qEsc(data.error)}</div></div>`; return; }
     if (!data || !data.exists || !Array.isArray(data.headers) || !Array.isArray(data.rows)){
       box.innerHTML = `<div class="panel"><div class="empty">شيت "${qEsc(data && data.sheetName || '')}" لسه مش موجود — ابنيه الأول من منيو "نظام المرتبات" في الشيت.</div></div>`; return;
@@ -2098,6 +2116,7 @@ async function payrollLoadDetails(){
   try {
     const monthNum = PAYSTATE.monthIndex + 1;
     const data = await apiGet('payrollListDetailsForMonth', { monthNum });
+    if (_currentPage !== 'payroll') return; // المستخدم غيّر الصفحة وإحنا لسه بنستنى الرد
     if (data.error){ box.innerHTML = `<div class="panel"><div class="empty">خطأ: ${qEsc(data.error)}</div></div>`; return; }
     PAYSTATE.detailsData = data;
     _payDetailsList = data.employees || [];
@@ -2919,6 +2938,10 @@ async function dSaveAll(){
       saved = rows.length;
       payrollSyncResults = res.payrollSync || [];
     } catch (batchErr) {
+      // ⚠️ إصلاح باج التكرار: كان بيرجع يسجل سطر سطر لأي خطأ حصل، حتى لو الطلب      // الأصلي (addDailyExpenseRows) فعليًا نجح في السيرفر وفقدنا بس الرد (تايم أوت/انقطاع      // نت) — في الحالة دي كنا بنعيد نسجل نفس الأسطر تاني باللي ودي لللي
+      // الفعل سبب التكرار اللي ظاهر في الشيت. دلوقتي بنرجع للطريقة      // القديمة سطر سطر بس لو السبب فعليًا إن الأكشن لسة موجود في النسخة      // المنشورة حاليًا من الباك اند (تحديث حديث مش معمول له Deploy لسة جديدة بعد)، أي سبب      // تاني معناه احتمال إن السطر اتسجلت فعليًا في السيرفر والرد بس ما وصلش، فلو عملنا      // ريتراي من غير تأكيد هنسجل نفس الأسطر مرتين — وده بالضبط الشكل اللي      // المستخدم بيشتكي منه (صفوف متكررة في الشيت).
+      const isUnknownAction = /Unknown POST action/i.test(String((batchErr && batchErr.message) || ''));
+      if (!isUnknownAction) throw batchErr;
       for (const row of rows) {
         const res = await apiPost('addDailyExpenseRow', { row });
         payrollSyncResults.push(res.payrollSync);
