@@ -1759,6 +1759,19 @@ let payrollQaLabels_ = {};
 
 function payrollQuickAddPanelHtml_(data){
   const empNames = data.rows.map(r => r.name);
+  // ⚠️ حماية: لو الباك اند لسه مش متعمله Deploy بالتعديل الجديد (dayDates)،
+  // منعملش crash للصفحة كلها — بنعرض الفورم من غير تواريخ لحد ما يتعمل Deploy.
+  const backendReady = data.kind === 'monthly' ? Array.isArray(data.dayDates)
+    : data.weekHeaderBlocks.every(wb => Array.isArray(wb.dayDates));
+  if (!backendReady) {
+    return `
+    <div class="panel" style="margin-top:14px;">
+      <h3 style="margin-bottom:4px;">+ إضافة سريعة</h3>
+      <p style="font-size:12px;color:var(--muted);">
+        الفورم ده محتاج تحدّث الباك اند (Apps Script) الأول — روح Deploy → Manage deployments → Edit → New version → Deploy، وبعدين رجّع حمّل الصفحة تاني.
+      </p>
+    </div>`;
+  }
   const dayList = data.kind === 'monthly'
     ? data.dayHeaders.map((h,i) => ({ label: h.replace('\n',' '), iso: data.dayDates[i] }))
     : [].concat(...data.weekHeaderBlocks.map(wb => wb.dayHeaders.map((h,i) => ({ label: h.replace('\n',' '), iso: wb.dayDates[i] }))));
