@@ -3303,12 +3303,14 @@ function editDebtStart(id){
     <div class="field"><label>ملاحظات</label><textarea id="ed_notes" rows="2">${qEsc(d.notes||'')}</textarea></div>
     <div class="msg" id="edDebtMsg" style="margin-top:10px;"></div>
     <div class="q-confirm-btns" style="margin-top:14px;">
-      <button class="btn btn-primary" onclick="saveDebtEdit('${d.id}')">حفظ التعديل</button>
+      <button class="btn btn-primary" id="edDebtSaveBtn" onclick="saveDebtEdit('${d.id}')">حفظ التعديل</button>
       <button class="btn btn-outline" onclick="closeCardModal()">إلغاء</button>
     </div>
   `);
 }
 async function saveDebtEdit(id){
+  const btn = document.getElementById('edDebtSaveBtn');
+  if (btn && btn.disabled) return; // منع دوسة تانية وهو لسه بيحفظ (بتعمل دين مكرر لو اتضغط بسرعة)
   const msg = document.getElementById('edDebtMsg');
   const creditor = document.getElementById('ed_creditor').value.trim();
   if (!creditor){ msg.className='msg err'; msg.textContent='اسم الجهة الدائنة مطلوب'; return; }
@@ -3322,11 +3324,15 @@ async function saveDebtEdit(id){
     notes: document.getElementById('ed_notes').value
   };
   msg.className='msg'; msg.textContent='';
+  if (btn){ btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...'; }
   try {
     await apiPost('updateDebt', { debt });
     closeCardModal();
     renderDebts();
-  } catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); }
+  } catch(err){
+    msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err);
+    if (btn){ btn.disabled = false; btn.textContent = 'حفظ التعديل'; }
+  }
 }
 // جدول تجميع الديون حسب الجهة الدائنة — كل الديون اللي ليها نفس اسم الجهة (بعد التريم)
 // بتتلم في صف واحد بإجمالي مبالغها، ودوس على الصف يفتح تفاصيل ديون الجهة دي لوحدها.
