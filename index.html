@@ -98,6 +98,11 @@
   @media(max-width:980px){ .grid2{ grid-template-columns:1fr; } }
   .stack-v{ display:flex; flex-direction:column; gap:18px; }
 
+  /* ===== Mobile: حماية عامة من أي overflow أفقي في أي صفحة ===== */
+  html, body{ max-width:100%; overflow-x:hidden; }
+  img, svg, canvas, video{ max-width:100%; }
+  .panel, .card, table{ max-width:100%; }
+
   /* ===== Mobile: hamburger off-canvas sidebar ===== */
   @media(max-width:900px){
     .hamburger{ display:flex; }
@@ -113,8 +118,17 @@
       opacity:0; pointer-events:none; transition:opacity .3s;
     }
     .sidebar-overlay.open{ opacity:1; pointer-events:auto; }
-    .main{ padding:16px 14px; max-width:100%; }
+    .main{ padding:16px 14px; max-width:100%; width:100%; }
     .topbar{ align-items:center; }
+
+    /* أي صف أزرار/فلاتر مكتوب بـ inline style فيه flex-wrap (زي شريط تحميل الشهر،
+       الفلاتر، الأدفانس فلتر...) — خليه ياخد العرض الكامل عشان محدش يتقص
+       أو يتراكب فوق التاني على الشاشات الضيقة. */
+    [style*="flex-wrap:wrap"]{ width:100%; }
+    .grid2, .form-row, .form-row3, .cd-subcards,
+    .dyn-row, .dyn-row.material, .dyn-row.labor{ grid-template-columns:1fr !important; }
+    .evening-row{ grid-template-columns:1fr; }
+    .q-steps .step{ font-size:11.5px; padding:9px 4px; }
   }
   @media(max-width:560px){
     .topbar h2{ font-size:19px; }
@@ -123,9 +137,20 @@
     .panel{ padding:15px; }
     .card{ padding:13px; }
     .card .value{ font-size:18px; }
+    table{ font-size:12px; }
+    th, td{ padding:6px 5px; }
+    .btn{ padding:9px 16px; }
+    /* أزرار/سيلكت/إنبوت صفوف الأدوات (زي تحميل الشهر، الفلاتر) بتاخد عرض
+       مرن وتترص فوق بعض بدل ما تتزاحم جنب بعض */
+    [style*="flex-wrap:wrap"] > select,
+    [style*="flex-wrap:wrap"] > input,
+    [style*="flex-wrap:wrap"] > button{ flex:1 1 auto; min-width:120px; }
   }
   @media(max-width:380px){
     .cards{ grid-template-columns:1fr; }
+    [style*="flex-wrap:wrap"] > select,
+    [style*="flex-wrap:wrap"] > input,
+    [style*="flex-wrap:wrap"] > button{ width:100%; flex:1 1 100%; }
   }
 
   .field{ margin-bottom:16px; }
