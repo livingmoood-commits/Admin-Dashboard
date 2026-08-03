@@ -2157,6 +2157,20 @@ async function payrollLoadMaster(){
 let _payDetailsList = [];
 let _payDetailsFilter = 'all';
 
+// ⚠️ إضافة: قفل مشترك في الفرونت إند لكل عمليات "تفاصيل المرتبات" (حفظ/نقل/حذف)
+// — قبل كده كل واحدة كانت بتعطّل زراير نوعها بس (النقل بيعطّل زراير النقل،
+// الحفظ بيعطّل زرار الحفظ)، يعني كان لسه ممكن حد يدوس "حذف" على صف تاني وهو
+// لسه بيحفظ تعديل، والنداءين يمشوا فعليًا مع بعض. دلوقتي أي عملية بتقفل كل
+// زراير اللوحة (حفظ + كل أزرار النقل/التعديل/الحذف في القائمة) لحد ما تخلص،
+// بالإضافة للقفل الحقيقي في السيرفر (LockService) اللي بيمنع أي تصادم حتى
+// لو حصلت حالة نادرة (تبويبين مفتوحين مثلاً) من غير ما تعدي من هنا.
+let _payDetailsBusy = false;
+function _payrollDetailsSetBusy_(busy) {
+  _payDetailsBusy = busy;
+  const submitBtn = document.getElementById('pdSubmitBtn');
+  if (submitBtn) submitBtn.disabled = busy;
+  document.querySelectorAll('#pd-list-panel button').forEach(b => b.disabled = busy);
+}
 async function payrollLoadDetails(){
   const box = document.getElementById('pay-box');
   box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
@@ -2223,8 +2237,9 @@ async function payrollLoadDetails(){
     payrollDetailsUpdatePeriodLabel_();
     document.getElementById('pdForm').addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (_payDetailsBusy) return;
       const btn = document.getElementById('pdSubmitBtn'); const msg = document.getElementById('pdMsg');
-      msg.className='msg'; msg.textContent=''; btn.disabled=true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
+      msg.className='msg'; msg.textContent=''; _payrollDetailsSetBusy_(true); btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
       const originalName = document.getElementById('pd_originalName').value;
       const paymentType = document.getElementById('pd_paymentType').value;
       const periodPay = document.getElementById('pd_periodPay').value;
@@ -2247,7 +2262,7 @@ async function payrollLoadDetails(){
         msg.className='msg ok'; msg.textContent = 'تم الحفظ بنجاح';
         showToast(originalName ? '✔ تمام، اتحفظ التعديل في الشيت' : '✔ تمام، اتضاف الموظف في الشيت', 'success');
       } catch(err){ msg.className='msg err'; msg.textContent = 'خطأ: '+(err.message||err); }
-      finally { btn.disabled=false; btn.textContent='حفظ الموظف'; }
+      finally { _payrollDetailsSetBusy_(false); btn.textContent='حفظ الموظف'; }
     });
   } catch(err){ showError(err); }
 }
@@ -2329,14 +2344,9 @@ function payrollEditDetailsEmployee_(e){
   if (afterField) afterField.style.display = 'none';
   window.scrollTo(0,0);
 }
-// ⚠️ نفس فكرة _empMoveBusy بالظبط (منفصل عن صفحة "الموظفين") — يمنع أي نقل
-// تاني لحد ما الحالي يخلص، ويعطّل زراير "▲/▼" فورًا وقت الدوسة.
-let _payMoveBusy = false;
 async function payrollMoveDetailsEmployee_(name, direction){
-  if (_payMoveBusy) return;
-  _payMoveBusy = true;
-  document.querySelectorAll('#pd-list-panel button[title="نقل لفوق"], #pd-list-panel button[title="نقل لتحت"]')
-    .forEach(b => b.disabled = true);
+  if (_payDetailsBusy) return;
+  _payrollDetailsSetBusy_(true);
   try {
     const res = await apiPost('payrollReorderDetailsEmployee', { name, direction, monthNum: PAYSTATE.monthIndex + 1 });
     if (res.error) throw new Error(res.error);
@@ -2344,19 +2354,20 @@ async function payrollMoveDetailsEmployee_(name, direction){
     showToast('✔ تمام، اتنقل الموظف في الشيت', 'success');
   } catch(err){
     showToast('خطأ: '+(err.message||err), 'error');
-    document.querySelectorAll('#pd-list-panel button[title="نقل لفوق"], #pd-list-panel button[title="نقل لتحت"]')
-      .forEach(b => b.disabled = false);
   }
-  finally { _payMoveBusy = false; }
+  finally { _payrollDetailsSetBusy_(false); }
 }
 async function payrollDeleteDetailsEmployeeConfirm_(name){
+  if (_payDetailsBusy) return;
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح "'+name+'"؟', 'حذف الموظف'))) return;
+  _payrollDetailsSetBusy_(true);
   try {
     const res = await apiPost('payrollDeleteDetailsEmployee', { id: name, monthNum: PAYSTATE.monthIndex + 1 });
     if (res.error) throw new Error(res.error);
     await payrollLoadDetails();
     showToast('✔ تمام، اتمسح الموظف من الشيت', 'success');
   } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
+  finally { _payrollDetailsSetBusy_(false); }
 }
 
 /* ================= Treasury / Cash Flow ================= */
