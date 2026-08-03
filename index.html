@@ -1915,23 +1915,27 @@ function payrollLegendHtml_(){
 }
 
 /* ================= "إضافة سريعة" — فورم بديل لكتابة الكود يدوي جوه الخلية =================
- * اختار موظف واحد أو أكتر، دوس على كذا يوم (من الأيام الظاهرة فعليًا في الشهر/الأسبوع
- * المفتوح بس — مش شهر تقويمي)، ولكل يوم تقدر تضيف أكتر من أكشن: إضافة/خصم/مسحوبات/
- * غياب/سهرة لمشروع (بمبلغ ثابت بيتملي أوتوماتيك من "سعر السهرة العادي" بتاع الموظف
- * وقابل للتعديل)/أو "ساعات مشروع" (توزيع جزء من ساعات اليوم العادي على مشروع معيّن
- * من غير ما يغيّر اليوميه العادية نفسها). وكمان ملاحظات احتياطي حرة لكل يوم.
- * لو اخترت أكتر من موظف، نفس مجموعة الأيام/الأكشنات بتتطبق على كل واحد فيهم بنداء
- * واحد للباك اند (payrollQuickAddEntries_ بياخد مصفوفة أسامي). عند الحفظ بتتكتب في
- * نفس خلايا الشيت الحقيقي بنفس فورمات PAYCODE_SUM، وأي "سهرة"/"ساعات مشروع" بتتسجل
- * كمان في شيت "ساعات_وسهرات" لوحدها (تكلفة المشروع).
+ * اختار موظف واحد أو أكتر — كل موظف بقى ليه بلوك مستقل تمامًا (تقدر تختار له
+ * أيام مختلفة عن أي موظف تاني، مش لازم نفس الأيام للكل)، ولكل يوم من أيامه هو
+ * تقدر تضيف أكتر من أكشن: إضافة/خصم/مسحوبات/غياب/سهرة لمشروع (بمبلغ بيتملي
+ * أوتوماتيك من "سعر السهرة العادي" بتاع الموظف ده بالذات — كل موظف برقمه هو،
+ * وقابل للتعديل يدوي كل مرة لو الليلة دي مختلفة)/أو "ساعات مشروع" (توزيع جزء
+ * من ساعات اليوم العادي على مشروع معيّن من غير ما يغيّر اليوميه العادية نفسها).
+ * وكمان ملاحظات احتياطي حرة لكل يوم.
+ * كل موظف مستقل عن التاني بالكامل (أيامه + أكشناته + ملاحظاته)، وبيتبعتوا
+ * للباك اند كـ"تعيينات" (assignments) — كل موظف بمجموعة أيامه هو بالذات، في
+ * نداء واحد (payrollQuickAddEntries_ بياخد مصفوفة {employeeName, entries}).
+ * عند الحفظ بتتكتب في نفس خلايا الشيت الحقيقي بنفس فورمات PAYCODE_SUM، وأي
+ * "سهرة"/"ساعات مشروع" بتتسجل كمان في شيت "ساعات_وسهرات" لوحدها (تكلفة المشروع).
  * ⚠️ إضافة: بمجرد ما تختار موظف/أكتر و/أو تاريخ، الجدول فوق بينوّر عمود التاريخ
  * وصف/اسم كل موظف مختار (وخلية التقاطع بينهم بإطار أحمر واضح) — تنوير بصري بس،
  * من غير أي سكرول تلقائي للخلية (المستخدم يفضل مكانه بالظبط).
  * ============================================================================= */
-let PAY_QA = { emps: [], dates: [], actions: {}, notes: {} };
+let PAY_QA = { emps: [], perEmp: {} }; // perEmp[اسم الموظف] = { dates:[], actions:{iso:[...]}, notes:{iso:''} }
 let payrollQaLabels_ = {};
+let PAY_QA_DAYLIST = []; // [{label, iso}] — نفس قائمة الأيام الظاهرة، بتتحسب مرة واحدة لكل شهر/أسبوع مفتوح ومتاحة لكل موظف
 let PAY_PROJECTS = []; // بتتحمّل مرة واحدة في renderPayroll — مستخدمة في اختيار مشروع "سهرة"/"ساعات مشروع"
-let PAY_EVENING_RATES = {}; // اسم الموظف => سعر السهرة الافتراضي — بيتحمّل مرة واحدة برضو، لتعبئة مبلغ "سهرة" أوتوماتيك
+let PAY_EVENING_RATES = {}; // اسم الموظف => سعر السهرة الافتراضي — بيتحمّل مرة واحدة برضو، لتعبئة مبلغ "سهرة" أوتوماتيك لكل موظف برقمه هو
 
 function payrollQuickAddPanelHtml_(data){
   const empNames = data.rows.map(r => r.name);
@@ -1948,31 +1952,29 @@ function payrollQuickAddPanelHtml_(data){
       </p>
     </div>`;
   }
-  const dayList = data.kind === 'monthly'
+  PAY_QA_DAYLIST = data.kind === 'monthly'
     ? data.dayHeaders.map((h,i) => ({ label: h.replace('\n',' '), iso: data.dayDates[i] }))
     : [].concat(...data.weekHeaderBlocks.map(wb => wb.dayHeaders.map((h,i) => ({ label: h.replace('\n',' '), iso: wb.dayDates[i] }))));
-  PAY_QA = { emps: [], dates: [], actions: {}, notes: {} };
+  PAY_QA = { emps: [], perEmp: {} };
   payrollQaLabels_ = {};
+  PAY_QA_DAYLIST.forEach(d => { payrollQaLabels_[d.iso] = d.label; });
   return `
   <div class="panel" style="margin-top:14px;">
     <h3 style="margin-bottom:4px;">+ إضافة سريعة</h3>
-    <p style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">اختار موظف واحد أو أكتر والأيام، ولكل يوم ضيف كذا أكشن لو محتاج — من غير ما تكتب أي كود بإيدك. لو اخترت أكتر من موظف، نفس الأكشنات هتتطبق على كل واحد فيهم. الجدول فوق هينوّر عمود التاريخ وصف كل موظف مختار عشان تبقى شايف هينزل فين (من غير سكرول تلقائي).</p>
+    <p style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">اختار موظف واحد أو أكتر — كل موظف هيبقى ليه بلوك مستقل تحت تختار فيه أيامه هو وأكشناته هو لوحده (مش لازم نفس الأيام للكل). الجدول فوق هينوّر عمود التاريخ وصف كل موظف مختار عشان تبقى شايف هينزل فين (من غير سكرول تلقائي).</p>
     <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">اختار موظف واحد أو أكتر:</div>
     <div id="qa-emps" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
       ${empNames.map(n => `<button type="button" class="btn btn-sm qa-emp-chip" data-emp="${qEsc(n)}" onclick="payrollQaToggleEmp('${qEsc(n)}')">${qEsc(n)}</button>`).join('')}
     </div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">اختار يوم واحد أو أكتر:</div>
-    <div id="qa-days" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
-      ${dayList.map(d => `<button type="button" class="btn btn-sm qa-day-chip" data-iso="${d.iso}" onclick="payrollQaToggleDay('${d.iso}','${qEsc(d.label)}')">${qEsc(d.label)}</button>`).join('')}
-    </div>
-    <div id="qa-days-editors"></div>
+    <div id="qa-emp-panels"><p style="font-size:12px;color:var(--muted);">اختار موظف واحد على الأقل الأول.</p></div>
     <button class="btn btn-primary btn-sm" id="qa-save-btn" onclick="payrollQaSave()" style="margin-top:8px;">حفظ الإضافة</button>
   </div>`;
 }
 
-// ⚠️ إضافة: بينوّر في الجدول فوق عمود كل تاريخ مختار + صف كل موظف مختار (ممكن أكتر
-// من واحد)، وبيحط إطار أحمر على كل خلايا التقاطع بينهم عشان الاختيار يبقى واضح
-// بصريًا قبل الحفظ. بتتنادى عند تغيير أي موظف أو تبديل أي يوم.
+// ⚠️ إضافة: بينوّر في الجدول فوق عمود كل تاريخ مختار (لكل موظف بأيامه هو بالذات)
+// + صف كل موظف مختار، وبيحط إطار أحمر على كل خلايا التقاطع الفعلية (موظف × يومه
+// هو) عشان الاختيار يبقى واضح بصريًا قبل الحفظ. بتتنادى عند تغيير أي موظف أو
+// تبديل أي يوم.
 // ⚠️ تعديل: اتشالت أي scrollIntoView خالص — التنوير بس (الصفحة تفضل مكانها زي ما هي
 // من غير ما تتحرك لوحدها لما تدوس على يوم أو موظف).
 function payrollQaClearHighlight_(){
@@ -1988,14 +1990,10 @@ function payrollQaHighlight_(){
   const esc = qaCssEsc_;
   emps.forEach(emp => {
     document.querySelectorAll(`[data-emp="${esc(emp)}"]`).forEach(el => el.classList.add('qa-emp-hl'));
-  });
-  PAY_QA.dates.forEach(iso => {
-    if (!iso) return;
-    document.querySelectorAll(`[data-iso="${esc(iso)}"]`).forEach(el => el.classList.add('qa-col-hl'));
-  });
-  emps.forEach(emp => {
-    PAY_QA.dates.forEach(iso => {
+    const st = PAY_QA.perEmp[emp]; if (!st) return;
+    (st.dates || []).forEach(iso => {
       if (!iso) return;
+      document.querySelectorAll(`[data-iso="${esc(iso)}"]`).forEach(el => el.classList.add('qa-col-hl'));
       const target = document.querySelector(`textarea.pay-cell[data-emp="${esc(emp)}"][data-iso="${esc(iso)}"]`);
       if (target) target.classList.add('qa-target-hl');
     });
@@ -2009,72 +2007,105 @@ function payrollQaToggleEmp(name){
   const idx = PAY_QA.emps.indexOf(name);
   if (idx === -1) {
     PAY_QA.emps.push(name);
+    PAY_QA.perEmp[name] = PAY_QA.perEmp[name] || { dates: [], actions: {}, notes: {} };
     if (chip) chip.classList.add('btn-primary');
   } else {
     PAY_QA.emps.splice(idx, 1);
+    delete PAY_QA.perEmp[name];
     if (chip) chip.classList.remove('btn-primary');
   }
+  payrollQaRenderEmpPanels_();
   payrollQaHighlight_();
 }
 
-function payrollQaToggleDay(iso, label){
-  const chip = document.querySelector(`.qa-day-chip[data-iso="${iso}"]`);
-  const idx = PAY_QA.dates.indexOf(iso);
+// بيرسم بلوك مستقل لكل موظف مختار (اختيار أيامه + محرر الأكشنات بتاعته)
+function payrollQaRenderEmpPanels_(){
+  const box = document.getElementById('qa-emp-panels'); if (!box) return;
+  if (!PAY_QA.emps.length) { box.innerHTML = '<p style="font-size:12px;color:var(--muted);">اختار موظف واحد على الأقل الأول.</p>'; return; }
+  box.innerHTML = PAY_QA.emps.map(emp => `
+    <div class="panel" style="background:#fff;margin-bottom:12px;padding:12px;">
+      <div style="font-weight:700;margin-bottom:8px;">${qEsc(emp)}</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">اختار يوم واحد أو أكتر لـ ${qEsc(emp)}:</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+        ${PAY_QA_DAYLIST.map(d => `<button type="button" class="btn btn-sm qa-day-chip" data-emp="${qEsc(emp)}" data-iso="${d.iso}" onclick="payrollQaToggleDay('${qEsc(emp)}','${d.iso}','${qEsc(d.label)}')">${qEsc(d.label)}</button>`).join('')}
+      </div>
+      <div data-qa-editors="${qEsc(emp)}"></div>
+    </div>`).join('');
+  // نعيد تعليم أزرار الأيام اللي كانت مختارة فعلاً لكل موظف (لو رجع اتشال واتضاف تاني)
+  PAY_QA.emps.forEach(emp => {
+    const st = PAY_QA.perEmp[emp]; if (!st) return;
+    (st.dates || []).forEach(iso => {
+      const chip = document.querySelector(`.qa-day-chip[data-emp="${qaCssEsc_(emp)}"][data-iso="${iso}"]`);
+      if (chip) chip.classList.add('btn-primary');
+    });
+    payrollQaRenderEditorsFor_(emp);
+  });
+}
+
+function payrollQaEditorsBoxFor_(emp){
+  return document.querySelector(`[data-qa-editors="${qaCssEsc_(emp)}"]`);
+}
+
+function payrollQaToggleDay(emp, iso, label){
+  const st = PAY_QA.perEmp[emp]; if (!st) return;
+  const chip = document.querySelector(`.qa-day-chip[data-emp="${qaCssEsc_(emp)}"][data-iso="${iso}"]`);
+  const idx = st.dates.indexOf(iso);
   if (idx === -1) {
-    PAY_QA.dates.push(iso);
-    PAY_QA.actions[iso] = [{ type: 'ج', amount: '' }];
-    PAY_QA.notes[iso] = '';
+    st.dates.push(iso);
+    st.actions[iso] = [{ type: 'ج', amount: '' }];
+    st.notes[iso] = '';
     payrollQaLabels_[iso] = label;
     if (chip) chip.classList.add('btn-primary');
   } else {
-    PAY_QA.dates.splice(idx, 1);
-    delete PAY_QA.actions[iso];
-    delete PAY_QA.notes[iso];
+    st.dates.splice(idx, 1);
+    delete st.actions[iso];
+    delete st.notes[iso];
     if (chip) chip.classList.remove('btn-primary');
   }
-  payrollQaRenderEditors_();
+  payrollQaRenderEditorsFor_(emp);
   payrollQaHighlight_();
 }
 
-function payrollQaRenderEditors_(){
-  const box = document.getElementById('qa-days-editors'); if (!box) return;
-  box.innerHTML = PAY_QA.dates.map(iso => `
+function payrollQaRenderEditorsFor_(emp){
+  const box = payrollQaEditorsBoxFor_(emp); if (!box) return;
+  const st = PAY_QA.perEmp[emp]; if (!st) return;
+  box.innerHTML = st.dates.map(iso => `
     <div class="panel" style="background:#faf7f0;margin-bottom:8px;padding:10px;">
       <div style="font-weight:700;margin-bottom:6px;">${qEsc(payrollQaLabels_[iso] || iso)}</div>
-      <div id="qa-actions-${iso.replace(/-/g,'_')}">
-        ${PAY_QA.actions[iso].map((a, ai) => payrollQaActionRowHtml_(iso, ai, a)).join('')}
+      <div>
+        ${st.actions[iso].map((a, ai) => payrollQaActionRowHtml_(emp, iso, ai, a)).join('')}
       </div>
-      <button type="button" class="btn btn-sm" onclick="payrollQaAddAction('${iso}')">+ أكشن تاني في نفس اليوم</button>
+      <button type="button" class="btn btn-sm" onclick="payrollQaAddAction('${qEsc(emp)}','${iso}')">+ أكشن تاني في نفس اليوم</button>
       <div style="margin-top:8px;">
         <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;">ملاحظات احتياطي (اختياري — بتتسجل في الـ Note بتاعة الخلية زيادة عن أي سهرة)</label>
-        <textarea class="d-input" rows="2" style="font-size:12px;" placeholder="أي ملاحظة إضافية على اليوم ده..." oninput="payrollQaSetNote('${iso}', this.value)">${qEsc(PAY_QA.notes[iso] || '')}</textarea>
+        <textarea class="d-input" rows="2" style="font-size:12px;" placeholder="أي ملاحظة إضافية على اليوم ده..." oninput="payrollQaSetNote('${qEsc(emp)}','${iso}', this.value)">${qEsc(st.notes[iso] || '')}</textarea>
       </div>
     </div>`).join('');
 }
 
-function payrollQaActionRowHtml_(iso, ai, a){
+function payrollQaActionRowHtml_(emp, iso, ai, a){
   const opts = [['ج','إضافة'],['خ','خصم'],['م','مسحوبات'],['غ','غياب يوم كامل'],['سهرة','سهرة (لمشروع)'],['ساعات_مشروع','ساعات مشروع (توزيع من اليوميه العادية)']];
-  const typeSelect = `<select class="d-input" style="width:auto;" onchange="payrollQaSetType('${iso}',${ai},this.value)">
+  const typeSelect = `<select class="d-input" style="width:auto;" onchange="payrollQaSetType('${qEsc(emp)}','${iso}',${ai},this.value)">
       ${opts.map(o => `<option value="${o[0]}" ${a.type===o[0]?'selected':''}>${o[1]}</option>`).join('')}
     </select>`;
 
   if (a.type === 'غ') {
     return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
       ${typeSelect}
-      <button type="button" class="btn btn-sm" onclick="payrollQaRemoveAction('${iso}',${ai})">✕</button>
+      <button type="button" class="btn btn-sm" onclick="payrollQaRemoveAction('${qEsc(emp)}','${iso}',${ai})">✕</button>
     </div>`;
   }
 
   if (a.type === 'سهرة') {
     return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
       ${typeSelect}
-      <select class="d-input" style="width:auto;min-width:140px;" onchange="payrollQaSetProject('${iso}',${ai},this.value)">
+      <select class="d-input" style="width:auto;min-width:140px;" onchange="payrollQaSetProject('${qEsc(emp)}','${iso}',${ai},this.value)">
         <option value="">اختار المشروع</option>
         ${PAY_PROJECTS.map(p => `<option value="${qEsc(p)}" ${a.project===p?'selected':''}>${qEsc(p)}</option>`).join('')}
       </select>
-      <input type="number" step="0.5" min="0" class="d-input" style="width:100px;" placeholder="ساعات (اختياري)" value="${a.hours||''}" oninput="payrollQaSetHours('${iso}',${ai},this.value)">
-      <input type="number" class="d-input" style="width:100px;" placeholder="سيبها فاضية = سعر كل موظف تلقائي" value="${a.amount||''}" oninput="payrollQaSetAmount('${iso}',${ai},this.value)">
-      <button type="button" class="btn btn-sm" onclick="payrollQaRemoveAction('${iso}',${ai})">✕</button>
+      <input type="number" step="0.5" min="0" class="d-input" style="width:100px;" placeholder="ساعات (اختياري)" value="${a.hours||''}" oninput="payrollQaSetHours('${qEsc(emp)}','${iso}',${ai},this.value)">
+      <input type="number" class="d-input" style="width:100px;" placeholder="مبلغ السهرة (ج)" value="${a.amount||''}" oninput="payrollQaSetAmount('${qEsc(emp)}','${iso}',${ai},this.value)">
+      <button type="button" class="btn btn-sm" onclick="payrollQaRemoveAction('${qEsc(emp)}','${iso}',${ai})">✕</button>
     </div>`;
   }
 
@@ -2085,58 +2116,65 @@ function payrollQaActionRowHtml_(iso, ai, a){
   if (a.type === 'ساعات_مشروع') {
     return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
       ${typeSelect}
-      <select class="d-input" style="width:auto;min-width:140px;" onchange="payrollQaSetProject('${iso}',${ai},this.value)">
+      <select class="d-input" style="width:auto;min-width:140px;" onchange="payrollQaSetProject('${qEsc(emp)}','${iso}',${ai},this.value)">
         <option value="">اختار المشروع</option>
         ${PAY_PROJECTS.map(p => `<option value="${qEsc(p)}" ${a.project===p?'selected':''}>${qEsc(p)}</option>`).join('')}
       </select>
-      <input type="number" step="0.5" min="0" class="d-input" style="width:100px;" placeholder="عدد الساعات" value="${a.hours||''}" oninput="payrollQaSetHours('${iso}',${ai},this.value)">
+      <input type="number" step="0.5" min="0" class="d-input" style="width:100px;" placeholder="عدد الساعات" value="${a.hours||''}" oninput="payrollQaSetHours('${qEsc(emp)}','${iso}',${ai},this.value)">
       <span style="font-size:11px;color:var(--muted);">من غير ما يغيّر اليوميه العادية — بس بتتحمّل على تكلفة المشروع</span>
-      <button type="button" class="btn btn-sm" onclick="payrollQaRemoveAction('${iso}',${ai})">✕</button>
+      <button type="button" class="btn btn-sm" onclick="payrollQaRemoveAction('${qEsc(emp)}','${iso}',${ai})">✕</button>
     </div>`;
   }
 
   return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
     ${typeSelect}
-    <input type="number" class="d-input" style="width:100px;" placeholder="المبلغ" value="${a.amount}" oninput="payrollQaSetAmount('${iso}',${ai},this.value)">
-    <button type="button" class="btn btn-sm" onclick="payrollQaRemoveAction('${iso}',${ai})">✕</button>
+    <input type="number" class="d-input" style="width:100px;" placeholder="المبلغ" value="${a.amount}" oninput="payrollQaSetAmount('${qEsc(emp)}','${iso}',${ai},this.value)">
+    <button type="button" class="btn btn-sm" onclick="payrollQaRemoveAction('${qEsc(emp)}','${iso}',${ai})">✕</button>
   </div>`;
 }
-function payrollQaSetType(iso, ai, val){
-  const cur = PAY_QA.actions[iso][ai] || {};
+function payrollQaSetType(emp, iso, ai, val){
+  const st = PAY_QA.perEmp[emp]; if (!st) return;
+  const cur = st.actions[iso][ai] || {};
   if (val === 'سهرة') {
-    // ⚠️ تعديل: مبقيناش بنملي مبلغ تلقائي من أول موظف مختار بس — لو فيه أكتر من
-    // موظف بسعر سهرة مختلف، الرقم ده كان بيتطبق غلط على الباقي. دلوقتي سايبينها
-    // فاضية دايمًا؛ لو المستخدم سابها فاضية، الباك اند بيحسب المبلغ لوحده لكل
-    // موظف على حدة من "سعر السهرة العادي" بتاعه (عمود H) وقت الحفظ. لو المستخدم
-    // كتب رقم يدوي هنا، الرقم ده بيتطبق حرفيًا على كل الموظفين المختارين.
-    PAY_QA.actions[iso][ai] = { type: 'سهرة', project: cur.project || '', hours: cur.hours || '', amount: cur.amount || '' };
+    // ⚠️ تعديل: دلوقتي كل موظف بقى ليه بلوك أيام/أكشنات مستقل تمامًا عن أي موظف
+    // تاني، فمبلغ "سهرة" بيتملي أوتوماتيك من "سعر السهرة العادي" بتاع الموظف ده
+    // بالذات (مش أول موظف مختار زي الأول)، وتقدر تعدله يدوي عادي لو الليلة دي
+    // مختلفة عن سعره المعتاد — من غير ما يأثر على سعر أي موظف تاني.
+    const defaultRate = PAY_EVENING_RATES[emp] || '';
+    st.actions[iso][ai] = { type: 'سهرة', project: cur.project || '', hours: cur.hours || '', amount: cur.amount || defaultRate || '' };
   } else if (val === 'ساعات_مشروع') {
-    PAY_QA.actions[iso][ai] = { type: 'ساعات_مشروع', project: cur.project || '', hours: cur.hours || '' };
+    st.actions[iso][ai] = { type: 'ساعات_مشروع', project: cur.project || '', hours: cur.hours || '' };
   } else {
-    PAY_QA.actions[iso][ai] = { type: val, amount: cur.amount || '' };
+    st.actions[iso][ai] = { type: val, amount: cur.amount || '' };
   }
-  payrollQaRenderEditors_();
+  payrollQaRenderEditorsFor_(emp);
 }
-function payrollQaSetAmount(iso, ai, val){ PAY_QA.actions[iso][ai].amount = val; }
-function payrollQaSetProject(iso, ai, val){ PAY_QA.actions[iso][ai].project = val; }
-function payrollQaSetHours(iso, ai, val){ PAY_QA.actions[iso][ai].hours = val; }
-function payrollQaSetNote(iso, val){ PAY_QA.notes[iso] = val; }
-function payrollQaAddAction(iso){ PAY_QA.actions[iso].push({ type:'ج', amount:'' }); payrollQaRenderEditors_(); }
-function payrollQaRemoveAction(iso, ai){
-  PAY_QA.actions[iso].splice(ai,1);
-  if (!PAY_QA.actions[iso].length) PAY_QA.actions[iso].push({ type:'ج', amount:'' });
-  payrollQaRenderEditors_();
+function payrollQaSetAmount(emp, iso, ai, val){ PAY_QA.perEmp[emp].actions[iso][ai].amount = val; }
+function payrollQaSetProject(emp, iso, ai, val){ PAY_QA.perEmp[emp].actions[iso][ai].project = val; }
+function payrollQaSetHours(emp, iso, ai, val){ PAY_QA.perEmp[emp].actions[iso][ai].hours = val; }
+function payrollQaSetNote(emp, iso, val){ PAY_QA.perEmp[emp].notes[iso] = val; }
+function payrollQaAddAction(emp, iso){ PAY_QA.perEmp[emp].actions[iso].push({ type:'ج', amount:'' }); payrollQaRenderEditorsFor_(emp); }
+function payrollQaRemoveAction(emp, iso, ai){
+  const st = PAY_QA.perEmp[emp]; if (!st) return;
+  st.actions[iso].splice(ai,1);
+  if (!st.actions[iso].length) st.actions[iso].push({ type:'ج', amount:'' });
+  payrollQaRenderEditorsFor_(emp);
 }
 
 async function payrollQaSave(force){
   if (!PAY_QA.emps.length) { showToast('اختار موظف واحد على الأقل', 'error'); return; }
-  if (!PAY_QA.dates.length) { showToast('اختار يوم واحد على الأقل', 'error'); return; }
-  const entries = PAY_QA.dates.map(iso => ({ date: iso, actions: PAY_QA.actions[iso], notes: PAY_QA.notes[iso] || '' }));
+  // ⚠️ تعديل: كل موظف بقى ليه assignment مستقل بأيامه وأكشناته هو بس (مش entries
+  // مشتركة بتتكرر على الكل زي الأول) — عشان كل موظف يقدر ياخد أيام مختلفة تمامًا.
+  const assignments = PAY_QA.emps.map(emp => {
+    const st = PAY_QA.perEmp[emp];
+    const entries = (st.dates || []).map(iso => ({ date: iso, actions: st.actions[iso], notes: st.notes[iso] || '' }));
+    return { employeeName: emp, entries };
+  }).filter(a => a.entries.length); // موظف مختار بس ملوش ولا يوم — ميتبعتش خالص
+  if (!assignments.length) { showToast('اختار يوم واحد على الأقل لموظف واحد على الأقل', 'error'); return; }
   const btn = document.getElementById('qa-save-btn');
   btn.disabled = true; btn.textContent = 'جاري الحفظ...';
   try {
-    // ⚠️ إضافة: employeeName بقى ممكن يبقى مصفوفة أسامي — نفس الـ entries بتتطبق على كل موظف فيها بنداء واحد للباك اند
-    const res = await apiPost('payrollQuickAddEntries', { year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex, kind: PAYSTATE.kind, employeeName: PAY_QA.emps, entries, force: !!force });
+    const res = await apiPost('payrollQuickAddEntries', { year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex, kind: PAYSTATE.kind, assignments, force: !!force });
     if (res.error) { showToast('خطأ: ' + res.error, 'error'); return; }
     // ⚠️ إضافة: لو الموظف (أو أي موظف من المختارين) هيتعدّى 9 ساعات عمل في نفس اليوم
     // على المشاريع (سواء مشروع واحد أو متقسمة)، السيرفر مش بيكتب حاجة ويرجّع
@@ -2147,7 +2185,7 @@ async function payrollQaSave(force){
       if (ok) await payrollQaSave(true);
       return;
     }
-    showToast(PAY_QA.emps.length > 1 ? `تم الحفظ لـ ${PAY_QA.emps.length} موظفين` : 'تم الحفظ', 'success');
+    showToast(assignments.length > 1 ? `تم الحفظ لـ ${assignments.length} موظفين` : 'تم الحفظ', 'success');
     payrollLoadSheet(); // بيعيد رسم الجدول (وبيعمل reset لفورم الإضافة تلقائي عن طريق payrollQuickAddPanelHtml_)
   } catch(err) { showToast('خطأ: ' + (err.message || err), 'error'); }
   finally { if (btn) { btn.disabled = false; btn.textContent = 'حفظ الإضافة'; } }
