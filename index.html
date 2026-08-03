@@ -20,7 +20,7 @@
   body{ font-family:'Cairo',sans-serif; background:var(--cream); color:var(--dark); display:flex; min-height:100vh; overflow-x:hidden; }
   .mono{ font-family:'IBM Plex Mono', monospace; direction:ltr; }
 
-  .sidebar{ width:235px; background:var(--dark); color:#f0e6d8; flex-shrink:0; display:flex; flex-direction:column; padding:22px 0; position:sticky; top:0; height:100vh; overflow-y:auto; transition:transform .35s var(--bounce), width .3s var(--bounce); }
+  .sidebar{ width:235px; background:var(--dark); color:#f0e6d8; flex-shrink:0; display:flex; flex-direction:column; padding:22px 0; position:sticky; top:0; height:100vh; overflow-y:auto; overflow-x:hidden; transition:transform .35s var(--bounce), width .3s var(--bounce); }
 
   /* ===== Sidebar collapse (desktop) ===== */
   .sidebar-toggle{ position:absolute; top:14px; left:10px; width:28px; height:28px; border-radius:50%; background:var(--gold); color:var(--dark); border:2px solid var(--dark); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:14px; font-weight:800; line-height:1; z-index:5; transition:transform .3s var(--bounce), background .2s, color .2s; }
@@ -43,7 +43,8 @@
   .brand h1{ font-size:16px; font-weight:800; letter-spacing:.5px; }
   .brand p{ font-size:10.5px; color:var(--gold); margin-top:3px; letter-spacing:.5px; }
   .nav{ flex:1; display:flex; flex-direction:column; gap:2px; padding:0 10px; }
-  .nav button{ all:unset; cursor:pointer; padding:11px 14px; border-radius:8px; font-size:13.5px; color:#cbbfae; display:flex; align-items:center; gap:9px; transition:background .2s, color .2s, transform .25s var(--bounce); font-family:inherit; }
+  .nav button{ all:unset; box-sizing:border-box; width:100%; min-width:0; cursor:pointer; padding:11px 14px; border-radius:8px; font-size:13.5px; color:#cbbfae; display:flex; align-items:center; gap:9px; transition:background .2s, color .2s, transform .25s var(--bounce); font-family:inherit; }
+  .nav button .label{ min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .nav button:hover{ background:var(--dark2); color:#fff; transform:translateX(-5px); }
   .nav button.active{ background:var(--gold); color:var(--dark); font-weight:700; animation:navPop .4s var(--bounce); }
   .nav .icon{ font-size:15px; width:18px; text-align:center; }
@@ -57,6 +58,7 @@
   .hamburger.open span:nth-child(2){ opacity:0; }
   .hamburger.open span:nth-child(3){ transform:translateY(-6px) rotate(-45deg); }
   .sidebar-overlay{ display:none; }
+  .bottom-nav{ display:none; }
 
   .main{ flex:1; padding:26px 34px; max-width:1280px; min-width:0; }
   .topbar{ display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:22px; flex-wrap:wrap; gap:10px;}
@@ -108,18 +110,50 @@
     .hamburger{ display:flex; }
     .sidebar-toggle{ display:none; }
     .sidebar{
-      position:fixed; inset-inline-end:0; top:0; bottom:0; z-index:1000;
+      position:fixed; right:0; left:auto; top:0; bottom:0; z-index:1000;
       width:250px; max-width:82vw; transform:translateX(100%);
       box-shadow:-14px 0 40px rgba(0,0,0,.35);
     }
     .sidebar.open{ transform:translateX(0); }
+    /* ⚠️ حماية: حالة "طي القائمة" (collapsed) خاصة بالديسكتوب بس ومتخزنة في
+       localStorage — لو المستخدم طواها قبل كده على الديسكتوب وبعدين فتح
+       الموقع على الموبايل، من غير القاعدة دي كان ممكن يظهر الدرج بعرض 72px
+       بس (وأسماء الصفحات مختفية) لأن .sidebar.collapsed بتكسب فوق قواعد
+       الموبايل. */
+    .sidebar.collapsed{ width:250px; max-width:82vw; }
+    .sidebar.collapsed .nav .label,
+    .sidebar.collapsed .user-menu-btn .label{ display:block; }
     .sidebar-overlay{
       display:block; position:fixed; inset:0; background:rgba(20,17,13,.55); z-index:999;
       opacity:0; pointer-events:none; transition:opacity .3s;
     }
     .sidebar-overlay.open{ opacity:1; pointer-events:auto; }
-    .main{ padding:16px 14px; max-width:100%; width:100%; }
+    .main{ padding:16px 14px calc(74px + env(safe-area-inset-bottom, 0px)) 14px; max-width:100%; width:100%; }
     .topbar{ align-items:center; }
+
+    /* ===== شريط تنقّل ثابت تحت الشاشة على الموبايل — أهم 4 صفحات
+       (نظرة عامة/مرتبات/المشاريع/الخزنة) + زرار "المزيد" بيفتح القائمة
+       الجانبية الكاملة بكل الصفحات التانية. ===== */
+    .bottom-nav{
+      display:flex; position:fixed; right:0; left:0; bottom:0; z-index:500;
+      background:var(--dark); border-top:1px solid #3a3129;
+      padding:6px 4px calc(6px + env(safe-area-inset-bottom, 0px)) 4px;
+      box-shadow:0 -6px 20px rgba(0,0,0,.18);
+    }
+    .bottom-nav button{
+      all:unset; box-sizing:border-box; flex:1; min-width:0; cursor:pointer;
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      gap:3px; padding:6px 2px; border-radius:10px; color:#cbbfae;
+      transition:background .2s, color .2s, transform .2s var(--bounce);
+    }
+    .bottom-nav button:active{ transform:scale(.92); }
+    .bottom-nav button.active{ color:var(--gold); font-weight:700; }
+    .bottom-nav .bn-icon{ font-size:17px; line-height:1; }
+    .bottom-nav .bn-label{ font-size:10px; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    /* التوست (رسائل النجاح/الخطأ) لازم يقعد فوق شريط التنقّل السفلي، مش تحته/فوقه لاصق */
+    #toast-wrap{ bottom:calc(78px + env(safe-area-inset-bottom, 0px)); }
+  }
+  @media(max-width:900px){
 
     /* أي صف أزرار/فلاتر مكتوب بـ inline style فيه flex-wrap (زي شريط تحميل الشهر،
        الفلاتر، الأدفانس فلتر...) — خليه ياخد العرض الكامل عشان محدش يتقص
@@ -572,6 +606,13 @@
 </div>
 
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+<nav class="bottom-nav" id="bottomNav">
+  <button data-page="dashboard"><span class="bn-icon">&#9679;</span><span class="bn-label">عامة</span></button>
+  <button data-page="payroll"><span class="bn-icon">&#128176;</span><span class="bn-label">مرتبات</span></button>
+  <button data-page="projects"><span class="bn-icon">&#128188;</span><span class="bn-label">مشاريع</span></button>
+  <button data-page="treasury"><span class="bn-icon">&#128180;</span><span class="bn-label">الخزنة</span></button>
+  <button id="bottomNavMoreBtn" onclick="openSidebar()"><span class="bn-icon">&#9776;</span><span class="bn-label">المزيد</span></button>
+</nav>
 <div class="main">
   <div class="topbar">
     <button class="hamburger" id="hamburgerBtn" onclick="toggleSidebar()" aria-label="فتح القائمة">
@@ -984,7 +1025,9 @@ const PAGES = {
 
 /* ================= Sidebar (mobile off-canvas + desktop collapse) ================= */
 function openSidebar(){
-  document.getElementById('sidebar').classList.add('open');
+  const sb = document.getElementById('sidebar');
+  sb.classList.add('open');
+  sb.scrollTop = 0; // يفتح دايمًا من أول عنصر، مش من مكان آخر سكرول وصله قبل كده
   document.getElementById('sidebarOverlay').classList.add('open');
   document.getElementById('hamburgerBtn').classList.add('open');
 }
@@ -1014,6 +1057,9 @@ document.getElementById('nav').addEventListener('click', e => {
   const btn = e.target.closest('button'); if (!btn) return; goTo(btn.dataset.page);
   closeSidebar(); // يقفل القايمة تلقائي بعد الاختيار في وضع الموبايل
 });
+document.getElementById('bottomNav').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-page]'); if (!btn) return; goTo(btn.dataset.page);
+});
 // كل مرة ندخل صفحة، بيتزود التوكن ده. أي صفحة قديمة لسه بتحمّل (fetch) بتتاكد قبل
 // ما تكتب في الـ DOM إن التوكن بتاعها لسه هو الحالي — لو المستخدم دخل صفحة تانية
 // قبل ما تخلص، بتلاقي التوكن اتغير فبتلغي نفسها من غير ما تكتب حاجة فوق الصفحة الجديدة
@@ -1023,7 +1069,7 @@ function goTo(page) {
   const token = ++_navToken;
   _currentPage = page;
   sessionStorage.setItem('lm_currentPage', page);
-  document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('active', b.dataset.page === page));
+  document.querySelectorAll('.nav button, .bottom-nav button[data-page]').forEach(b => b.classList.toggle('active', b.dataset.page === page));
   document.getElementById('pageTitle').textContent = PAGES[page].title;
   document.getElementById('pageSub').textContent = PAGES[page].sub;
   if (!checkApiConfigured()) return;
