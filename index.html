@@ -1575,7 +1575,7 @@ async function renderPayroll(token){
           <label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" class="pb-part" value="master" checked> Master</label>
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;">
-          <button class="btn btn-sm" onclick="closePayBuildModal()">إلغاء</button>
+          <button class="btn btn-sm" id="pb-cancel-btn" onclick="closePayBuildModal()">إلغاء</button>
           <button class="btn btn-primary btn-sm" id="pb-confirm-btn">تأكيد البناء</button>
         </div>
       </div>
@@ -1665,10 +1665,19 @@ async function payrollConfirmBuild(){
   const targets = [...document.querySelectorAll('.pb-part:checked')].map(cb => cb.value);
   if (!targets.length){ showToast('اختار جزء واحد على الأقل، أو "النظام كامل"', 'error'); return; }
   const btn = document.getElementById('pb-confirm-btn');
+  const cancelBtn = document.getElementById('pb-cancel-btn');
   btn.disabled = true; btn.textContent = 'جاري البناء...';
+  if (cancelBtn) cancelBtn.disabled = true; // من غير ما نمنع القفل، ممكن حد يقفل المودال ويفتحه تاني في نص الطلب
   try {
     const res = await apiPost('payrollBuildMonth', { year, monthNum: monthIndex + 1, targets });
     if (res.error) { showToast('خطأ: ' + res.error, 'error'); return; }
+    // ⚠️ إضافة: المودال بيفضل ظاهر واحنا لسه بننتظر رد السيرفر (زي ما هو فوق)،
+    // وبعد ما البناء يخلص فعلاً بنوري تأكيد واضح "✓ تم البناء" جوه المودال
+    // نفسه لحظة صغيرة، وبعدين بس نقفله ونعمل ريلود للداتا — بدل ما يقفل
+    // فجأة على طول من غير ما المستخدم يحس إن البناء خلص.
+    btn.textContent = '✓ تم البناء';
+    btn.style.background = 'var(--green)'; btn.style.color = '#fff';
+    await new Promise(r => setTimeout(r, 650));
     closePayBuildModal();
     PAYSTATE.year = year; PAYSTATE.monthIndex = monthIndex;
     paySaveSession();
@@ -1679,7 +1688,11 @@ async function payrollConfirmBuild(){
     else if (PAYSTATE.view === 'details') payrollLoadDetails();
     else payrollLoadSheet();
   } catch(err) { showToast('خطأ: ' + (err.message || err), 'error'); }
-  finally { btn.disabled = false; btn.textContent = 'تأكيد البناء'; }
+  finally {
+    btn.disabled = false; btn.textContent = 'تأكيد البناء';
+    btn.style.background = ''; btn.style.color = '';
+    if (cancelBtn) cancelBtn.disabled = false;
+  }
 }
 
 async function payrollLoadSheet(){
