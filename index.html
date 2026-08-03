@@ -81,7 +81,8 @@
   table{ width:100%; border-collapse:collapse; font-size:13px; }
   th{ background:var(--dark); color:#fff; padding:9px 8px; text-align:center; font-weight:600; }
   td{ padding:8px 8px; text-align:center; border-bottom:1px solid var(--border); }
-  tr:nth-child(even) td{ background:#fbf9f5; }
+  tr:nth-child(even):not(.tbl-totals-row) td{ background:#fbf9f5; }
+  .pay-note-dot{ position:absolute; top:1px; left:2px; font-size:10px; line-height:1; cursor:help; z-index:1; }
   tr{ transition:background .15s; }
   tbody tr:hover td{ background:#f3ead9; }
   .tbl-wrap{ overflow-x:auto; }
@@ -1767,10 +1768,12 @@ async function payrollLoadSheet(){
  * empIdx/dayIdx (ترتيب الموظف/اليوم في الجدول المعروض، مش row/col الفعليين في
  * الشيت) بيتحطوا في data-* عشان دالة اللصق الذكي (payrollHandlePaste) تعرف
  * تتحرك صح بين الخلايا المجاورة لو المستخدم لصق نطاق من إكسل/جوجل شيتس. */
-function payrollDayCellHtml_(row, col, value, empIdx, dayIdx, iso, empName){
-  return `<td style="padding:2px;"><textarea class="d-input pay-cell ${payCellClass(value)}" rows="2"
+function payrollDayCellHtml_(row, col, value, empIdx, dayIdx, iso, empName, note){
+  const hasNote = !!(note && String(note).trim());
+  return `<td style="padding:2px;position:relative;">${hasNote ? `<span class="pay-note-dot" title="${qEsc(note)}">📝</span>` : ''}<textarea class="d-input pay-cell ${payCellClass(value)}" rows="2"
     data-row="${row}" data-col="${col}" data-emp-idx="${empIdx}" data-day-idx="${dayIdx}"
     data-iso="${qEsc(iso || '')}" data-emp="${qEsc(empName || '')}"
+    ${hasNote ? `title="${qEsc(note)}"` : ''}
     style="text-align:center;font-size:11px;padding:4px 2px;resize:vertical;min-width:70px;line-height:1.35;"
     oninput="payCellRecolor(this)"
     onchange="payrollCellEdited(${row}, ${col}, this)"
@@ -1816,18 +1819,20 @@ function payrollRenderWeeklyTable_(box, data){
       ${data.monthSummaryHeaders.map(h => `<th style="background:#3a2f22;min-width:112px;">${qEsc(h)}</th>`).join('')}
     </tr>`;
 
+  PAYSTATE._flatHeaders = data.weekHeaderBlocks.flatMap(wb => wb.sumHeaders).concat(data.monthSummaryHeaders);
   const bodyRows = data.rows.map((r, empIdx) => {
     let dayCursor = 0;
+    let sumFlatIdx = 0;
     const weeksHtml = r.weeks.map((wk, wi) => {
       const dayStartCol = data.weekHeaderBlocks[wi].dayStartCol;
       const dayDates = data.weekHeaderBlocks[wi].dayDates || [];
       const sumHeaders = data.weekHeaderBlocks[wi].sumHeaders;
-      const daysHtml = wk.dayCells.map((v, di) => payrollDayCellHtml_(r.row, dayStartCol + di, v, empIdx, dayCursor + di, dayDates[di], r.name)).join('');
+      const daysHtml = wk.dayCells.map((v, di) => payrollDayCellHtml_(r.row, dayStartCol + di, v, empIdx, dayCursor + di, dayDates[di], r.name, (wk.dayNotes || [])[di])).join('');
       dayCursor += wk.dayCells.length;
-      const sumHtml = wk.summaryCells.map((v, si) => `<td class="sm-cell ${summaryCellClass(sumHeaders[si], v)}">${qEsc(v)}</td>`).join('');
+      const sumHtml = wk.summaryCells.map((v, si) => `<td class="sm-cell ${summaryCellClass(sumHeaders[si], v)}" data-sum-idx="${sumFlatIdx++}">${qEsc(v)}</td>`).join('');
       return daysHtml + sumHtml;
     }).join('');
-    const monthSumHtml = r.monthSummaryCells.map((v, si) => `<td class="sm-cell ${summaryCellClass(data.monthSummaryHeaders[si], v)}">${qEsc(v)}</td>`).join('');
+    const monthSumHtml = r.monthSummaryCells.map((v, si) => `<td class="sm-cell ${summaryCellClass(data.monthSummaryHeaders[si], v)}" data-sum-idx="${sumFlatIdx++}">${qEsc(v)}</td>`).join('');
     return `<tr data-emp="${qEsc(r.name)}">
       <td class="pay-emp-name" data-emp="${qEsc(r.name)}" style="position:sticky;right:0;background:var(--white);font-weight:700;">${qEsc(r.name)}</td>
       ${weeksHtml}
@@ -1838,12 +1843,13 @@ function payrollRenderWeeklyTable_(box, data){
 
   let totalsHtml = '';
   if (data.totals) {
+    let totFlatIdx = 0;
     const weeksTotalHtml = data.totals.weeks.map((wkTotals, wi) => {
       const dayBlanks = '<td></td>'.repeat(data.weekHeaderBlocks[wi].dayHeaders.length);
-      const sums = wkTotals.map(v => `<td>${qEsc(v)}</td>`).join('');
+      const sums = wkTotals.map(v => `<td data-sum-idx="${totFlatIdx++}">${qEsc(v)}</td>`).join('');
       return dayBlanks + sums;
     }).join('');
-    const monthTotalsHtml = data.totals.monthSummaryCells.map(v => `<td>${qEsc(v)}</td>`).join('');
+    const monthTotalsHtml = data.totals.monthSummaryCells.map(v => `<td data-sum-idx="${totFlatIdx++}">${qEsc(v)}</td>`).join('');
     totalsHtml = `<tr class="tbl-totals-row">
       <td>الإجمالي</td>
       ${weeksTotalHtml}
@@ -1869,15 +1875,16 @@ function payrollRenderWeeklyTable_(box, data){
 
 /* شيت "حضور شهر" — بلوك واحد متصل من أيام الشهر + صف إجمالي متلوّن */
 function payrollRenderMonthlyTable_(box, data){
+  PAYSTATE._flatHeaders = data.summaryHeaders;
   const bodyRows = data.rows.map((r, empIdx) => `
     <tr data-emp="${qEsc(r.name)}">
       <td class="pay-emp-name" data-emp="${qEsc(r.name)}" style="position:sticky;right:0;background:var(--white);font-weight:700;">${qEsc(r.name)}</td>
-      ${r.dayCells.map((v, i) => payrollDayCellHtml_(r.row, data.dayStart + i, v, empIdx, i, (data.dayDates||[])[i], r.name)).join('')}
-      ${r.summaryCells.map((v, si) => `<td class="sm-cell ${summaryCellClass(data.summaryHeaders[si], v)}">${qEsc(v)}</td>`).join('')}
+      ${r.dayCells.map((v, i) => payrollDayCellHtml_(r.row, data.dayStart + i, v, empIdx, i, (data.dayDates||[])[i], r.name, (r.dayNotes||[])[i])).join('')}
+      ${r.summaryCells.map((v, si) => `<td class="sm-cell ${summaryCellClass(data.summaryHeaders[si], v)}" data-sum-idx="${si}">${qEsc(v)}</td>`).join('')}
     </tr>`).join('');
 
   const totalsHtml = data.totals
-    ? `<tr class="tbl-totals-row"><td style="position:sticky;right:0;">الإجمالي</td>${'<td></td>'.repeat(data.dayHeaders.length)}${data.totals.map(v => `<td>${qEsc(v)}</td>`).join('')}</tr>`
+    ? `<tr class="tbl-totals-row"><td style="position:sticky;right:0;">الإجمالي</td>${'<td></td>'.repeat(data.dayHeaders.length)}${data.totals.map((v, si) => `<td data-sum-idx="${si}">${qEsc(v)}</td>`).join('')}</tr>`
     : '';
 
   box.innerHTML = `
@@ -2191,13 +2198,40 @@ async function payrollQaSave(force){
   finally { if (btn) { btn.disabled = false; btn.textContent = 'حفظ الإضافة'; } }
 }
 
+// بيحدّث خلايا الملخص (sm-cell) وصف الإجمالي في مكانهم في الـ DOM من غير ما
+// يعيد رسم الجدول كله — أسرع بكتير من إعادة تحميل الشيت وبيحافظ على مكان
+// السكرول والفوكس زي ما هو بالظبط.
+function payrollPatchSumCells_(scopeEl, values, withClass){
+  if (!scopeEl || !values) return;
+  const headers = PAYSTATE._flatHeaders || [];
+  scopeEl.querySelectorAll('[data-sum-idx]').forEach(td => {
+    const idx = Number(td.dataset.sumIdx);
+    const v = values[idx]; if (v === undefined) return;
+    td.textContent = v;
+    if (withClass) td.className = 'sm-cell ' + summaryCellClass(headers[idx], v);
+  });
+}
+
 async function payrollCellEdited(row, col, inputEl){
   const val = inputEl.value.trim();
   inputEl.disabled = true;
+  const trEl = inputEl.closest('tr');
   try {
-    await apiPost('payrollSetCell', { sheetName: PAYSTATE.data.sheetName, row, col, value: val });
-    await payrollLoadSheet(); // إعادة تحميل الشيت عشان أعمدة الملخص (المحسوبة بمعادلات) تتحدّث صح
-  } catch(err){ showError(err); inputEl.disabled = false; }
+    const res = await apiPost('payrollSetCell', { sheetName: PAYSTATE.data.sheetName, row, col, value: val, kind: PAYSTATE.kind, year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex });
+    const upd = res && res.update;
+    if (upd) {
+      const flatCells = upd.kind === 'monthly' ? (upd.summaryCells || []) : (upd.weeks || []).flatMap(w => w.summaryCells).concat(upd.monthSummaryCells || []);
+      payrollPatchSumCells_(trEl, flatCells, true);
+      if (upd.totals) {
+        const flatTotals = upd.kind === 'monthly' ? upd.totals : (upd.totals.weeks || []).flatMap(w => w).concat(upd.totals.monthSummaryCells || []);
+        const totalsRow = trEl.closest('tbody').querySelector('tr.tbl-totals-row');
+        payrollPatchSumCells_(totalsRow, flatTotals, false);
+      }
+    } else {
+      await payrollLoadSheet();
+    }
+  } catch(err){ showError(err); }
+  finally { inputEl.disabled = false; }
 }
 // تلوين خلايا الملخص (زي الماستر، وكمان أعمدة الملخص في كشف الحضور الشهري/الاسبوعي —
 // "قيمة الأوفر"، "أيام الغياب"، "خصم أيام"، "إضافات"، "خصومات"، "مسحوبات"، "صافي" إلخ):
