@@ -2340,6 +2340,7 @@ async function payrollMoveDetailsEmployee_(name, direction){
     const res = await apiPost('payrollReorderDetailsEmployee', { name, direction, monthNum: PAYSTATE.monthIndex + 1 });
     if (res.error) throw new Error(res.error);
     await payrollLoadDetails();
+    showToast('✔ تمام، اتنقل الموظف في الشيت', 'success');
   } catch(err){
     showToast('خطأ: '+(err.message||err), 'error');
     document.querySelectorAll('#pd-list-panel button[title="نقل لفوق"], #pd-list-panel button[title="نقل لتحت"]')
