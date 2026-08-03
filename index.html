@@ -542,6 +542,7 @@
   <div class="user-menu">
     <button class="user-menu-btn" onclick="openChangePassModal()"><span class="icon">&#128273;</span><span class="label">تغيير كلمة السر</span></button>
     <button class="user-menu-btn" onclick="logout()"><span class="icon">&#128682;</span><span class="label">تسجيل خروج</span></button>
+    <div class="label" id="buildVersionLabel" style="text-align:center;font-size:10px;color:#6B5E4E;padding:6px 0 2px;opacity:.7;">…</div>
   </div>
 </div>
 
@@ -5110,11 +5111,24 @@ async function submitChangePassword(){
   finally { btn.disabled = false; }
 }
 
+/* ================= Build version (للتأكد إن الـ Deploy فعلاً خد آخر نسخة) ================= */
+async function _loadBuildVersion(){
+  const el = document.getElementById('buildVersionLabel');
+  if (!el) return;
+  try {
+    const d = await apiGet('getBuildInfo', {});
+    el.textContent = 'إصدار السيرفر: ' + (d.version || '?');
+  } catch(e) {
+    el.textContent = 'تعذر التأكد من إصدار السيرفر';
+  }
+}
+
 /* ================= Init ================= */
 if (localStorage.getItem('lm_loggedIn') === '1') {
   document.getElementById('loginWrap').remove();
   document.getElementById('appRoot').style.display = 'flex';
   goTo(sessionStorage.getItem('lm_currentPage') || 'dashboard');
+  _loadBuildVersion();
 } else {
   document.getElementById('l_name').focus();
 }
