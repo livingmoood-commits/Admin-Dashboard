@@ -20,14 +20,7 @@
   body{ font-family:'Cairo',sans-serif; background:var(--cream); color:var(--dark); display:flex; min-height:100vh; overflow-x:hidden; }
   .mono{ font-family:'IBM Plex Mono', monospace; direction:ltr; }
 
-  .sidebar{ width:235px; background:var(--dark); color:#f0e6d8; flex-shrink:0; display:flex; flex-direction:column; padding:22px 0; position:fixed; inset-inline-start:0; top:0; height:100vh; overflow-y:auto; overflow-x:hidden; z-index:20; transition:transform .35s var(--bounce), width .3s var(--bounce); }
-  /* الشريط بقى fixed مش sticky عشان يفضل ثابت 100% مهما حصل سكرول في الصفحة —
-     sticky كان بينكسر بسبب overflow-x:hidden على html/body (سطر ~104) اللي
-     كان بيغيّر الـ scrolling context. بما إن الشريط بقى برّه الـ flex flow،
-     لازم نديله للـ .main هامش يساوي عرضه (القاعدة تحت) عشان محتوى الصفحة
-     مايتلخبطش تحت الشريط. */
-  .sidebar ~ .main{ margin-inline-start:235px; transition:margin .3s var(--bounce); }
-  .sidebar.collapsed ~ .main{ margin-inline-start:72px; }
+  .sidebar{ width:235px; background:var(--dark); color:#f0e6d8; flex-shrink:0; display:flex; flex-direction:column; padding:22px 0; position:sticky; top:0; height:100vh; overflow-y:auto; overflow-x:hidden; transition:transform .35s var(--bounce), width .3s var(--bounce); }
 
   /* ===== Sidebar collapse (desktop) ===== */
   .sidebar-toggle{ position:absolute; top:14px; left:10px; width:28px; height:28px; border-radius:50%; background:var(--gold); color:var(--dark); border:2px solid var(--dark); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:14px; font-weight:800; line-height:1; z-index:5; transition:transform .3s var(--bounce), background .2s, color .2s; }
@@ -135,7 +128,6 @@
       opacity:0; pointer-events:none; transition:opacity .3s;
     }
     .sidebar-overlay.open{ opacity:1; pointer-events:auto; }
-    .sidebar ~ .main, .sidebar.collapsed ~ .main{ margin-inline-start:0; }
     .main{ padding:16px 14px calc(74px + env(safe-area-inset-bottom, 0px)) 14px; max-width:100%; width:100%; }
     .topbar{ align-items:center; }
 
@@ -315,13 +307,7 @@
   th.qa-col-hl{ outline:2px solid var(--gold); outline-offset:-2px; }
   textarea.pay-cell.qa-col-hl{ box-shadow:inset 0 0 0 2px var(--gold) !important; }
   tr.qa-emp-hl td{ background:#fdf6e3; }
-  td.pay-emp-name{ min-width:110px; max-width:150px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   td.pay-emp-name.qa-emp-hl{ background:var(--gold) !important; color:var(--white) !important; }
-  /* أيقونة الملاحظة الصغيرة في ركن خلية اليوم (جدول الحضور) — رمادية باهتة لو
-     فاضية (تلميح إنك تقدر تضيف)، وذهبية واضحة لو فيها ملاحظة فعلاً محفوظة. */
-  .pay-note-btn{ all:unset; position:absolute; top:1px; left:1px; z-index:3; width:15px; height:15px; line-height:15px; text-align:center; font-size:9px; border-radius:4px; cursor:pointer; opacity:.35; background:#fff; box-shadow:0 0 0 1px var(--border); }
-  .pay-note-btn:hover{ opacity:1; }
-  .pay-note-btn.has-note{ opacity:1; background:var(--gold); box-shadow:0 0 0 1px var(--gold-dim); }
   textarea.pay-cell.qa-target-hl{ box-shadow:inset 0 0 0 3px var(--red) !important; }
   /* تلوين أعمدة شيت الـ Master (إجمالي الشهر لكل موظف) — بيتلوّن بس لما القيمة فعلاً != 0،
      عشان "0" في عمود إجمالي معناه "مفيش حاجة اتسجلت" مش غياب زي خانة اليوم الفردية. */
@@ -747,23 +733,6 @@ function showToast(msg, kind){
     el.classList.remove('show');
     setTimeout(() => el.remove(), 300);
   }, life);
-}
-
-// ===== إشارة تحميل موحّدة لأي زرار إجراء (حذف وغيره) =====
-// بتحفظ شكل الزرار الأصلي، تعطّله وتحط سبينر + نص "جاري..." لحد ما العملية
-// تخلص. لو العملية نجحت وعملت إعادة رسم للجدول (اللي بيشيل الزرار القديم من
-// الـ DOM خالص) مفيش داعي نرجّعه. لو فشلت (أو الزرار لسه موجود لأي سبب)
-// بيرجع لشكله الطبيعي تاني عشان المستخدم يقدر يحاول تاني.
-async function withBusyBtn_(btn, busyLabel, action){
-  if (!btn) return action();
-  const original = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>' + busyLabel;
-  try {
-    return await action();
-  } finally {
-    if (document.body.contains(btn)) { btn.disabled = false; btn.innerHTML = original; }
-  }
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -1488,7 +1457,7 @@ function renderEmployeesListPanel(){
             <button class="btn btn-sm" title="نقل لفوق" ${i===0?'disabled':''} onclick="empMoveEmployee_('${e.name.replace(/'/g,"\\'")}','up')">▲</button>
             <button class="btn btn-sm" title="نقل لتحت" ${i===visible.length-1?'disabled':''} onclick="empMoveEmployee_('${e.name.replace(/'/g,"\\'")}','down')">▼</button>
             <button class="btn btn-sm btn-outline" onclick='editEmployee(${JSON.stringify(e).replace(/'/g,"&#39;")})'>تعديل</button>
-            <button class="btn btn-sm btn-danger" onclick="deleteEmployeeConfirm('${e.name.replace(/'/g,"\\'")}', this)">حذف</button></td>
+            <button class="btn btn-sm btn-danger" onclick="deleteEmployeeConfirm('${e.name.replace(/'/g,"\\'")}')">حذف</button></td>
       </tr>`).join('') : `<tr><td colspan="9" class="empty">${emptyMsg}</td></tr>`}</tbody>
     </table></div>
   `;
@@ -1536,16 +1505,13 @@ async function empMoveEmployee_(name, direction){
   }
   finally { _empMoveBusy = false; }
 }
-async function deleteEmployeeConfirm(name, btn){
+async function deleteEmployeeConfirm(name){
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح "'+name+'"؟', 'حذف الموظف'))) return;
-  await withBusyBtn_(btn, 'جاري الحذف...', async () => {
-    try {
-      const res = await apiPost('payrollDeleteDetailsEmployee', { id: name, monthNum: EMPSTATE.monthIndex + 1 });
-      if (res.error) throw new Error(res.error);
-      await empLoadDetails();
-      showToast('✔ تمام، اتمسح الموظف', 'success');
-    } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
-  });
+  try {
+    const res = await apiPost('payrollDeleteDetailsEmployee', { id: name, monthNum: EMPSTATE.monthIndex + 1 });
+    if (res.error) throw new Error(res.error);
+    empLoadDetails();
+  } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 
 /* ================= مرتبات — كشف الحضور الشهري القابل للتعديل مباشرة =================
@@ -1801,42 +1767,14 @@ async function payrollLoadSheet(){
  * empIdx/dayIdx (ترتيب الموظف/اليوم في الجدول المعروض، مش row/col الفعليين في
  * الشيت) بيتحطوا في data-* عشان دالة اللصق الذكي (payrollHandlePaste) تعرف
  * تتحرك صح بين الخلايا المجاورة لو المستخدم لصق نطاق من إكسل/جوجل شيتس. */
-function payrollDayCellHtml_(row, col, value, empIdx, dayIdx, iso, empName, note){
-  const hasNote = !!String(note || '').trim();
-  // ⚠️ إضافة: أيقونة ملاحظة صغيرة في ركن كل خلية يوم — بتبقى ذهبية لو فيها Note
-  // فعلاً محفوظة في الشيت (تقدر تعرفها من غير ما تفتحها، وبالتمرير عليها بالماوس
-  // بتظهرلك المعاينة كاملة كـ tooltip). دوسة عليها بتفتح مربع تعديل: تقدر تعدّل
-  // النص وتحفظ، أو تمسحه خالص وتحفظ فاضي عشان يتشال تمامًا.
-  const noteBtn = `<button type="button" class="pay-note-btn${hasNote ? ' has-note' : ''}"
-    data-note="${qEsc(note || '')}"
-    title="${hasNote ? qEsc(note) : 'مفيش ملاحظة على الخلية دي — دوس تضيف'}"
-    onclick="payrollEditCellNote_(event, ${row}, ${col}, this)">📝</button>`;
-  return `<td style="padding:2px;position:relative;">${noteBtn}<textarea class="d-input pay-cell ${payCellClass(value)}" rows="2"
+function payrollDayCellHtml_(row, col, value, empIdx, dayIdx, iso, empName){
+  return `<td style="padding:2px;"><textarea class="d-input pay-cell ${payCellClass(value)}" rows="2"
     data-row="${row}" data-col="${col}" data-emp-idx="${empIdx}" data-day-idx="${dayIdx}"
     data-iso="${qEsc(iso || '')}" data-emp="${qEsc(empName || '')}"
     style="text-align:center;font-size:11px;padding:4px 2px;resize:vertical;min-width:70px;line-height:1.35;"
     oninput="payCellRecolor(this)"
     onchange="payrollCellEdited(${row}, ${col}, this)"
     onpaste="payrollHandlePaste(event, ${empIdx}, ${dayIdx})">${qEsc(value)}</textarea></td>`;
-}
-// دوسة على أيقونة الملاحظة — بتفتح مربع نص بالمحتوى الحالي (لو موجود)، تقدر تعدّله
-// وتحفظ، أو تفضيه خالص وتحفظ عشان الملاحظة تتمسح تمامًا من الشيت.
-async function payrollEditCellNote_(ev, row, col, btn){
-  ev.stopPropagation();
-  const current = btn.dataset.note || '';
-  const val = await openGenPrompt('اكتب/عدّل ملاحظة الخلية دي (سيبها فاضية عشان تمسحها):', current, 'ملاحظة الخلية');
-  if (val === null) return; // اتلغى
-  const sheetName = PAYSTATE.data && PAYSTATE.data.sheetName; if (!sheetName) return;
-  await withBusyBtn_(btn, '', async () => {
-    try {
-      await apiPost('payrollSetCellNote', { sheetName, row, col, note: val });
-      const trimmed = String(val || '').trim();
-      btn.classList.toggle('has-note', !!trimmed);
-      btn.dataset.note = trimmed;
-      btn.title = trimmed || 'مفيش ملاحظة على الخلية دي — دوس تضيف';
-      showToast(trimmed ? '✔ تمام، اتحفظت الملاحظة' : '✔ تمام، اتمسحت الملاحظة', 'success');
-    } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
-  });
 }
 
 /* توزيع حسب نوع الشيت (شهري = بلوك واحد متصل / اسبوعي = كذا بلوك أسبوع) */
@@ -1864,7 +1802,7 @@ function payrollRenderWeeklyTable_(box, data){
 
   const row1 = `
     <tr>
-      <th rowspan="2" style="position:sticky;right:0;background:var(--dark);z-index:2;min-width:110px;max-width:150px;">اسم الموظف</th>
+      <th rowspan="2" style="position:sticky;right:0;background:var(--dark);z-index:2;">اسم الموظف</th>
       ${data.weekHeaderBlocks.map(wb => `<th colspan="${wb.dayHeaders.length + wb.sumHeaders.length}" style="background:#3a2f22;">الأسبوع ${qEsc(wb.label)}</th>`).join('')}
       ${sepThRowspan}
       <th colspan="${data.monthSummaryHeaders.length}" style="background:#3a2f22;">إجمالي الشهر</th>
@@ -1884,7 +1822,7 @@ function payrollRenderWeeklyTable_(box, data){
       const dayStartCol = data.weekHeaderBlocks[wi].dayStartCol;
       const dayDates = data.weekHeaderBlocks[wi].dayDates || [];
       const sumHeaders = data.weekHeaderBlocks[wi].sumHeaders;
-      const daysHtml = wk.dayCells.map((v, di) => payrollDayCellHtml_(r.row, dayStartCol + di, v, empIdx, dayCursor + di, dayDates[di], r.name, (wk.dayNotes||[])[di])).join('');
+      const daysHtml = wk.dayCells.map((v, di) => payrollDayCellHtml_(r.row, dayStartCol + di, v, empIdx, dayCursor + di, dayDates[di], r.name)).join('');
       dayCursor += wk.dayCells.length;
       const sumHtml = wk.summaryCells.map((v, si) => `<td class="sm-cell ${summaryCellClass(sumHeaders[si], v)}">${qEsc(v)}</td>`).join('');
       return daysHtml + sumHtml;
@@ -1934,12 +1872,12 @@ function payrollRenderMonthlyTable_(box, data){
   const bodyRows = data.rows.map((r, empIdx) => `
     <tr data-emp="${qEsc(r.name)}">
       <td class="pay-emp-name" data-emp="${qEsc(r.name)}" style="position:sticky;right:0;background:var(--white);font-weight:700;">${qEsc(r.name)}</td>
-      ${r.dayCells.map((v, i) => payrollDayCellHtml_(r.row, data.dayStart + i, v, empIdx, i, (data.dayDates||[])[i], r.name, (r.dayNotes||[])[i])).join('')}
+      ${r.dayCells.map((v, i) => payrollDayCellHtml_(r.row, data.dayStart + i, v, empIdx, i, (data.dayDates||[])[i], r.name)).join('')}
       ${r.summaryCells.map((v, si) => `<td class="sm-cell ${summaryCellClass(data.summaryHeaders[si], v)}">${qEsc(v)}</td>`).join('')}
     </tr>`).join('');
 
   const totalsHtml = data.totals
-    ? `<tr class="tbl-totals-row"><td style="position:sticky;right:0;min-width:110px;max-width:150px;">الإجمالي</td>${'<td></td>'.repeat(data.dayHeaders.length)}${data.totals.map(v => `<td>${qEsc(v)}</td>`).join('')}</tr>`
+    ? `<tr class="tbl-totals-row"><td style="position:sticky;right:0;">الإجمالي</td>${'<td></td>'.repeat(data.dayHeaders.length)}${data.totals.map(v => `<td>${qEsc(v)}</td>`).join('')}</tr>`
     : '';
 
   box.innerHTML = `
@@ -1948,7 +1886,7 @@ function payrollRenderMonthlyTable_(box, data){
       <div class="tbl-wrap tbl-wrap-scroll" style="max-height:70vh;">
         <table>
           <thead><tr>
-            <th style="position:sticky;right:0;background:var(--dark);z-index:2;min-width:110px;max-width:150px;">اسم الموظف</th>
+            <th style="position:sticky;right:0;background:var(--dark);z-index:2;">اسم الموظف</th>
             ${data.dayHeaders.map((h,i) => `<th data-iso="${qEsc((data.dayDates||[])[i] || '')}" style="min-width:62px;white-space:pre-line;">${qEsc(h)}</th>`).join('')}
             ${data.summaryHeaders.map(h => `<th style="background:#3a2f22;min-width:112px;">${qEsc(h)}</th>`).join('')}
           </tr></thead>
@@ -2135,7 +2073,7 @@ function payrollQaActionRowHtml_(iso, ai, a){
         ${PAY_PROJECTS.map(p => `<option value="${qEsc(p)}" ${a.project===p?'selected':''}>${qEsc(p)}</option>`).join('')}
       </select>
       <input type="number" step="0.5" min="0" class="d-input" style="width:100px;" placeholder="ساعات (اختياري)" value="${a.hours||''}" oninput="payrollQaSetHours('${iso}',${ai},this.value)">
-      <input type="number" class="d-input" style="width:100px;" placeholder="مبلغ السهرة (ج)" value="${a.amount||''}" oninput="payrollQaSetAmount('${iso}',${ai},this.value)">
+      <input type="number" class="d-input" style="width:100px;" placeholder="سيبها فاضية = سعر كل موظف تلقائي" value="${a.amount||''}" oninput="payrollQaSetAmount('${iso}',${ai},this.value)">
       <button type="button" class="btn btn-sm" onclick="payrollQaRemoveAction('${iso}',${ai})">✕</button>
     </div>`;
   }
@@ -2166,12 +2104,12 @@ function payrollQaActionRowHtml_(iso, ai, a){
 function payrollQaSetType(iso, ai, val){
   const cur = PAY_QA.actions[iso][ai] || {};
   if (val === 'سهرة') {
-    // ⚠️ إضافة: أول ما تختار "سهرة"، مبلغها بيتملي أوتوماتيك بـ"سعر السهرة العادي"
-    // بتاع أول موظف مختار (لو موجود له سعر مسجّل)، وتقدر تعدله عادي بعد كده —
-    // مبيأثرش على السعر الافتراضي المخزّن أصلاً لحد ما تعدله من فورم الموظف نفسه.
-    const firstEmp = (PAY_QA.emps && PAY_QA.emps[0]) || '';
-    const defaultRate = firstEmp && PAY_EVENING_RATES[firstEmp] ? PAY_EVENING_RATES[firstEmp] : '';
-    PAY_QA.actions[iso][ai] = { type: 'سهرة', project: cur.project || '', hours: cur.hours || '', amount: cur.amount || defaultRate || '' };
+    // ⚠️ تعديل: مبقيناش بنملي مبلغ تلقائي من أول موظف مختار بس — لو فيه أكتر من
+    // موظف بسعر سهرة مختلف، الرقم ده كان بيتطبق غلط على الباقي. دلوقتي سايبينها
+    // فاضية دايمًا؛ لو المستخدم سابها فاضية، الباك اند بيحسب المبلغ لوحده لكل
+    // موظف على حدة من "سعر السهرة العادي" بتاعه (عمود H) وقت الحفظ. لو المستخدم
+    // كتب رقم يدوي هنا، الرقم ده بيتطبق حرفيًا على كل الموظفين المختارين.
+    PAY_QA.actions[iso][ai] = { type: 'سهرة', project: cur.project || '', hours: cur.hours || '', amount: cur.amount || '' };
   } else if (val === 'ساعات_مشروع') {
     PAY_QA.actions[iso][ai] = { type: 'ساعات_مشروع', project: cur.project || '', hours: cur.hours || '' };
   } else {
@@ -2461,10 +2399,10 @@ function payrollRenderDetailsListPanel_(){
       <tbody>${visible.length ? visible.map((e,i) => `<tr>
         <td>${e.name}</td><td>${e.paymentType}</td><td>${e.joinDate || '—'}</td><td>${fmt(e.dailyRate)} ج</td><td>${fmt(e.hourlyRate)} ج</td><td>${e.eveningRate ? fmt(e.eveningRate)+' ج' : '—'}</td><td>${fmt(e.weeklyPay)} ج</td><td>${fmt(e.monthlyPay)} ج</td>
         <td style="white-space:nowrap;">
-            <button class="btn btn-sm" title="نقل لفوق" ${i===0?'disabled':''} onclick="payrollMoveDetailsEmployee_('${e.name.replace(/'/g,"\\'")}','up', this)">▲</button>
-            <button class="btn btn-sm" title="نقل لتحت" ${i===visible.length-1?'disabled':''} onclick="payrollMoveDetailsEmployee_('${e.name.replace(/'/g,"\\'")}','down', this)">▼</button>
+            <button class="btn btn-sm" title="نقل لفوق" ${i===0?'disabled':''} onclick="payrollMoveDetailsEmployee_('${e.name.replace(/'/g,"\\'")}','up')">▲</button>
+            <button class="btn btn-sm" title="نقل لتحت" ${i===visible.length-1?'disabled':''} onclick="payrollMoveDetailsEmployee_('${e.name.replace(/'/g,"\\'")}','down')">▼</button>
             <button class="btn btn-sm btn-outline" onclick='payrollEditDetailsEmployee_(${JSON.stringify(e).replace(/'/g,"&#39;")})'>تعديل</button>
-            <button class="btn btn-sm btn-danger" onclick="payrollDeleteDetailsEmployeeConfirm_('${e.name.replace(/'/g,"\\'")}', this)">حذف</button></td>
+            <button class="btn btn-sm btn-danger" onclick="payrollDeleteDetailsEmployeeConfirm_('${e.name.replace(/'/g,"\\'")}')">حذف</button></td>
       </tr>`).join('') : `<tr><td colspan="9" class="empty">${emptyMsg}</td></tr>`}</tbody>
     </table></div>
   `;
@@ -2490,34 +2428,30 @@ function payrollEditDetailsEmployee_(e){
   if (afterField) afterField.style.display = 'none';
   window.scrollTo(0,0);
 }
-async function payrollMoveDetailsEmployee_(name, direction, btn){
+async function payrollMoveDetailsEmployee_(name, direction){
   if (_payDetailsBusy) return;
   _payrollDetailsSetBusy_(true);
-  await withBusyBtn_(btn, '', async () => {
-    try {
-      const res = await apiPost('payrollReorderDetailsEmployee', { name, direction, monthNum: PAYSTATE.monthIndex + 1 });
-      if (res.error) throw new Error(res.error);
-      await payrollLoadDetails();
-      showToast('✔ تمام، اتنقل الموظف في الشيت', 'success');
-    } catch(err){
-      showToast('خطأ: '+(err.message||err), 'error');
-    }
-  });
-  _payrollDetailsSetBusy_(false);
+  try {
+    const res = await apiPost('payrollReorderDetailsEmployee', { name, direction, monthNum: PAYSTATE.monthIndex + 1 });
+    if (res.error) throw new Error(res.error);
+    await payrollLoadDetails();
+    showToast('✔ تمام، اتنقل الموظف في الشيت', 'success');
+  } catch(err){
+    showToast('خطأ: '+(err.message||err), 'error');
+  }
+  finally { _payrollDetailsSetBusy_(false); }
 }
-async function payrollDeleteDetailsEmployeeConfirm_(name, btn){
+async function payrollDeleteDetailsEmployeeConfirm_(name){
   if (_payDetailsBusy) return;
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح "'+name+'"؟', 'حذف الموظف'))) return;
   _payrollDetailsSetBusy_(true);
-  await withBusyBtn_(btn, 'جاري الحذف...', async () => {
-    try {
-      const res = await apiPost('payrollDeleteDetailsEmployee', { id: name, monthNum: PAYSTATE.monthIndex + 1 });
-      if (res.error) throw new Error(res.error);
-      await payrollLoadDetails();
-      showToast('✔ تمام، اتمسح الموظف من الشيت', 'success');
-    } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
-  });
-  _payrollDetailsSetBusy_(false);
+  try {
+    const res = await apiPost('payrollDeleteDetailsEmployee', { id: name, monthNum: PAYSTATE.monthIndex + 1 });
+    if (res.error) throw new Error(res.error);
+    await payrollLoadDetails();
+    showToast('✔ تمام، اتمسح الموظف من الشيت', 'success');
+  } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
+  finally { _payrollDetailsSetBusy_(false); }
 }
 
 /* ================= Treasury / Cash Flow ================= */
@@ -2699,7 +2633,7 @@ function renderTreasuryMoves(moves){
     <tbody>${moves.map(m=>`<tr><td>${m.date}</td><td>${m.desc}</td><td><span class="pill ${m.type==='إيداع'?'dep':'exp'}">${m.type}</span></td><td>${m.project||'—'}</td>
       <td style="color:${m.type==='إيداع'?'var(--green)':'var(--red)'}">${fmt(m.amount)} ج</td><td>${fmt(m.balanceAfter)} ج</td>
       <td style="white-space:nowrap;"><button class="btn btn-sm btn-outline" onclick="editTreasuryMove('${m.id}')">تعديل</button>
-      <button class="btn btn-sm btn-danger" onclick="deleteTreasuryMoveConfirm('${m.id}', this)">حذف</button></td></tr>`).join('')}</tbody></table></div>`;
+      <button class="btn btn-sm btn-danger" onclick="deleteTreasuryMoveConfirm('${m.id}')">حذف</button></td></tr>`).join('')}</tbody></table></div>`;
 }
 /* شيت "ايداعات" منفصل عن شيت "الخزنة" — قراءة فقط، من غير أي أزرار تعديل/حذف
  * لأن الشيت ده مصدره سكريبت تاني بره الداشبورد ده. */
@@ -2736,12 +2670,9 @@ function cancelMoveEdit(){
   document.getElementById('moveBtn').textContent = 'حفظ الحركة';
   document.getElementById('cancelEditBtn').style.display = 'none';
 }
-async function deleteTreasuryMoveConfirm(id, btn){
+async function deleteTreasuryMoveConfirm(id){
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح الحركة دي؟ (هيتم إعادة حساب الرصيد تلقائي)', 'حذف الحركة'))) return;
-  await withBusyBtn_(btn, 'جاري الحذف...', async () => {
-    try { await apiPost('deleteTreasuryMove', { id }); await renderTreasury(); showToast('✔ تمام، اتمسحت الحركة', 'success'); }
-    catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
-  });
+  try { await apiPost('deleteTreasuryMove', { id }); renderTreasury(); } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 
 /* ================= مصاريف يومية — إدخال سريع سطر لكل مصروف
@@ -3558,14 +3489,11 @@ function renderProductsList(products){
   if (!products.length){ box.innerHTML = '<div class="empty">مفيش منتجات مسجلة</div>'; return; }
   box.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>المنتج</th><th>المشروع</th><th>خامات</th><th>عمالة</th><th>الإجمالي</th><th></th></tr></thead>
     <tbody>${products.map(p=>`<tr><td>${p.name}</td><td>${p.project}</td><td>${fmt(p.materialsCost)} ج</td><td>${fmt(p.laborCost)} ج</td><td><b>${fmt(p.totalCost)} ج</b></td>
-      <td><button class="btn btn-sm btn-danger" onclick="deleteProductConfirm('${p.id}', this)">حذف</button></td></tr>`).join('')}</tbody></table></div>`;
+      <td><button class="btn btn-sm btn-danger" onclick="deleteProductConfirm('${p.id}')">حذف</button></td></tr>`).join('')}</tbody></table></div>`;
 }
-async function deleteProductConfirm(id, btn){
+async function deleteProductConfirm(id){
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح المنتج ده؟', 'حذف المنتج'))) return;
-  await withBusyBtn_(btn, 'جاري الحذف...', async () => {
-    try { await apiPost('deleteProduct', { id }); await renderProducts(); showToast('✔ تمام، اتمسح المنتج', 'success'); }
-    catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
-  });
+  try { await apiPost('deleteProduct', { id }); renderProducts(); } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 
 /* ================= Installation Cost (تكلفة التركيب) ================= */
@@ -3693,14 +3621,11 @@ function renderInstallList(items){
   if (!items.length){ box.innerHTML = '<div class="empty">مفيش عمليات تركيب مسجلة</div>'; return; }
   box.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>العملية</th><th>المشروع</th><th>بنود</th><th>عمالة</th><th>الإجمالي</th><th></th></tr></thead>
     <tbody>${items.map(p=>`<tr><td>${p.name}</td><td>${p.project}</td><td>${fmt(p.itemsCost)} ج</td><td>${fmt(p.laborCost)} ج</td><td><b>${fmt(p.totalCost)} ج</b></td>
-      <td><button class="btn btn-sm btn-danger" onclick="deleteInstallConfirm('${p.id}', this)">حذف</button></td></tr>`).join('')}</tbody></table></div>`;
+      <td><button class="btn btn-sm btn-danger" onclick="deleteInstallConfirm('${p.id}')">حذف</button></td></tr>`).join('')}</tbody></table></div>`;
 }
-async function deleteInstallConfirm(id, btn){
+async function deleteInstallConfirm(id){
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح عملية التركيب دي؟', 'حذف عملية التركيب'))) return;
-  await withBusyBtn_(btn, 'جاري الحذف...', async () => {
-    try { await apiPost('deleteInstall', { id }); await renderInstall(); showToast('✔ تمام، اتمسحت عملية التركيب', 'success'); }
-    catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
-  });
+  try { await apiPost('deleteInstall', { id }); renderInstall(); } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 
 /* ================= Debts (ديون) ================= */
@@ -3846,9 +3771,9 @@ function renderDebtsList(debts){
       <td style="color:${d.remaining>0.01?'var(--red)':'var(--green)'};font-weight:700;">${fmt(d.remaining)} ج</td>
       <td><span class="pill ${d.settled?'dep':'exp'}">${d.settled?'مسدد':'باقي'}</span></td>
       <td style="display:flex;gap:6px;">
-        ${!d.settled ? `<button class="btn btn-sm btn-outline" onclick="payDebtPrompt('${d.id}', ${d.remaining}, this)">سداد</button>` : ''}
+        ${!d.settled ? `<button class="btn btn-sm btn-outline" onclick="payDebtPrompt('${d.id}', ${d.remaining})">سداد</button>` : ''}
         <button class="btn btn-sm btn-outline" onclick="editDebtStart('${d.id}')">تعديل</button>
-        <button class="btn btn-sm btn-danger" onclick="deleteDebtConfirm('${d.id}', this)">حذف</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteDebtConfirm('${d.id}')">حذف</button>
       </td>
     </tr>`).join('')}</tbody>
     <tfoot><tr class="tbl-totals-row">
@@ -3860,28 +3785,22 @@ function renderDebtsList(debts){
     </tr></tfoot>
     </table></div>`;
 }
-async function payDebtPrompt(id, remaining, btn){
+async function payDebtPrompt(id, remaining){
   const val = await openGenPrompt('المبلغ المسدد دلوقتي (من إجمالي الباقي '+fmt(remaining)+' ج):', remaining, 'سداد دين');
   if (val === null) return;
   const amount = qNum(val);
   if (!(amount > 0)) return showToast('اكتب مبلغ صحيح أكبر من صفر', 'error');
-  await withBusyBtn_(btn, 'جاري الحفظ...', async () => {
-    try {
-      const { debts } = await apiGet('listDebts');
-      const d = debts.find(x => x.id === id); if (!d) return;
-      const newPaid = d.paid + amount;
-      await apiPost('updateDebt', { debt: { id, total: d.total, paid: newPaid } });
-      await renderDebts();
-      showToast('✔ تمام، اتسجل السداد', 'success');
-    } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
-  });
+  try {
+    const { debts } = await apiGet('listDebts');
+    const d = debts.find(x => x.id === id); if (!d) return;
+    const newPaid = d.paid + amount;
+    await apiPost('updateDebt', { debt: { id, total: d.total, paid: newPaid } });
+    renderDebts();
+  } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
-async function deleteDebtConfirm(id, btn){
+async function deleteDebtConfirm(id){
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح الدين ده؟', 'حذف الدين'))) return;
-  await withBusyBtn_(btn, 'جاري الحذف...', async () => {
-    try { await apiPost('deleteDebt', { id }); await renderDebts(); showToast('✔ تمام، اتمسح الدين', 'success'); }
-    catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
-  });
+  try { await apiPost('deleteDebt', { id }); renderDebts(); } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 
 /* ================= Fixed Expenses ================= */
@@ -3902,7 +3821,7 @@ async function renderFixedExp(token) {
           </form>
           <h3 style="margin-top:18px;">القائمة</h3>
           <div class="tbl-wrap"><table><thead><tr><th>الاسم</th><th>المبلغ الشهري</th><th></th></tr></thead>
-          <tbody>${items.length ? items.map(i=>`<tr><td>${i.name}</td><td>${fmt(i.amount)} ج</td><td><button class="btn btn-sm btn-danger" onclick="deleteFixedExpConfirm('${i.id}', this)">حذف</button></td></tr>`).join('') : `<tr><td colspan="3" class="empty">مفيش مصاريف ثابتة مسجلة</td></tr>`}</tbody></table></div>
+          <tbody>${items.length ? items.map(i=>`<tr><td>${i.name}</td><td>${fmt(i.amount)} ج</td><td><button class="btn btn-sm btn-danger" onclick="deleteFixedExpConfirm('${i.id}')">حذف</button></td></tr>`).join('') : `<tr><td colspan="3" class="empty">مفيش مصاريف ثابتة مسجلة</td></tr>`}</tbody></table></div>
         </div>
         <div class="panel">
           <h3>توزيع المصاريف الثابتة على المشاريع</h3>
@@ -3923,12 +3842,9 @@ async function renderFixedExp(token) {
     });
   } catch(err){ showError(err); }
 }
-async function deleteFixedExpConfirm(id, btn){
+async function deleteFixedExpConfirm(id){
   if (!(await openGenConfirm('متأكد؟', 'حذف'))) return;
-  await withBusyBtn_(btn, 'جاري الحذف...', async () => {
-    try { await apiPost('deleteFixedExpense', { id }); await renderFixedExp(); showToast('✔ تمام، اتمسح المصروف', 'success'); }
-    catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
-  });
+  try { await apiPost('deleteFixedExpense', { id }); renderFixedExp(); } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 
 /* ================= مسحوبات شركاء (3 شركاء ثابتين) ================= */
@@ -4026,7 +3942,7 @@ function pwRenderColumn(partnerName){
           <td><input type="date" class="d-input" style="font-size:11.5px;padding:4px;" value="${qEsc(it.date)}" onfocus="this.select()" onchange="pwUpdateItem('${it.id}','${qEscJs(partnerName)}','date',this.value)"></td>
           <td><input type="text" class="d-input" style="font-size:12px;padding:4px;" value="${qEsc(it.item)}" onchange="pwUpdateItem('${it.id}','${qEscJs(partnerName)}','item',this.value)"></td>
           <td><input type="text" inputmode="numeric" class="d-input ltr-num" style="font-size:12px;padding:4px;" value="${it.amount || ''}" onkeypress="return /[0-9.]/.test(event.key)" onchange="pwUpdateItem('${it.id}','${qEscJs(partnerName)}','amount',this.value)"></td>
-          <td><button type="button" class="btn-icon" title="حذف" onclick="pwDeleteItem('${it.id}','${qEscJs(partnerName)}', this)">🗑</button></td>
+          <td><button type="button" class="btn-icon" title="حذف" onclick="pwDeleteItem('${it.id}','${qEscJs(partnerName)}')">🗑</button></td>
         </tr>`).join('');
   }
   pwRenderPending(partnerName);
@@ -4162,17 +4078,15 @@ async function pwUpdateItem(id, partnerName, field, value){
   } catch(err){ showToast('خطأ: ' + (err.message || err), 'error'); }
 }
 
-async function pwDeleteItem(id, partnerName, btn){
+async function pwDeleteItem(id, partnerName){
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح البند ده؟', 'حذف'))) return;
-  await withBusyBtn_(btn, '', async () => {
-    try {
-      await apiPost('deletePartnerWithdrawal', { id });
-      PWSTATE.data = await apiGet('listPartnerWithdrawals');
-      pwRenderColumn(partnerName);
-      pwRefreshTotalsUI();
-      showToast('✔ تمام، اتمسح البند', 'success');
-    } catch(err){ showToast('خطأ: ' + (err.message || err), 'error'); }
-  });
+  try {
+    await apiPost('deletePartnerWithdrawal', { id });
+    PWSTATE.data = await apiGet('listPartnerWithdrawals');
+    pwRenderColumn(partnerName);
+    pwRefreshTotalsUI();
+    showToast('اتمسح', 'success');
+  } catch(err){ showToast('خطأ: ' + (err.message || err), 'error'); }
 }
 
 /* ================= Quotation (عروض الأسعار) — full app ================= */
@@ -4257,7 +4171,7 @@ async function qRenderHome(token){
             </div>
             <div class="ci-actions">
               <button class="ci-badge" onclick='qOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>فتح ←</button>
-              <button class="btn btn-sm btn-danger" onclick="qDeleteCustomer('${c.name.replace(/'/g,"\\'")}', this)">🗑 حذف</button>
+              <button class="btn btn-sm btn-danger" onclick="qDeleteCustomer('${c.name.replace(/'/g,"\\'")}')">🗑 حذف</button>
             </div>
           </div>`).join('') : `<div class="empty">مفيش كوتيشنات لسه</div>`}
         </div>
@@ -4314,17 +4228,14 @@ async function qOpenCustomer(c){
   }
 }
 
-async function qDeleteCustomer(name, btn){
+async function qDeleteCustomer(name){
   if (!(await openGenConfirm('هل تريد حذف كوتيشن "'+name+'" نهائياً؟', 'حذف الكوتيشن'))) return;
   const navSnap = _navToken; const myTok = ++_qActionToken;
-  await withBusyBtn_(btn, 'جاري الحذف...', async () => {
-    try {
-      await apiPost('quoteDeleteCustomer', { name });
-      if (_navToken !== navSnap || _qActionToken !== myTok) return;
-      qRenderHome();
-      showToast('✔ تمام، اتمسح الكوتيشن', 'success');
-    } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
-  });
+  try {
+    await apiPost('quoteDeleteCustomer', { name });
+    if (_navToken !== navSnap || _qActionToken !== myTok) return;
+    qRenderHome();
+  } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 
 function qGoHome(){ try{ sessionStorage.removeItem('lm_quoteSession'); }catch(e){} QSTATE = { subpage:'home', customer:null, rows:[], discount:{percent:0,amount:0}, dollar:QCFG.defaultDollar }; qRenderHome(); }
@@ -4835,7 +4746,7 @@ function pRenderClistPanel(){
         </div>
         <div class="ci-actions">
           <button class="ci-badge" onclick='pOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>فتح ←</button>
-          <button class="btn btn-sm btn-danger" onclick="pDeleteCustomer('${c.name.replace(/'/g,"\\'")}', this)">🗑 حذف</button>
+          <button class="btn btn-sm btn-danger" onclick="pDeleteCustomer('${c.name.replace(/'/g,"\\'")}')">🗑 حذف</button>
         </div>
       </div>`;
     }).join('') : `<div class="empty">${emptyMsg}</div>`}
@@ -4893,17 +4804,14 @@ async function pOpenCustomer(c){
   }
 }
 
-async function pDeleteCustomer(name, btn){
+async function pDeleteCustomer(name){
   if (!(await openGenConfirm('هل تريد حذف سجل "'+name+'" نهائياً؟', 'حذف السجل'))) return;
   const navSnap = _navToken; const myTok = ++_pActionToken;
-  await withBusyBtn_(btn, 'جاري الحذف...', async () => {
-    try {
-      await apiPost('payDeleteCustomer', { name });
-      if (_navToken !== navSnap || _pActionToken !== myTok) return;
-      pRenderHome();
-      showToast('✔ تمام، اتمسح السجل', 'success');
-    } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
-  });
+  try {
+    await apiPost('payDeleteCustomer', { name });
+    if (_navToken !== navSnap || _pActionToken !== myTok) return;
+    pRenderHome();
+  } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 
 function pGoHome(){ try{ sessionStorage.removeItem('lm_paySession'); }catch(e){} PSTATE = { subpage:'home', customer:null, rows:[] }; pRenderHome(); }
