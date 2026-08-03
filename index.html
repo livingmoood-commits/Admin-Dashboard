@@ -2358,15 +2358,17 @@ async function payrollDeleteDetailsEmployeeConfirm_(name){
 /* ================= Treasury / Cash Flow ================= */
 let _treasuryMoves = [];
 let _deposits = [];
+let _allProjectsForTreasury = [];
 let _editingMoveId = null;
 let _movesFilters = { date:'', type:'all', project:'', amountOp:'', amountVal:'', desc:'' };
 
 async function renderTreasury(token) {
   try {
-    const [summary, movesData, depositsData] = await Promise.all([apiGet('getTreasurySummary'), apiGet('getTreasuryMoves', {}), apiGet('getDeposits', {})]);
+    const [summary, movesData, depositsData, projectsData] = await Promise.all([apiGet('getTreasurySummary'), apiGet('getTreasuryMoves', {}), apiGet('getDeposits', {}), apiGet('listProjects', {})]);
     if (isStaleNav(token)) return;
     _treasuryMoves = movesData.moves;
     _deposits = depositsData.moves || [];
+    _allProjectsForTreasury = projectsData.projects || []; // ⚠️ إضافة: أسماء المشاريع الحقيقية (تبويبات ملف "مصاريف المشاريع") — لعمل اقتراحات في حقل "المشروع" تحت
     _editingMoveId = null;
     _movesFilters = { date:'', type:'all', project:'', amountOp:'', amountVal:'', desc:'' };
     document.getElementById('content').innerHTML = `
@@ -2386,7 +2388,10 @@ async function renderTreasury(token) {
           </div>
           <div class="form-row">
             <div class="field"><label>البيان</label><input autocomplete="off" id="m_desc" required placeholder="مثال: مرتب أسبوعي، دفعة عميل..."></div>
-            <div class="field"><label>المشروع (اختياري)</label><input autocomplete="off" id="m_project" placeholder="اسم المشروع لو مرتبطة بيه"></div>
+            <div class="field"><label>المشروع (اختياري)</label>
+              <input autocomplete="off" id="m_project" list="m-project-list" placeholder="اختار من المشاريع الموجودة أو اكتب اسم مشروع جديد">
+              <datalist id="m-project-list">${_allProjectsForTreasury.map(p => `<option value="${qEsc(p)}">`).join('')}</datalist>
+            </div>
           </div>
           <div style="display:flex;gap:8px;align-items:center;">
             <button type="submit" class="btn btn-primary" id="moveBtn">حفظ الحركة</button>
