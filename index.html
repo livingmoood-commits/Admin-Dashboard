@@ -1279,6 +1279,11 @@ async function empLoadDetails(token){
             </div>
             <input type="hidden" id="e_hourlyRate">
             <div class="field"><label>سعر السهرة العادي (ج) — اختياري</label><input autocomplete="off" type="number" id="e_eveningRate" step="1" min="0" placeholder="بيتملي أوتوماتيك في فورم السهرة، وتقدر تعدله كل مرة"></div>
+            <div class="field" id="e_afterField"><label>حط الموظف الجديد تحت</label>
+              <select id="e_afterName"><option value="">في آخر القايمة (الوضع الافتراضي)</option>
+                ${_empList.map(e => `<option value="${qEsc(e.name)}">${qEsc(e.name)}</option>`).join('')}
+              </select>
+            </div>
             <button type="submit" class="btn btn-primary" id="empSubmitBtn">حفظ الموظف</button>
             <button type="button" class="btn btn-outline" id="empResetBtn">إضافة جديد</button>
             <div class="msg" id="empMsg"></div>
@@ -1310,7 +1315,9 @@ async function empLoadDetails(token){
       };
       try {
         const action = originalName ? 'payrollUpdateDetailsEmployee' : 'payrollAddDetailsEmployee';
-        const res = await apiPost(action, { employee, monthNum });
+        // afterName بس وقت الإضافة (موظف جديد) — مالهاش معنى وقت التعديل
+        const afterName = originalName ? undefined : (document.getElementById('e_afterName').value || undefined);
+        const res = await apiPost(action, { employee, monthNum, afterName });
         if (res.error) throw new Error(res.error);
         msg.className='msg ok'; msg.textContent = 'تم الحفظ بنجاح';
         empLoadDetails();
@@ -1387,6 +1394,8 @@ function resetEmployeeForm(){
   document.getElementById('e_originalName').value='';
   document.getElementById('empForm').reset();
   empUpdatePeriodLabel();
+  const afterField = document.getElementById('e_afterField');
+  if (afterField) afterField.style.display = ''; // إضافة موظف جديد — يظهر تاني
 }
 function editEmployee(e){
   document.getElementById('e_originalName').value = e.name;
@@ -1398,6 +1407,8 @@ function editEmployee(e){
   document.getElementById('e_hourlyRate').value = e.hourlyRate || '';
   document.getElementById('e_eveningRate').value = e.eveningRate || '';
   empUpdatePeriodLabel();
+  const afterField = document.getElementById('e_afterField');
+  if (afterField) afterField.style.display = 'none'; // تعديل موظف موجود — "حط تحت" مالهاش معنى هنا
   window.scrollTo(0,0);
 }
 // ⚠️ قفل بسيط بيمنع أي نقل تاني (سواء نفس الزرار كذا دوسة سريعة، أو زرار
@@ -2032,7 +2043,7 @@ function payrollQaRemoveAction(iso, ai){
   payrollQaRenderEditors_();
 }
 
-async function payrollQaSave(){
+async function payrollQaSave(force){
   if (!PAY_QA.emps.length) { showToast('اختار موظف واحد على الأقل', 'error'); return; }
   if (!PAY_QA.dates.length) { showToast('اختار يوم واحد على الأقل', 'error'); return; }
   const entries = PAY_QA.dates.map(iso => ({ date: iso, actions: PAY_QA.actions[iso], notes: PAY_QA.notes[iso] || '' }));
@@ -2040,8 +2051,17 @@ async function payrollQaSave(){
   btn.disabled = true; btn.textContent = 'جاري الحفظ...';
   try {
     // ⚠️ إضافة: employeeName بقى ممكن يبقى مصفوفة أسامي — نفس الـ entries بتتطبق على كل موظف فيها بنداء واحد للباك اند
-    const res = await apiPost('payrollQuickAddEntries', { year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex, kind: PAYSTATE.kind, employeeName: PAY_QA.emps, entries });
+    const res = await apiPost('payrollQuickAddEntries', { year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex, kind: PAYSTATE.kind, employeeName: PAY_QA.emps, entries, force: !!force });
     if (res.error) { showToast('خطأ: ' + res.error, 'error'); return; }
+    // ⚠️ إضافة: لو الموظف (أو أي موظف من المختارين) هيتعدّى 9 ساعات عمل في نفس اليوم
+    // على المشاريع (سواء مشروع واحد أو متقسمة)، السيرفر مش بيكتب حاجة ويرجّع
+    // needsConfirm بدل ما يرمي خطأ — بنسأل المستخدم وبعدين نعيد الإرسال بـ force=true لو وافق.
+    if (res.needsConfirm) {
+      btn.disabled = false; btn.textContent = 'حفظ الإضافة';
+      const ok = await openGenConfirm(res.message, 'تأكيد ساعات العمل');
+      if (ok) await payrollQaSave(true);
+      return;
+    }
     showToast(PAY_QA.emps.length > 1 ? `تم الحفظ لـ ${PAY_QA.emps.length} موظفين` : 'تم الحفظ', 'success');
     payrollLoadSheet(); // بيعيد رسم الجدول (وبيعمل reset لفورم الإضافة تلقائي عن طريق payrollQuickAddPanelHtml_)
   } catch(err) { showToast('خطأ: ' + (err.message || err), 'error'); }
@@ -2182,6 +2202,11 @@ async function payrollLoadDetails(){
             </div>
             <input type="hidden" id="pd_hourlyRate">
             <div class="field"><label>سعر السهرة العادي (ج) — اختياري</label><input autocomplete="off" type="number" id="pd_eveningRate" step="1" min="0" placeholder="بيتملي أوتوماتيك في فورم السهرة، وتقدر تعدله كل مرة"></div>
+            <div class="field" id="pd_afterField"><label>حط الموظف الجديد تحت</label>
+              <select id="pd_afterName"><option value="">في آخر القايمة (الوضع الافتراضي)</option>
+                ${_payDetailsList.map(e => `<option value="${qEsc(e.name)}">${qEsc(e.name)}</option>`).join('')}
+              </select>
+            </div>
             <button type="submit" class="btn btn-primary" id="pdSubmitBtn">حفظ الموظف</button>
             <button type="button" class="btn btn-outline" id="pdResetBtn">إضافة جديد</button>
             <div class="msg" id="pdMsg"></div>
@@ -2213,7 +2238,9 @@ async function payrollLoadDetails(){
       };
       try {
         const action = originalName ? 'payrollUpdateDetailsEmployee' : 'payrollAddDetailsEmployee';
-        const res = await apiPost(action, { employee, monthNum });
+        // afterName بس وقت الإضافة (موظف جديد) — مالهاش معنى وقت التعديل
+        const afterName = originalName ? undefined : (document.getElementById('pd_afterName').value || undefined);
+        const res = await apiPost(action, { employee, monthNum, afterName });
         if (res.error) throw new Error(res.error);
         msg.className='msg ok'; msg.textContent = 'تم الحفظ بنجاح';
         payrollLoadDetails();
@@ -2283,6 +2310,8 @@ function payrollResetDetailsForm_(){
   document.getElementById('pd_originalName').value='';
   document.getElementById('pdForm').reset();
   payrollDetailsUpdatePeriodLabel_();
+  const afterField = document.getElementById('pd_afterField');
+  if (afterField) afterField.style.display = '';
 }
 function payrollEditDetailsEmployee_(e){
   document.getElementById('pd_originalName').value = e.name;
@@ -2294,6 +2323,8 @@ function payrollEditDetailsEmployee_(e){
   document.getElementById('pd_hourlyRate').value = e.hourlyRate || '';
   document.getElementById('pd_eveningRate').value = e.eveningRate || '';
   payrollDetailsUpdatePeriodLabel_();
+  const afterField = document.getElementById('pd_afterField');
+  if (afterField) afterField.style.display = 'none';
   window.scrollTo(0,0);
 }
 // ⚠️ نفس فكرة _empMoveBusy بالظبط (منفصل عن صفحة "الموظفين") — يمنع أي نقل
@@ -3177,8 +3208,10 @@ async function renderProjects(token) {
     document.getElementById('content').innerHTML = `
       <div class="panel">
         <h3>ملخص تكلفة المشاريع (${projects.length})</h3>
-        ${projects.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>ساعات العمالة</th><th>تكلفة العمالة</th><th>تكلفة الخامات</th><th>إجمالي التكلفة</th><th></th></tr></thead>
+        ${projects.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>ساعات العمالة</th><th>تكلفة العمالة</th><th>تكلفة الخامات</th><th>إجمالي التكلفة</th><th>الإيرادات</th><th>صافي الربح</th><th></th></tr></thead>
         <tbody>${projects.map(p => `<tr><td>${p.project}</td><td>${fmt(p.laborHours)}</td><td>${fmt(p.laborCost)} ج</td><td>${fmt(p.materialsCost)} ج</td><td><b>${fmt(p.totalCost)} ج</b></td>
+          <td>${p.financials ? fmt(p.financials.revenue)+' ج' : '—'}</td>
+          <td>${p.netProfit===null ? '—' : `<b style="color:${p.netProfit>=0?'var(--green)':'var(--red)'}">${fmt(p.netProfit)} ج</b>`}</td>
           <td><button class="btn btn-sm btn-outline" onclick="showProjectDetail('${p.project.replace(/'/g,"\\'")}')">تفاصيل</button></td></tr>`).join('')}</tbody></table></div>`
         : `<div class="empty">مفيش مشاريع لسه — أضف شيت جديد في ملف "مصاريف المشاريع + الخزنة" باسم المشروع</div>`}
       </div>
@@ -3202,6 +3235,7 @@ async function showProjectDetail(name){
           <div class="card clickable" onclick="showProjectMaterialsModal(_projectDetailCache)"><div class="label">تكلفة الخامات</div><div class="value gold">${fmt(d.materialsCost)} ج</div></div>
           <div class="card"><div class="label">إجمالي التكلفة</div><div class="value green">${fmt(d.totalCost)} ج</div></div>
           ${d.financials ? `<div class="card"><div class="label">الإيرادات المسجلة</div><div class="value green">${fmt(d.financials.revenue)} ج</div></div>` : ''}
+          ${d.netProfit!==null ? `<div class="card"><div class="label">صافي الربح</div><div class="value ${d.netProfit>=0?'green':'red'}">${fmt(d.netProfit)} ج</div></div>` : `<div class="card"><div class="label">صافي الربح</div><div class="value" style="color:var(--muted);font-size:13px;">لسه مفيش إيرادات مسجلة</div></div>`}
         </div>
         <h3 style="margin-top:6px;">آخر سجلات الساعات على المشروع</h3>
         ${d.recentHours.length ? `<div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>الموظف</th><th>ساعات</th><th>سهرة</th><th>التكلفة</th></tr></thead>
