@@ -2243,8 +2243,9 @@ async function payrollLoadDetails(){
         const afterName = originalName ? undefined : (document.getElementById('pd_afterName').value || undefined);
         const res = await apiPost(action, { employee, monthNum, afterName });
         if (res.error) throw new Error(res.error);
+        await payrollLoadDetails();
         msg.className='msg ok'; msg.textContent = 'تم الحفظ بنجاح';
-        payrollLoadDetails();
+        showToast(originalName ? '✔ تمام، اتحفظ التعديل في الشيت' : '✔ تمام، اتضاف الموظف في الشيت', 'success');
       } catch(err){ msg.className='msg err'; msg.textContent = 'خطأ: '+(err.message||err); }
       finally { btn.disabled=false; btn.textContent='حفظ الموظف'; }
     });
@@ -2353,7 +2354,8 @@ async function payrollDeleteDetailsEmployeeConfirm_(name){
   try {
     const res = await apiPost('payrollDeleteDetailsEmployee', { id: name, monthNum: PAYSTATE.monthIndex + 1 });
     if (res.error) throw new Error(res.error);
-    payrollLoadDetails();
+    await payrollLoadDetails();
+    showToast('✔ تمام، اتمسح الموظف من الشيت', 'success');
   } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 
