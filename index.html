@@ -980,11 +980,27 @@ function _isNetworkError(msg){
 }
 // أول ما النت يقطع: بنلوّن شارة "متصل" باللون الأحمر ونغيّر النص.
 // أول ما النت يرجع: بنعمل reload تلقائي كامل للصفحة، عشان كل حاجة تتحمّل تاني من الأول بشكل نضيف.
+let _onlineReloadTimer = null;
 window.addEventListener('offline', () => {
   const b = document.getElementById('liveBadge');
   if (b) { b.textContent = 'مفيش اتصال بالإنترنت'; b.style.background = '#fbe2e2'; b.style.color = '#c0392b'; }
+  // ⚠️ إصلاح باج الريلود المتكرر: لو كان فيه ريلود مجدول من مرة "online" سابقة
+  // وقطع النت تاني قبل ما يتنفذ، نلغيه — عشان ميحصلش ريلود وسط قطع تاني.
+  if (_onlineReloadTimer) { clearTimeout(_onlineReloadTimer); _onlineReloadTimer = null; }
 });
-window.addEventListener('online', () => { location.reload(); });
+// ⚠️ إصلاح باج "بيعمل ريلود مرتين لتلاتة وبعدين بيثبت": النت المتقطع (خصوصًا موبايل
+// دატا) بيبعت أحداث offline/online كذا مرة خلال ثواني قليلة قبل ما يستقر فعليًا —
+// وكان كل حدث "online" بيعمل location.reload() فوري، فالصفحة كانت بتترفرش كذا مرة
+// ورا بعض (وأي حاجة المستخدم بيكتبها وسط كده بتضيع). دلوقتي بنستنى النت يفضل شغال
+// فعليًا 4 ثواني متواصلة قبل ما نعمل reload، ولو قطع تاني في الأثناء (offline فوق)
+// بيتلغي الجدول ونرجع نستنى تاني — فمفيش ريلود إلا لما النت يبقى مستقر فعلاً.
+window.addEventListener('online', () => {
+  if (_onlineReloadTimer) clearTimeout(_onlineReloadTimer);
+  _onlineReloadTimer = setTimeout(() => {
+    _onlineReloadTimer = null;
+    if (navigator.onLine) location.reload();
+  }, 4000);
+});
 // الأسبوع عندنا بيبدأ السبت وينتهي الخميس (الجمعة أجازة) — بيرجع {from, to} لأقرب سبت وخميس اللي بعده
 function currentWeekRange(){
   const now = new Date();
