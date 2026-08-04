@@ -561,6 +561,9 @@
   .toast-item.show{ opacity:1; transform:translateY(0); }
   .toast-item.success{ background:var(--green); }
   .toast-item.error{ background:var(--red); }
+  .toast-item.undo-toast{ pointer-events:auto; justify-content:space-between; gap:14px; }
+  .toast-undo-btn{ all:unset; cursor:pointer; font-weight:800; text-decoration:underline; color:var(--gold,#D4B483); padding:2px 4px; white-space:nowrap; }
+  .toast-undo-btn:hover{ color:#fff; }
 
   /* ===== تحديد خلايا متعددة + لصق موحّد (زي Google Sheets) — شغال على أي جدول في الموقع ===== */
   td.gsel-on{ background:rgba(184,151,90,.16) !important; }
@@ -796,6 +799,26 @@ function showToast(msg, kind){
     el.classList.remove('show');
     setTimeout(() => el.remove(), 300);
   }, life);
+}
+// توست فيه زرار "تراجع" — لاستخدام عام في أي عملية حذف/مسح تحب تدي المستخدم
+// فرصة يرجعها فيها (مش بس مسح بند الكوتيشن). undoFn بتتنفذ لو ولو بس دُس
+// على الزرار، وبتختفي لوحدها بعد ٦ ثواني لو محدش استخدمها.
+function showUndoToast(msg, undoFn){
+  const wrap = document.getElementById('toast-wrap');
+  if (!wrap) { console.log(msg); return; }
+  const el = document.createElement('div');
+  el.className = 'toast-item undo-toast';
+  const textSpan = document.createElement('span');
+  textSpan.textContent = msg;
+  const btn = document.createElement('button');
+  btn.type = 'button'; btn.className = 'toast-undo-btn'; btn.textContent = 'تراجع';
+  let used = false;
+  const dismiss = () => { el.classList.remove('show'); setTimeout(() => el.remove(), 300); };
+  btn.onclick = () => { if (used) return; used = true; if (undoFn) undoFn(); dismiss(); };
+  el.appendChild(textSpan); el.appendChild(btn);
+  wrap.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  setTimeout(() => { if (!used) dismiss(); }, 6000);
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -4456,7 +4479,26 @@ function qDiscountAmt(){
 }
 function qNetTotal(){ return Math.max(0, qGrand() - qDiscountAmt()); }
 function qAddRow(){ QSTATE.rows.push(qNewRow()); qRenderRows(); qSaveSession(); }
-function qDelRow(id){ QSTATE.rows = QSTATE.rows.filter(r => r._id !== id); qRenderRows(); qSaveSession(); }
+// ⚠️ إضافة: بدل ما مسح بند يبقى نهائي فورًا، بنحتفظ بآخر بند اتمسح وبمكانه
+// جوّه الجدول، وبنوري توست فيه زرار "تراجع" — لو دُست عليه بيرجّع البند
+// بالظبط في نفس الترتيب اللي كان فيه. لو محدش دَس عليه خلال ٦ ثواني بيتنسى.
+let _qLastDeletedRow = null;
+function qDelRow(id){
+  const idx = QSTATE.rows.findIndex(r => r._id === id);
+  if (idx === -1) return;
+  _qLastDeletedRow = { row: QSTATE.rows[idx], index: idx };
+  QSTATE.rows = QSTATE.rows.filter(r => r._id !== id);
+  qRenderRows(); qSaveSession();
+  showUndoToast('اتمسح البند — تقدر ترجّعه', qUndoDeleteRow);
+}
+function qUndoDeleteRow(){
+  if (!_qLastDeletedRow) return;
+  const { row, index } = _qLastDeletedRow;
+  QSTATE.rows.splice(Math.min(index, QSTATE.rows.length), 0, row);
+  _qLastDeletedRow = null;
+  qRenderRows(); qSaveSession();
+  showToast('✔ رجّعنا البند', 'success');
+}
 function qSetField(id, f, v){ const r = QSTATE.rows.find(r => r._id === id); if (r) r[f] = v; qRefreshTotals(); qSaveSession(); }
 function qSetNumField(id, f, v){ const r = QSTATE.rows.find(r => r._id === id); if (r) r[f] = qNum(v); qRefreshTotals(); qSaveSession(); }
 
@@ -4497,6 +4539,7 @@ function qRefreshTotals(){
 
 function qRenderRows(){
   const tb = document.getElementById('q-body'); if (!tb) return;
+  const n = QSTATE.rows.length;
   tb.innerHTML = QSTATE.rows.map((r,i) => `
     <tr>
       <td style="text-align:center;color:var(--muted);font-size:11px;">${i+1}</td>
@@ -4508,9 +4551,24 @@ function qRenderRows(){
       <td><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" value="${r.price}" onchange="qSetNumField(${r._id},'price',this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
       <td class="num-cell">${fmt(qTot(r))}</td>
       <td><textarea placeholder="ملاحظة..." onchange="qSetField(${r._id},'notes',this.value)">${qEsc(r.notes)}</textarea></td>
-      <td><button type="button" class="btn btn-sm btn-danger" onmousedown="event.preventDefault(); qDelRow(${r._id});">✕</button></td>
+      <td style="white-space:nowrap;">
+        <button type="button" class="btn btn-sm" title="نقل لفوق" ${i===0?'disabled':''} onmousedown="event.preventDefault();" onclick="qMoveRow(${r._id},'up')">▲</button>
+        <button type="button" class="btn btn-sm" title="نقل لتحت" ${i===n-1?'disabled':''} onmousedown="event.preventDefault();" onclick="qMoveRow(${r._id},'down')">▼</button>
+        <button type="button" class="btn btn-sm btn-danger" onmousedown="event.preventDefault(); qDelRow(${r._id});">✕</button>
+      </td>
     </tr>`).join('');
   qRefreshTotals();
+}
+// بتبدّل مكان بند مع اللي فوقه/تحته مباشرة — تعديل في الذاكرة بس (زي باقي
+// تعديلات الكوتيشن) وبيتحفظ فعليًا في الشيت لما تحفظ الكوتيشن عادي.
+function qMoveRow(id, direction){
+  const idx = QSTATE.rows.findIndex(r => r._id === id);
+  if (idx === -1) return;
+  const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+  if (swapIdx < 0 || swapIdx >= QSTATE.rows.length) return;
+  const rows = QSTATE.rows;
+  [rows[idx], rows[swapIdx]] = [rows[swapIdx], rows[idx]];
+  qRenderRows(); qSaveSession();
 }
 
 function qRenderEditor(){
@@ -4553,7 +4611,7 @@ function qRenderEditor(){
           <thead><tr>
             <th style="width:30px;">#</th><th style="width:110px;">النموذج</th><th style="width:130px;">الوحدة</th>
             <th>المطلوب تنفيذه</th><th style="width:60px;">عدد</th><th style="width:90px;">السعر</th>
-            <th style="width:100px;">الإجمالي</th><th style="width:130px;">ملاحظات</th><th style="width:36px;"></th>
+            <th style="width:100px;">الإجمالي</th><th style="width:130px;">ملاحظات</th><th style="width:100px;"></th>
           </tr></thead>
           <tbody id="q-body"></tbody>
         </table>
