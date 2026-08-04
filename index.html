@@ -512,6 +512,9 @@
   #cellNoteModal{ display:none; position:fixed; inset:0; background:rgba(30,26,21,.65); z-index:970; justify-content:center; align-items:center; }
   #cellNoteModal.open{ display:flex; }
   #cellNoteModal.open .q-confirm-card{ animation:modalPop .4s var(--bounce); }
+  #empEditModal{ display:none; position:fixed; inset:0; background:rgba(30,26,21,.65); z-index:970; justify-content:center; align-items:center; overflow-y:auto; padding:20px 0; }
+  #empEditModal.open{ display:flex; }
+  #empEditModal.open .q-confirm-card{ animation:modalPop .4s var(--bounce); }
   .pw-wrap{ position:relative; }
   .pw-wrap input{ padding-inline-end:40px !important; }
   .pw-eye{ position:absolute; inset-inline-end:6px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; padding:6px; line-height:1; color:var(--muted); border-radius:6px; transition:color .2s, background .2s; display:flex; align-items:center; justify-content:center; }
@@ -695,6 +698,38 @@
     <div class="q-confirm-btns">
       <button class="btn btn-primary" onclick="closeCellNoteModal()">تم</button>
     </div>
+  </div>
+</div>
+
+<!-- تعديل بيانات موظف موجود — بوكس منبثق منفصل تمامًا عن فورم "إضافة موظف جديد"
+     (اللي فاضل زي ما هو تحت في نص الصفحة)، عشان تقدر تعدّل من مكانك من غير
+     ما تدوّر/تنزل لحد فورم تاني. -->
+<div id="empEditModal">
+  <div class="q-confirm-card" style="text-align:right;width:min(520px,94vw);">
+    <h3 style="text-align:center;">تعديل بيانات الموظف</h3>
+    <form id="empEditForm">
+      <input type="hidden" id="ee_originalName">
+      <input type="hidden" id="ee_monthNum">
+      <input type="hidden" id="ee_context">
+      <div class="field"><label>اسم الموظف</label><input autocomplete="off" id="ee_name" required></div>
+      <div class="form-row">
+        <div class="field"><label>الطريقة</label>
+          <select id="ee_paymentType"><option value="اسبوعي">اسبوعي</option><option value="شهري">شهري</option></select>
+        </div>
+        <div class="field"><label>تاريخ الانضمام</label><input autocomplete="off" type="date" id="ee_joinDate" required></div>
+      </div>
+      <div class="form-row" id="ee_periodRow">
+        <div class="field" id="ee_dailyField"><label>اليومية (ج)</label><input autocomplete="off" type="number" id="ee_dailyRate" step="1" min="0"></div>
+        <div class="field"><label id="ee_periodPayLabel">الاسبوعي (ج)</label><input autocomplete="off" type="number" id="ee_periodPay" step="1" min="0"></div>
+      </div>
+      <input type="hidden" id="ee_hourlyRate">
+      <div class="field"><label>سعر السهرة العادي (ج) — اختياري</label><input autocomplete="off" type="number" id="ee_eveningRate" step="1" min="0"></div>
+      <div class="msg" id="empEditMsg"></div>
+      <div class="q-confirm-btns">
+        <button type="submit" class="btn btn-primary" id="empEditSubmitBtn">حفظ التعديل</button>
+        <button type="button" class="btn btn-outline" onclick="closeEmpEditModal()">إلغاء</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -1505,7 +1540,7 @@ function renderEmployeesListPanel(){
         <td style="white-space:nowrap;">
             <button class="btn btn-sm" title="نقل لفوق" ${i===0?'disabled':''} onclick="empMoveEmployee_('${e.name.replace(/'/g,"\\'")}','up')">▲</button>
             <button class="btn btn-sm" title="نقل لتحت" ${i===visible.length-1?'disabled':''} onclick="empMoveEmployee_('${e.name.replace(/'/g,"\\'")}','down')">▼</button>
-            <button class="btn btn-sm btn-outline" onclick='editEmployee(${JSON.stringify(e).replace(/'/g,"&#39;")})'>تعديل</button>
+            <button class="btn btn-sm btn-outline" onclick='openEmpEditModal(${JSON.stringify(e).replace(/'/g,"&#39;")}, "employees")'>تعديل</button>
             <button class="btn btn-sm btn-danger" onclick="deleteEmployeeConfirm('${e.name.replace(/'/g,"\\'")}')">حذف</button></td>
       </tr>`).join('') : `<tr><td colspan="9" class="empty">${emptyMsg}</td></tr>`}</tbody>
     </table></div>
@@ -1519,23 +1554,9 @@ function resetEmployeeForm(){
   if (afterField) afterField.style.display = ''; // إضافة موظف جديد — يظهر تاني
 }
 function editEmployee(e){
-  document.getElementById('e_originalName').value = e.name;
-  document.getElementById('e_name').value = e.name;
-  document.getElementById('e_paymentType').value = e.paymentType;
-  document.getElementById('e_joinDate').value = e.joinDate || '';
-  document.getElementById('e_periodPay').value = e.paymentType === 'شهري' ? (e.monthlyPay || '') : (e.weeklyPay || '');
-  document.getElementById('e_dailyRate').value = e.dailyRate || '';
-  document.getElementById('e_hourlyRate').value = e.hourlyRate || '';
-  document.getElementById('e_eveningRate').value = e.eveningRate || '';
-  empUpdatePeriodLabel();
-  const afterField = document.getElementById('e_afterField');
-  if (afterField) afterField.style.display = 'none'; // تعديل موظف موجود — "حط تحت" مالهاش معنى هنا
-  // ⚠️ إصلاح: بوكس "إضافة/تعديل موظف" ده تحت قائمة الموظفين في الصفحة (مش
-  // فوقها)، فكان scrollTo(0,0) بيودّي لأول الصفحة (فوق الفلتر) بدل ما ينزل
-  // على البوكس نفسه. دلوقتي بيسكرول لحد البوكس ويوقف في نص الشاشة عشان تلاقي
-  // نفسك قدام الفورم على طول وتقدر تعدّل من غير ما تدوّر.
-  const formPanel = document.getElementById('empForm');
-  if (formPanel) formPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  // ⚠️ الدالة دي بقت اسم قديم متسيب بس عشان مفيش حاجة تانية بتستدعيها بالاسم
+  // ده — التعديل الفعلي بقى بيحصل من خلال openEmpEditModal (بوكس منبثق).
+  openEmpEditModal(e, 'employees');
 }
 // ⚠️ قفل بسيط بيمنع أي نقل تاني (سواء نفس الزرار كذا دوسة سريعة، أو زرار
 // تاني في نفس اللحظة) لحد ما النقل الحالي يخلص — عشان منبعتش أكتر من طلب
@@ -2582,7 +2603,7 @@ function payrollRenderDetailsListPanel_(){
         <td style="white-space:nowrap;">
             <button class="btn btn-sm" title="نقل لفوق" ${i===0?'disabled':''} onclick="payrollMoveDetailsEmployee_('${e.name.replace(/'/g,"\\'")}','up')">▲</button>
             <button class="btn btn-sm" title="نقل لتحت" ${i===visible.length-1?'disabled':''} onclick="payrollMoveDetailsEmployee_('${e.name.replace(/'/g,"\\'")}','down')">▼</button>
-            <button class="btn btn-sm btn-outline" onclick='payrollEditDetailsEmployee_(${JSON.stringify(e).replace(/'/g,"&#39;")})'>تعديل</button>
+            <button class="btn btn-sm btn-outline" onclick='openEmpEditModal(${JSON.stringify(e).replace(/'/g,"&#39;")}, "details")'>تعديل</button>
             <button class="btn btn-sm btn-danger" onclick="payrollDeleteDetailsEmployeeConfirm_('${e.name.replace(/'/g,"\\'")}')">حذف</button></td>
       </tr>`).join('') : `<tr><td colspan="9" class="empty">${emptyMsg}</td></tr>`}</tbody>
     </table></div>
@@ -2596,19 +2617,9 @@ function payrollResetDetailsForm_(){
   if (afterField) afterField.style.display = '';
 }
 function payrollEditDetailsEmployee_(e){
-  document.getElementById('pd_originalName').value = e.name;
-  document.getElementById('pd_name').value = e.name;
-  document.getElementById('pd_paymentType').value = e.paymentType;
-  document.getElementById('pd_joinDate').value = e.joinDate || '';
-  document.getElementById('pd_periodPay').value = e.paymentType === 'شهري' ? (e.monthlyPay || '') : (e.weeklyPay || '');
-  document.getElementById('pd_dailyRate').value = e.dailyRate || '';
-  document.getElementById('pd_hourlyRate').value = e.hourlyRate || '';
-  document.getElementById('pd_eveningRate').value = e.eveningRate || '';
-  payrollDetailsUpdatePeriodLabel_();
-  const afterField = document.getElementById('pd_afterField');
-  if (afterField) afterField.style.display = 'none';
-  const formPanel = document.getElementById('pdForm');
-  if (formPanel) formPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  // ⚠️ نفس الاسم القديم متسيب لتوافق أي كود تاني بيستدعيه — التعديل الفعلي
+  // بقى بيحصل من خلال openEmpEditModal (بوكس منبثق مشترك مع صفحة الموظفين).
+  openEmpEditModal(e, 'details');
 }
 async function payrollMoveDetailsEmployee_(name, direction){
   if (_payDetailsBusy) return;
@@ -5295,6 +5306,82 @@ async function pSendMailNow(){
   } catch(err){ show('err', '✕ تعذر الاتصال بالسيرفر: ' + friendlyMailError(err.message||String(err))); }
   finally { btn.disabled = false; }
 }
+
+/* ================= تعديل موظف — بوكس منبثق منفصل عن فورم "إضافة موظف جديد" =================
+ * بيتشارك بين صفحة "الموظفين" الرئيسية (context='employees') وتبويب "تفاصيل"
+ * جوه صفحة "مرتبات" (context='details') — نفس الحقول ونفس أكشن الحفظ في الباك
+ * إند (payrollUpdateDetailsEmployee)، وبعد الحفظ بيرجّع يحدّث القائمة المناسبة
+ * حسب الـ context ويقفل البوكس. */
+function openEmpEditModal(e, context){
+  document.getElementById('ee_originalName').value = e.name;
+  document.getElementById('ee_name').value = e.name;
+  document.getElementById('ee_paymentType').value = e.paymentType;
+  document.getElementById('ee_joinDate').value = e.joinDate || '';
+  document.getElementById('ee_periodPay').value = e.paymentType === 'شهري' ? (e.monthlyPay || '') : (e.weeklyPay || '');
+  document.getElementById('ee_dailyRate').value = e.dailyRate || '';
+  document.getElementById('ee_hourlyRate').value = e.hourlyRate || '';
+  document.getElementById('ee_eveningRate').value = e.eveningRate || '';
+  document.getElementById('ee_context').value = context;
+  document.getElementById('ee_monthNum').value = (context === 'employees' ? EMPSTATE.monthIndex : PAYSTATE.monthIndex) + 1;
+  empEditUpdatePeriodLabel_();
+  const msg = document.getElementById('empEditMsg'); msg.className = 'msg'; msg.textContent = '';
+  document.getElementById('empEditModal').classList.add('open');
+}
+function closeEmpEditModal(){
+  document.getElementById('empEditModal').classList.remove('open');
+}
+function empEditUpdatePeriodLabel_(){
+  const isMonthly = document.getElementById('ee_paymentType').value === 'شهري';
+  document.getElementById('ee_periodPayLabel').textContent = isMonthly ? 'قبض الشهر (ج)' : 'الاسبوعي (ج)';
+  document.getElementById('ee_dailyField').style.display = isMonthly ? 'none' : '';
+}
+function empEditRecalcHourly_(daily){
+  document.getElementById('ee_hourlyRate').value = daily > 0 ? Math.round((daily / 9) * 100) / 100 : '';
+}
+function empEditCalcFromPeriodPay_(){
+  const isMonthly = document.getElementById('ee_paymentType').value === 'شهري';
+  const periodPay = Number(document.getElementById('ee_periodPay').value) || 0;
+  const divisor = isMonthly ? 26 : 6;
+  const daily = periodPay > 0 ? Math.round((periodPay / divisor) * 100) / 100 : 0;
+  document.getElementById('ee_dailyRate').value = daily || '';
+  empEditRecalcHourly_(daily);
+}
+function empEditCalcFromDaily_(){
+  const daily = Number(document.getElementById('ee_dailyRate').value) || 0;
+  document.getElementById('ee_periodPay').value = daily > 0 ? Math.round(daily * 6 * 100) / 100 : '';
+  empEditRecalcHourly_(daily);
+}
+document.getElementById('ee_paymentType').addEventListener('change', empEditUpdatePeriodLabel_);
+document.getElementById('ee_periodPay').addEventListener('input', empEditCalcFromPeriodPay_);
+document.getElementById('ee_dailyRate').addEventListener('input', empEditCalcFromDaily_);
+document.getElementById('empEditForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('empEditSubmitBtn'); const msg = document.getElementById('empEditMsg');
+  msg.className = 'msg'; msg.textContent = ''; btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ…';
+  const context = document.getElementById('ee_context').value;
+  const monthNum = parseInt(document.getElementById('ee_monthNum').value, 10);
+  const paymentType = document.getElementById('ee_paymentType').value;
+  const periodPay = document.getElementById('ee_periodPay').value;
+  const employee = {
+    id: document.getElementById('ee_originalName').value,
+    name: document.getElementById('ee_name').value.trim(),
+    paymentType,
+    joinDate: document.getElementById('ee_joinDate').value,
+    dailyRate: document.getElementById('ee_dailyRate').value,
+    hourlyRate: document.getElementById('ee_hourlyRate').value,
+    eveningRate: document.getElementById('ee_eveningRate').value,
+    weeklyPay: paymentType === 'اسبوعي' ? periodPay : undefined,
+    monthlyPay: paymentType === 'شهري' ? periodPay : undefined
+  };
+  try {
+    const res = await apiPost('payrollUpdateDetailsEmployee', { employee, monthNum });
+    if (res.error) throw new Error(res.error);
+    closeEmpEditModal();
+    if (context === 'employees') empLoadDetails(); else payrollLoadDetails();
+    showToast('✔ اتحفظ التعديل بنجاح', 'success');
+  } catch(err){ msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
+  finally { btn.disabled = false; btn.textContent = 'حفظ التعديل'; }
+});
 
 /* ================= Login ================= */
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
