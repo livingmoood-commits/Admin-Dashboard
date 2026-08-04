@@ -1530,7 +1530,12 @@ function editEmployee(e){
   empUpdatePeriodLabel();
   const afterField = document.getElementById('e_afterField');
   if (afterField) afterField.style.display = 'none'; // تعديل موظف موجود — "حط تحت" مالهاش معنى هنا
-  window.scrollTo(0,0);
+  // ⚠️ إصلاح: بوكس "إضافة/تعديل موظف" ده تحت قائمة الموظفين في الصفحة (مش
+  // فوقها)، فكان scrollTo(0,0) بيودّي لأول الصفحة (فوق الفلتر) بدل ما ينزل
+  // على البوكس نفسه. دلوقتي بيسكرول لحد البوكس ويوقف في نص الشاشة عشان تلاقي
+  // نفسك قدام الفورم على طول وتقدر تعدّل من غير ما تدوّر.
+  const formPanel = document.getElementById('empForm');
+  if (formPanel) formPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 // ⚠️ قفل بسيط بيمنع أي نقل تاني (سواء نفس الزرار كذا دوسة سريعة، أو زرار
 // تاني في نفس اللحظة) لحد ما النقل الحالي يخلص — عشان منبعتش أكتر من طلب
@@ -2602,7 +2607,8 @@ function payrollEditDetailsEmployee_(e){
   payrollDetailsUpdatePeriodLabel_();
   const afterField = document.getElementById('pd_afterField');
   if (afterField) afterField.style.display = 'none';
-  window.scrollTo(0,0);
+  const formPanel = document.getElementById('pdForm');
+  if (formPanel) formPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 async function payrollMoveDetailsEmployee_(name, direction){
   if (_payDetailsBusy) return;
