@@ -722,7 +722,7 @@
         <div class="field"><label>تاريخ الانضمام</label><input autocomplete="off" type="date" id="ee_joinDate" required></div>
       </div>
       <div class="form-row" id="ee_periodRow">
-        <div class="field" id="ee_dailyField"><label>اليومية (ج)</label><input autocomplete="off" type="number" id="ee_dailyRate" step="1" min="0"></div>
+        <div class="field" id="ee_dailyField"><label>اليومية (ج)</label><input autocomplete="off" type="number" id="ee_dailyRate" step="any" min="0"></div>
         <div class="field"><label id="ee_periodPayLabel">الاسبوعي (ج)</label><input autocomplete="off" type="number" id="ee_periodPay" step="1" min="0"></div>
       </div>
       <input type="hidden" id="ee_hourlyRate">
@@ -1453,7 +1453,7 @@ async function empLoadDetails(token){
               <div class="field"><label>تاريخ الانضمام</label><input autocomplete="off" type="date" id="e_joinDate" required></div>
             </div>
             <div class="form-row" id="e_periodRow">
-              <div class="field" id="e_dailyField"><label>اليومية (ج)</label><input autocomplete="off" type="number" id="e_dailyRate" step="1" min="0" placeholder="اكتب ده أو الاسبوعي وهيتحسب التاني"></div>
+              <div class="field" id="e_dailyField"><label>اليومية (ج)</label><input autocomplete="off" type="number" id="e_dailyRate" step="any" min="0" placeholder="اكتب ده أو الاسبوعي وهيتحسب التاني"></div>
               <div class="field"><label id="e_periodPayLabel">الاسبوعي (ج)</label><input autocomplete="off" type="number" id="e_periodPay" step="1" min="0" placeholder="اكتب ده أو اليومية وهيتحسب التاني"></div>
             </div>
             <input type="hidden" id="e_hourlyRate">
@@ -2521,7 +2521,7 @@ async function payrollLoadDetails(){
               <div class="field"><label>تاريخ الانضمام</label><input autocomplete="off" type="date" id="pd_joinDate" required></div>
             </div>
             <div class="form-row" id="pd_periodRow">
-              <div class="field" id="pd_dailyField"><label>اليومية (ج)</label><input autocomplete="off" type="number" id="pd_dailyRate" step="1" min="0" placeholder="اكتب ده أو الاسبوعي وهيتحسب التاني"></div>
+              <div class="field" id="pd_dailyField"><label>اليومية (ج)</label><input autocomplete="off" type="number" id="pd_dailyRate" step="any" min="0" placeholder="اكتب ده أو الاسبوعي وهيتحسب التاني"></div>
               <div class="field"><label id="pd_periodPayLabel">الاسبوعي (ج)</label><input autocomplete="off" type="number" id="pd_periodPay" step="1" min="0" placeholder="اكتب ده أو اليومية وهيتحسب التاني"></div>
             </div>
             <input type="hidden" id="pd_hourlyRate">
