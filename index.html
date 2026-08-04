@@ -509,6 +509,9 @@
   #genPromptModal{ display:none; position:fixed; inset:0; background:rgba(30,26,21,.65); z-index:970; justify-content:center; align-items:center; }
   #genPromptModal.open{ display:flex; }
   #genPromptModal.open .q-confirm-card{ animation:modalPop .4s var(--bounce); }
+  #cellNoteModal{ display:none; position:fixed; inset:0; background:rgba(30,26,21,.65); z-index:970; justify-content:center; align-items:center; }
+  #cellNoteModal.open{ display:flex; }
+  #cellNoteModal.open .q-confirm-card{ animation:modalPop .4s var(--bounce); }
   .pw-wrap{ position:relative; }
   .pw-wrap input{ padding-inline-end:40px !important; }
   .pw-eye{ position:absolute; inset-inline-end:6px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; padding:6px; line-height:1; color:var(--muted); border-radius:6px; transition:color .2s, background .2s; display:flex; align-items:center; justify-content:center; }
@@ -671,10 +674,26 @@
   <div class="q-confirm-card">
     <h3 id="genPromptTitle">إدخال قيمة</h3>
     <p id="genPromptMsg"></p>
-    <div class="field" style="margin-bottom:16px;"><input type="text" class="ltr-num" id="genPromptInput" inputmode="decimal"></div>
+    <div class="field" style="margin-bottom:16px;"><input type="text" id="genPromptInput" inputmode="decimal"></div>
     <div class="q-confirm-btns">
       <button class="btn btn-primary" onclick="closeGenPrompt(true)">تأكيد</button>
       <button class="btn btn-outline" onclick="closeGenPrompt(false)">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- ملاحظة الخلية — بتتحفظ تلقائيًا زي أي خلية عادي، من غير زرار "تأكيد" -->
+<div id="cellNoteModal">
+  <div class="q-confirm-card">
+    <h3>ملاحظة الخلية</h3>
+    <p>بتتحفظ لوحدها فورًا وانت بتكتب — زي أي خلية عادي، سيبها فاضية عشان تمسحها</p>
+    <div class="field" style="margin-bottom:8px;">
+      <textarea id="cellNoteInput" rows="4" dir="auto" style="width:100%;box-sizing:border-box;padding:11px 10px;font-size:14px;border:1.5px solid var(--border);border-radius:7px;font-family:inherit;resize:vertical;"
+        oninput="cellNoteOnInput()" onchange="cellNoteFlushSave()" onblur="cellNoteFlushSave()"></textarea>
+    </div>
+    <div id="cellNoteStatus" style="font-size:12px;color:var(--muted);min-height:16px;margin-bottom:14px;"></div>
+    <div class="q-confirm-btns">
+      <button class="btn btn-primary" onclick="closeCellNoteModal()">تم</button>
     </div>
   </div>
 </div>
@@ -1799,7 +1818,7 @@ async function payrollLoadSheet(){
  * تتحرك صح بين الخلايا المجاورة لو المستخدم لصق نطاق من إكسل/جوجل شيتس. */
 function payrollDayCellHtml_(row, col, value, empIdx, dayIdx, iso, empName, note){
   const hasNote = !!(note && String(note).trim());
-  return `<td style="padding:2px;position:relative;"><button type="button" class="pay-note-btn${hasNote ? ' has-note' : ''}" data-row="${row}" data-col="${col}" data-note="${qEsc(note || '')}" title="${hasNote ? 'فيه ملاحظة — دوس تعدّلها' : 'إضافة ملاحظة على الخلية دي'}" onclick="payrollOpenCellNote(this)">📝</button><textarea class="d-input pay-cell ${payCellClass(value)}" rows="2"
+  return `<td style="padding:2px;position:relative;"><button type="button" class="pay-note-btn${hasNote ? ' has-note' : ''}" data-row="${row}" data-col="${col}" data-note="${qEsc(note || '')}" title="${hasNote ? 'فيه ملاحظة — دوس تعدّلها' : 'إضافة ملاحظة على الخلية دي'}" onclick="openCellNoteModal(this)">📝</button><textarea class="d-input pay-cell ${payCellClass(value)}" rows="2"
     data-row="${row}" data-col="${col}" data-emp-idx="${empIdx}" data-day-idx="${dayIdx}"
     data-iso="${qEsc(iso || '')}" data-emp="${qEsc(empName || '')}"
     style="text-align:center;font-size:11px;padding:4px 2px 16px;min-width:70px;line-height:1.35;"
@@ -1807,23 +1826,62 @@ function payrollDayCellHtml_(row, col, value, empIdx, dayIdx, iso, empName, note
     onchange="payrollCellEdited(${row}, ${col}, this)"
     onpaste="payrollHandlePaste(event, ${empIdx}, ${dayIdx})">${qEsc(value)}</textarea></td>`;
 }
-/* دوس على 📝 جوه أي خلية يوم — بيفتح بروومبت بسيط فيه نص الملاحظة الحالية (لو
- * فيه) وتقدر تعدّلها/تمسحها وتحفظها فورًا في الشيت الحقيقي، من غير ما تعمل ريلود
- * للجدول كله — بس الزرار ده نفسه بيتلوّن دهبي/رمادي حسب الحالة الجديدة. */
-async function payrollOpenCellNote(btn){
-  const row = Number(btn.dataset.row), col = Number(btn.dataset.col);
+/* دوس على 📝 جوه أي خلية يوم — بيفتح بوكس فيه نص الملاحظة الحالية (لو فيه)
+ * وأي تغيير بتعمله بيتحفظ لوحده في الشيت الحقيقي زي أي خلية عادي (من غير
+ * زرار "تأكيد")؛ الحفظ بيحصل بعد ما تسيب الكتابة شوية (debounce) أو فور ما
+ * تدوس بره الخانة (blur/change)، وزرار "تم" في الآخر بيقفل البوكس بس مش
+ * شرط تدوسه عشان يتحفظ. */
+let _cellNoteBtn = null;
+let _cellNoteRowCol = null;
+let _cellNoteSaveTimer = null;
+let _cellNoteLastSaved = '';
+
+function openCellNoteModal(btn){
+  if (_cellNoteSaveTimer) { clearTimeout(_cellNoteSaveTimer); cellNoteAutoSave_(); }
+  _cellNoteBtn = btn;
+  _cellNoteRowCol = { row: Number(btn.dataset.row), col: Number(btn.dataset.col) };
   const current = btn.dataset.note || '';
-  const val = await openGenPrompt('ملاحظة الخلية — سيبها فاضية عشان تمسحها', current, 'ملاحظة الخلية');
-  if (val === null) return; // اتلغى
-  const clean = String(val || '').trim();
-  btn.disabled = true;
+  _cellNoteLastSaved = current;
+  const input = document.getElementById('cellNoteInput');
+  input.value = current;
+  document.getElementById('cellNoteStatus').textContent = '';
+  document.getElementById('cellNoteModal').classList.add('open');
+  setTimeout(()=>{ input.focus(); }, 50);
+}
+function closeCellNoteModal(){
+  if (_cellNoteSaveTimer) { clearTimeout(_cellNoteSaveTimer); cellNoteAutoSave_(); }
+  document.getElementById('cellNoteModal').classList.remove('open');
+  _cellNoteBtn = null; _cellNoteRowCol = null;
+}
+function cellNoteOnInput(){
+  clearTimeout(_cellNoteSaveTimer);
+  document.getElementById('cellNoteStatus').textContent = '...';
+  _cellNoteSaveTimer = setTimeout(cellNoteAutoSave_, 700);
+}
+function cellNoteFlushSave(){
+  if (!_cellNoteSaveTimer) return; // مفيش تغيير معلّق يستاهل حفظ
+  clearTimeout(_cellNoteSaveTimer); _cellNoteSaveTimer = null;
+  cellNoteAutoSave_();
+}
+async function cellNoteAutoSave_(){
+  _cellNoteSaveTimer = null;
+  if (!_cellNoteBtn || !_cellNoteRowCol) return;
+  const statusEl = document.getElementById('cellNoteStatus');
+  const clean = String(document.getElementById('cellNoteInput').value || '').trim();
+  if (clean === _cellNoteLastSaved) { if (statusEl) statusEl.textContent = ''; return; } // مفيش تغيير فعلي
+  const btn = _cellNoteBtn, rc = _cellNoteRowCol;
+  if (statusEl) statusEl.textContent = '⏳ جاري الحفظ...';
   try {
-    await apiPost('payrollSetCellNote', { sheetName: PAYSTATE.data.sheetName, row, col, note: clean });
+    await apiPost('payrollSetCellNote', { sheetName: PAYSTATE.data.sheetName, row: rc.row, col: rc.col, note: clean });
+    _cellNoteLastSaved = clean;
     btn.dataset.note = clean;
     btn.classList.toggle('has-note', !!clean);
     btn.title = clean ? 'فيه ملاحظة — دوس تعدّلها' : 'إضافة ملاحظة على الخلية دي';
-  } catch(err){ showError(err); }
-  finally { btn.disabled = false; }
+    if (statusEl && document.getElementById('cellNoteModal').classList.contains('open')) statusEl.textContent = '✔ اتحفظت';
+  } catch(err){
+    if (statusEl && document.getElementById('cellNoteModal').classList.contains('open')) statusEl.textContent = '✕ حصل خطأ في الحفظ';
+    showError(err);
+  }
 }
 
 /* توزيع حسب نوع الشيت (شهري = بلوك واحد متصل / اسبوعي = كذا بلوك أسبوع) */
@@ -4228,8 +4286,21 @@ function pdfFileTitle(prefix, name){
   return clean ? `${prefix} - ${clean}` : prefix;
 }
 // تحويل تاريخ الكوتيشن (صيغة d-M-yyyy أو d/M/yyyy) لصيغة ISO يفهمها input[type=date] والعكس
-function qDateToISO(d){ if(!d) return ''; const p=String(d).trim().split(/[-\/]/); return p.length===3 ? `${p[2]}-${String(p[1]).padStart(2,'0')}-${String(p[0]).padStart(2,'0')}` : ''; }
+function qDateToISO(d){ if(!d) return ''; const p=String(qFormatListDate_(d)).trim().split(/[-\/]/); return p.length===3 ? `${p[2]}-${String(p[1]).padStart(2,'0')}-${String(p[0]).padStart(2,'0')}` : ''; }
 function qDateFromISO(iso){ if(!iso) return ''; const p=iso.split('-'); return p.length===3 ? `${Number(p[2])}-${Number(p[1])}-${p[0]}` : ''; }
+// بعض الكوتيشنات القديمة اتسجل تاريخها كنص خام من JS Date.toString()
+// (زي "Sun Feb 08 2026 00:00:00 GMT+0200 (توقيت شرق أوروبا الرسمي)") بدل صيغة
+// d-M-yyyy البسيطة — الدالة دي بتلاقط الحالة دي وتحوّلها لنفس شكل باقي التواريخ
+// في القائمة، وأي تاريخ سليم أصلاً بيتسيب زي ما هو من غير تعديل.
+function qFormatListDate_(dateVal){
+  const s = String(dateVal || '').trim();
+  if (!s) return '';
+  if (/^[A-Za-z]{3}\s[A-Za-z]{3}\s\d{1,2}\s\d{4}/.test(s)) {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return `${d.getDate()}-${d.getMonth()+1}-${d.getFullYear()}`;
+  }
+  return s;
+}
 function qPopulateCategoryList(){
   const dl = document.getElementById('q-cat-list');
   if (dl) dl.innerHTML = QCFG.categories.map(c => `<option value="${qEsc(c)}"></option>`).join('');
@@ -4285,7 +4356,7 @@ async function qRenderHome(token){
           <div class="c-item">
             <div class="ci-info" onclick='qOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
               <div class="ci-name">${qEsc(c.engineer || c.name)}</div>
-              <div class="ci-meta">${qEsc(c.address || '')} ${c.date ? ' · ' + qEsc(c.date) : ''}</div>
+              <div class="ci-meta">${qEsc(c.address || '')} ${c.date ? ' · ' + qEsc(qFormatListDate_(c.date)) : ''}</div>
             </div>
             <div class="ci-actions">
               <button class="ci-badge" onclick='qOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>فتح ←</button>
@@ -5269,11 +5340,22 @@ function closeGenConfirm(result){
 // بديل جميل لـ window.confirm الافتراضي القبيح — استخدم: await openGenConfirm('رسالة', 'عنوان اختياري')
 
 let _genPromptResolve = null;
-function openGenPrompt(message, defaultValue, title){
+function openGenPrompt(message, defaultValue, title, isNumeric){
   document.getElementById('genPromptTitle').textContent = title || 'إدخال قيمة';
   document.getElementById('genPromptMsg').textContent = message;
   const input = document.getElementById('genPromptInput');
   input.value = (defaultValue===undefined || defaultValue===null) ? '' : defaultValue;
+  if (isNumeric === false) {
+    // نص عربي/إنجليزي مختلط (زي ملاحظة الخلية) — سيب المتصفح يحدد الاتجاه لوحده بدل ما نفرض LTR
+    input.classList.remove('ltr-num');
+    input.setAttribute('dir', 'auto');
+    input.removeAttribute('inputmode');
+  } else {
+    // قيمة رقمية — فرض LTR زي ما كانت
+    input.classList.add('ltr-num');
+    input.setAttribute('dir', 'ltr');
+    input.setAttribute('inputmode', 'decimal');
+  }
   document.getElementById('genPromptModal').classList.add('open');
   setTimeout(()=>{ input.focus(); input.select(); }, 50);
   return new Promise(resolve => { _genPromptResolve = resolve; });
