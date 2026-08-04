@@ -600,7 +600,6 @@
   <button class="sidebar-toggle" id="sidebarToggleBtn" onclick="toggleSidebarCollapse()" title="طي/توسيع القائمة" aria-label="طي القائمة الجانبية">‹</button>
   <div class="nav" id="nav">
     <button data-page="dashboard" class="active"><span class="icon">&#9679;</span><span class="label">نظرة عامة</span></button>
-    <button data-page="employees"><span class="icon">&#128100;</span><span class="label">الموظفين</span></button>
     <button data-page="payroll"><span class="icon">&#128176;</span><span class="label">مرتبات</span></button>
     <div class="sep"></div>
     <button data-page="projects"><span class="icon">&#128188;</span><span class="label">المشاريع</span></button>
@@ -1043,7 +1042,7 @@ async function apiGet(action, params) {
   return data;
 }
 async function apiPost(action, payload) {
-  const actor = localStorage.getItem('lm_userName') || '';
+  const actor = sessionStorage.getItem('lm_userName') || '';
   const data = await _apiFetch(API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // بيتفادى CORS preflight
@@ -1116,7 +1115,6 @@ function checkApiConfigured(){
 /* ================= Router ================= */
 const PAGES = {
   dashboard:    { title:'نظرة عامة', sub:'ملخص شامل لكل حاجة في المصنع', render: renderDashboard },
-  employees:    { title:'الموظفين', sub:'من شيت "تفاصيل المرتبات" مباشرة — اختار أي شهر من الفلتر فوق', render: renderEmployees },
   payroll:      { title:'مرتبات', sub:'كشف حضور الشهر بالظبط زي الشيت — عدّل أي خلية وهتتسجل في الشيت الحقيقي مباشرة', render: renderPayroll },
   treasury:     { title:'الخزنة — Cash Flow', sub:'الرصيد الحالي، الداخل والخارج، الإيداعات والمصاريف', render: renderTreasury },
   dailyExpenses:{ title:'مصاريف يومية', sub:'سجّل كل مصاريف اليوم سطر سطر — بتتسجل في شيت اليوم بتاعك مباشرة', render: renderDailyExpenses },
@@ -1364,252 +1362,6 @@ function renderEmployeesListView(kind){
     <button class="cd-back" onclick="renderEmployeesSummaryView(_empBreakdownCache)">&#8592; رجوع</button>
     <div>${rows}</div>
   `);
-}
-
-/* ================= Employees =================
- * ⚠️ إعادة تصميم: بقت الصفحة دي بتاخد شهر/سنة من فلتر فوق (زي مرتبات بالظبط)
- * وبتستخدم نفس أكشنات تبويب "تفاصيل" (payrollListDetailsForMonth / payrollAddDetailsEmployee /
- * payrollUpdateDetailsEmployee / payrollDeleteDetailsEmployee) بدل الأكشنات القديمة اللي كانت
- * مربوطة بشهر النظام الحالي بس — عشان الصفحتين يبقوا فعليًا نفس الداتا ونفس الشكل. */
-let EMPSTATE = { year: new Date().getFullYear(), monthIndex: new Date().getMonth() };
-let _empList = [];
-let _empFilter = 'all';
-
-function empSaveSession(){
-  try { sessionStorage.setItem('lm_empSession', JSON.stringify({ year: EMPSTATE.year, monthIndex: EMPSTATE.monthIndex })); } catch(e){}
-}
-function empRestoreSession(){
-  try {
-    const raw = sessionStorage.getItem('lm_empSession');
-    if (!raw) return;
-    const s = JSON.parse(raw);
-    if (!s) return;
-    if (s.year) EMPSTATE.year = s.year;
-    if (Number.isInteger(s.monthIndex)) EMPSTATE.monthIndex = s.monthIndex;
-  } catch(e){}
-}
-
-async function renderEmployees(token) {
-  empRestoreSession();
-  document.getElementById('content').innerHTML = `
-    <div class="panel">
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <select id="emp-month" class="d-input" style="width:auto;">${PAY_AR_MONTHS.map((m,i)=>`<option value="${i}" ${i===EMPSTATE.monthIndex?'selected':''}>${qEsc(m)}</option>`).join('')}</select>
-        <input type="number" id="emp-year" value="${EMPSTATE.year}" class="d-input" style="width:90px;">
-        <button class="btn btn-primary btn-sm" id="emp-load-btn">تحميل الشهر</button>
-        <span style="font-size:11.5px;color:var(--muted);">✎ نفس شيت "تفاصيل المرتبات" اللي بيستخدمه تبويب "تفاصيل" في مرتبات — أي تعديل هنا بيتسجل في شهر الفلتر ده بالظبط</span>
-      </div>
-    </div>
-    <div id="emp-box"><div class="loading-row">جاري التحميل...</div></div>
-  `;
-  function empDoLoad_(){
-    EMPSTATE.monthIndex = parseInt(document.getElementById('emp-month').value, 10);
-    EMPSTATE.year = parseInt(document.getElementById('emp-year').value, 10) || EMPSTATE.year;
-    empSaveSession();
-    empLoadDetails();
-  }
-  document.getElementById('emp-load-btn').addEventListener('click', empDoLoad_);
-  document.getElementById('emp-month').addEventListener('change', empDoLoad_);
-  document.getElementById('emp-year').addEventListener('change', empDoLoad_);
-  empLoadDetails(token);
-}
-
-async function empLoadDetails(token){
-  const box = document.getElementById('emp-box');
-  box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
-  try {
-    const monthNum = EMPSTATE.monthIndex + 1;
-    const data = await apiGet('payrollListDetailsForMonth', { monthNum });
-    if (isStaleNav(token)) return;
-    if (_currentPage !== 'employees') return; // ⚠️ إصلاح: كان بيكمل يكتب في عناصر صفحة تانية (زي مرتبات) لو المستخدم غيّر الصفحة قبل ما الطلب يخلص — نفس الحماية الموجودة في payrollLoadDetails بالظبط
-    if (data.error){ box.innerHTML = `<div class="panel"><div class="empty">خطأ: ${qEsc(data.error)}</div></div>`; return; }
-    _empList = data.employees || [];
-    _empFilter = 'all';
-
-    let notice = '';
-    if (data.created) {
-      notice = `<p style="font-size:12px;color:var(--gold);margin-bottom:10px;">✎ شيت "${qEsc(data.sheetName)}" اتعمل دلوقتي تلقائي` +
-        (data.copiedFromName ? ` كنسخة من "${qEsc(data.copiedFromName)}"` : '') + `.</p>`;
-    } else if (data.exists === false) {
-      notice = `<p style="font-size:12px;color:var(--muted);margin-bottom:10px;">شيت "${qEsc(data.sheetName)}" لسه مش موجود — هيتعمل تلقائي أول ما تضيف موظف هنا.</p>`;
-    }
-
-    box.innerHTML = `
-      <div class="stack-v">
-        <div class="panel">
-          <h3>${qEsc(data.sheetName || 'قائمة الموظفين')} (${_empList.length})</h3>
-          ${notice}
-          <div id="emp-list-panel"></div>
-        </div>
-        <div class="panel">
-          <h3>إضافة / تعديل موظف — ${qEsc(PAY_AR_MONTHS[EMPSTATE.monthIndex])} ${EMPSTATE.year}</h3>
-          <form id="empForm">
-            <input autocomplete="off" type="hidden" id="e_originalName">
-            <div class="field"><label>اسم الموظف</label><input autocomplete="off" id="e_name" required></div>
-            <div class="form-row">
-              <div class="field"><label>الطريقة</label>
-                <select id="e_paymentType"><option value="اسبوعي">اسبوعي</option><option value="شهري">شهري</option></select>
-              </div>
-              <div class="field"><label>تاريخ الانضمام</label><input autocomplete="off" type="date" id="e_joinDate" required></div>
-            </div>
-            <div class="form-row" id="e_periodRow">
-              <div class="field" id="e_dailyField"><label>اليومية (ج)</label><input autocomplete="off" type="number" id="e_dailyRate" step="any" min="0" placeholder="اكتب ده أو الاسبوعي وهيتحسب التاني"></div>
-              <div class="field"><label id="e_periodPayLabel">الاسبوعي (ج)</label><input autocomplete="off" type="number" id="e_periodPay" step="1" min="0" placeholder="اكتب ده أو اليومية وهيتحسب التاني"></div>
-            </div>
-            <input type="hidden" id="e_hourlyRate">
-            <div class="field"><label>سعر السهرة العادي (ج) — اختياري</label><input autocomplete="off" type="number" id="e_eveningRate" step="1" min="0" placeholder="بيتملي أوتوماتيك في فورم السهرة، وتقدر تعدله كل مرة"></div>
-            <div class="field" id="e_afterField"><label>حط الموظف الجديد تحت</label>
-              <select id="e_afterName"><option value="">في آخر القايمة (الوضع الافتراضي)</option>
-                ${_empList.map(e => `<option value="${qEsc(e.name)}">${qEsc(e.name)}</option>`).join('')}
-              </select>
-            </div>
-            <button type="submit" class="btn btn-primary" id="empSubmitBtn">حفظ الموظف</button>
-            <button type="button" class="btn btn-outline" id="empResetBtn">إضافة جديد</button>
-            <div class="msg" id="empMsg"></div>
-          </form>
-        </div>
-      </div>
-    `;
-    renderEmployeesListPanel();
-    document.getElementById('empResetBtn').addEventListener('click', () => resetEmployeeForm());
-    document.getElementById('e_paymentType').addEventListener('change', () => empUpdatePeriodLabel());
-    document.getElementById('e_periodPay').addEventListener('input', () => empCalcFromPeriodPay());
-    document.getElementById('e_dailyRate').addEventListener('input', () => empCalcFromDaily());
-    empUpdatePeriodLabel();
-    document.getElementById('empForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const btn = document.getElementById('empSubmitBtn'); const msg = document.getElementById('empMsg');
-      msg.className='msg'; msg.textContent=''; btn.disabled=true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ… ممكن ياخد لحظات لو الشهر مبني';
-      const originalName = document.getElementById('e_originalName').value;
-      const paymentType = document.getElementById('e_paymentType').value;
-      const periodPay = document.getElementById('e_periodPay').value;
-      const employee = {
-        id: originalName || undefined, name: document.getElementById('e_name').value.trim(),
-        paymentType,
-        joinDate: document.getElementById('e_joinDate').value,
-        dailyRate: document.getElementById('e_dailyRate').value, hourlyRate: document.getElementById('e_hourlyRate').value,
-        eveningRate: document.getElementById('e_eveningRate').value,
-        weeklyPay: paymentType === 'اسبوعي' ? periodPay : undefined,
-        monthlyPay: paymentType === 'شهري' ? periodPay : undefined
-      };
-      try {
-        const action = originalName ? 'payrollUpdateDetailsEmployee' : 'payrollAddDetailsEmployee';
-        // afterName بس وقت الإضافة (موظف جديد) — مالهاش معنى وقت التعديل
-        const afterName = originalName ? undefined : (document.getElementById('e_afterName').value || undefined);
-        const res = await apiPost(action, { employee, monthNum, afterName });
-        if (res.error) throw new Error(res.error);
-        msg.className='msg ok'; msg.textContent = 'تم الحفظ بنجاح';
-        empLoadDetails();
-      } catch(err){ msg.className='msg err'; msg.textContent = 'خطأ: '+(err.message||err); }
-      finally { btn.disabled=false; btn.textContent='حفظ الموظف'; }
-    });
-  } catch(err){ showError(err); }
-}
-/* الطريقة بتحدد الحقول الظاهرة وقاسم اليومية:
- * اسبوعي → بيظهر حقلين (اليومية + الاسبوعي)، واحد بس لازم يتكتب والتاني بيتحسب منه أوتوماتيك
- *          (الاسبوعي ÷ 6 = اليومية، أو اليومية × 6 = الاسبوعي)
- * شهري   → بيظهر قبض الشهر بس (+ تاريخ الانضمام)، واليومية بتتحسب: الشهر ÷ 26
- * وفي الحالتين: اليومية ÷ 9 = أجر الساعة (مخزّن جوّه حقل مخفي، مش محتاج إدخال يدوي) */
-function empUpdatePeriodLabel(){
-  const isMonthly = document.getElementById('e_paymentType').value === 'شهري';
-  document.getElementById('e_periodPayLabel').textContent = isMonthly ? 'قبض الشهر (ج)' : 'الاسبوعي (ج)';
-  document.getElementById('e_periodPay').placeholder = isMonthly ? 'اكتب قبض الشهر وهيتحسب الباقي أوتوماتيك' : 'اكتب ده أو اليومية وهيتحسب التاني';
-  // الشهري بيتكتب بس قبض الشهر — حقل اليومية بيتحسب منه ومش محتاج يظهر للإدخال
-  document.getElementById('e_dailyField').style.display = isMonthly ? 'none' : '';
-}
-function empRecalcHourly_(daily){
-  document.getElementById('e_hourlyRate').value = daily > 0 ? Math.round((daily / 9) * 100) / 100 : '';
-}
-function empCalcFromPeriodPay(){
-  const isMonthly = document.getElementById('e_paymentType').value === 'شهري';
-  const periodPay = Number(document.getElementById('e_periodPay').value) || 0;
-  const divisor = isMonthly ? 26 : 6;
-  const daily = periodPay > 0 ? Math.round((periodPay / divisor) * 100) / 100 : 0;
-  document.getElementById('e_dailyRate').value = daily || '';
-  empRecalcHourly_(daily);
-}
-function empCalcFromDaily(){
-  // الحقل ده مش ظاهر أصلاً في الطريقة الشهرية (اليومية بتتحسب من قبض الشهر بس)
-  const daily = Number(document.getElementById('e_dailyRate').value) || 0;
-  document.getElementById('e_periodPay').value = daily > 0 ? Math.round(daily * 6 * 100) / 100 : '';
-  empRecalcHourly_(daily);
-}
-function empSetFilter(val){
-  _empFilter = val;
-  renderEmployeesListPanel();
-}
-function renderEmployeesListPanel(){
-  const panel = document.getElementById('emp-list-panel'); if (!panel) return;
-  const all = _empList;
-  const weeklyCount = all.filter(e => e.paymentType === 'اسبوعي').length;
-  const monthlyCount = all.filter(e => e.paymentType === 'شهري').length;
-  const filter = _empFilter;
-  const visible = filter === 'weekly' ? all.filter(e => e.paymentType === 'اسبوعي')
-                : filter === 'monthly' ? all.filter(e => e.paymentType === 'شهري')
-                : all;
-  const emptyMsg = filter === 'weekly' ? 'مفيش موظفين اسبوعيين'
-                 : filter === 'monthly' ? 'مفيش موظفين شهريين'
-                 : 'مفيش موظفين مسجلين في شيت المرتبات';
-  panel.innerHTML = `
-    <div class="q-steps p-filter-tabs">
-      <div class="step ${filter==='all'?'active':''}" onclick="empSetFilter('all')">الجميع (${all.length})</div>
-      <div class="step ${filter==='weekly'?'active':''}" onclick="empSetFilter('weekly')">قبض اسبوعي (${weeklyCount})</div>
-      <div class="step ${filter==='monthly'?'active':''}" onclick="empSetFilter('monthly')">قبض شهري (${monthlyCount})</div>
-    </div>
-    <div class="tbl-wrap"><table>
-      <thead><tr><th>الاسم</th><th>الطريقة</th><th>تاريخ الانضمام</th><th>اليومية</th><th>أجر الساعة</th><th>سعر السهرة</th><th>قبض الاسبوع</th><th>قبض الشهر</th><th></th></tr></thead>
-      <tbody>${visible.length ? visible.map((e,i) => `<tr>
-        <td>${e.name}</td><td>${e.paymentType}</td><td>${e.joinDate || '—'}</td><td>${fmt(e.dailyRate)} ج</td><td>${fmt(e.hourlyRate)} ج</td><td>${e.eveningRate ? fmt(e.eveningRate)+' ج' : '—'}</td><td>${fmt(e.weeklyPay)} ج</td><td>${fmt(e.monthlyPay)} ج</td>
-        <td style="white-space:nowrap;">
-            <button class="btn btn-sm" title="نقل لفوق" ${i===0?'disabled':''} onclick="empMoveEmployee_('${e.name.replace(/'/g,"\\'")}','up')">▲</button>
-            <button class="btn btn-sm" title="نقل لتحت" ${i===visible.length-1?'disabled':''} onclick="empMoveEmployee_('${e.name.replace(/'/g,"\\'")}','down')">▼</button>
-            <button class="btn btn-sm btn-outline" onclick='openEmpEditModal(${JSON.stringify(e).replace(/'/g,"&#39;")}, "employees")'>تعديل</button>
-            <button class="btn btn-sm btn-danger" onclick="deleteEmployeeConfirm('${e.name.replace(/'/g,"\\'")}')">حذف</button></td>
-      </tr>`).join('') : `<tr><td colspan="9" class="empty">${emptyMsg}</td></tr>`}</tbody>
-    </table></div>
-  `;
-}
-function resetEmployeeForm(){
-  document.getElementById('e_originalName').value='';
-  document.getElementById('empForm').reset();
-  empUpdatePeriodLabel();
-  const afterField = document.getElementById('e_afterField');
-  if (afterField) afterField.style.display = ''; // إضافة موظف جديد — يظهر تاني
-}
-function editEmployee(e){
-  // ⚠️ الدالة دي بقت اسم قديم متسيب بس عشان مفيش حاجة تانية بتستدعيها بالاسم
-  // ده — التعديل الفعلي بقى بيحصل من خلال openEmpEditModal (بوكس منبثق).
-  openEmpEditModal(e, 'employees');
-}
-// ⚠️ قفل بسيط بيمنع أي نقل تاني (سواء نفس الزرار كذا دوسة سريعة، أو زرار
-// تاني في نفس اللحظة) لحد ما النقل الحالي يخلص — عشان منبعتش أكتر من طلب
-// نقل في نفس الوقت ونكسّر الترتيب. بنعطّل كل زراير "▲/▼" فورًا وقت الدوسة.
-let _empMoveBusy = false;
-async function empMoveEmployee_(name, direction){
-  if (_empMoveBusy) return;
-  _empMoveBusy = true;
-  document.querySelectorAll('#emp-list-panel button[title="نقل لفوق"], #emp-list-panel button[title="نقل لتحت"]')
-    .forEach(b => b.disabled = true);
-  try {
-    const res = await apiPost('payrollReorderDetailsEmployee', { name, direction, monthNum: EMPSTATE.monthIndex + 1 });
-    if (res.error) throw new Error(res.error);
-    await empLoadDetails();
-  } catch(err){
-    showToast('خطأ: '+(err.message||err), 'error');
-    // فشل النقل — نرجّع الزراير قابلة للدوس تاني (لو نجح، empLoadDetails() فوق
-    // أصلاً بيرسم الجدول من جديد بزراير جديدة مش معطّلة)
-    document.querySelectorAll('#emp-list-panel button[title="نقل لفوق"], #emp-list-panel button[title="نقل لتحت"]')
-      .forEach(b => b.disabled = false);
-  }
-  finally { _empMoveBusy = false; }
-}
-async function deleteEmployeeConfirm(name){
-  if (!(await openGenConfirm('متأكد إنك عاوز تمسح "'+name+'"؟', 'حذف الموظف'))) return;
-  try {
-    const res = await apiPost('payrollDeleteDetailsEmployee', { id: name, monthNum: EMPSTATE.monthIndex + 1 });
-    if (res.error) throw new Error(res.error);
-    empLoadDetails();
-  } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 
 /* ================= مرتبات — كشف الحضور الشهري القابل للتعديل مباشرة =================
@@ -5366,10 +5118,8 @@ async function pSendMailNow(){
 }
 
 /* ================= تعديل موظف — بوكس منبثق منفصل عن فورم "إضافة موظف جديد" =================
- * بيتشارك بين صفحة "الموظفين" الرئيسية (context='employees') وتبويب "تفاصيل"
- * جوه صفحة "مرتبات" (context='details') — نفس الحقول ونفس أكشن الحفظ في الباك
- * إند (payrollUpdateDetailsEmployee)، وبعد الحفظ بيرجّع يحدّث القائمة المناسبة
- * حسب الـ context ويقفل البوكس. */
+ * بيتفتح من تبويب "تفاصيل" جوه صفحة "مرتبات" — نفس الحقول ونفس أكشن الحفظ في
+ * الباك إند (payrollUpdateDetailsEmployee)، وبعد الحفظ بيرجّع يحدّث القائمة ويقفل البوكس. */
 function openEmpEditModal(e, context){
   document.getElementById('ee_originalName').value = e.name;
   document.getElementById('ee_name').value = e.name;
@@ -5379,8 +5129,8 @@ function openEmpEditModal(e, context){
   document.getElementById('ee_dailyRate').value = e.dailyRate || '';
   document.getElementById('ee_hourlyRate').value = e.hourlyRate || '';
   document.getElementById('ee_eveningRate').value = e.eveningRate || '';
-  document.getElementById('ee_context').value = context;
-  document.getElementById('ee_monthNum').value = (context === 'employees' ? EMPSTATE.monthIndex : PAYSTATE.monthIndex) + 1;
+  document.getElementById('ee_context').value = context || 'details';
+  document.getElementById('ee_monthNum').value = PAYSTATE.monthIndex + 1;
   empEditUpdatePeriodLabel_();
   const msg = document.getElementById('empEditMsg'); msg.className = 'msg'; msg.textContent = '';
   document.getElementById('empEditModal').classList.add('open');
@@ -5416,7 +5166,6 @@ document.getElementById('empEditForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = document.getElementById('empEditSubmitBtn'); const msg = document.getElementById('empEditMsg');
   msg.className = 'msg'; msg.textContent = ''; btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ…';
-  const context = document.getElementById('ee_context').value;
   const monthNum = parseInt(document.getElementById('ee_monthNum').value, 10);
   const paymentType = document.getElementById('ee_paymentType').value;
   const periodPay = document.getElementById('ee_periodPay').value;
@@ -5435,7 +5184,7 @@ document.getElementById('empEditForm').addEventListener('submit', async (e) => {
     const res = await apiPost('payrollUpdateDetailsEmployee', { employee, monthNum });
     if (res.error) throw new Error(res.error);
     closeEmpEditModal();
-    if (context === 'employees') empLoadDetails(); else payrollLoadDetails();
+    payrollLoadDetails();
     showToast('✔ اتحفظ التعديل بنجاح', 'success');
   } catch(err){ msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
   finally { btn.disabled = false; btn.textContent = 'حفظ التعديل'; }
@@ -5452,8 +5201,8 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الدخول...';
   try {
     await apiGet('login', { name, pass }); // apiGet بيرمي Error لو data.error موجودة
-    localStorage.setItem('lm_loggedIn', '1');
-    localStorage.setItem('lm_userName', name);
+    sessionStorage.setItem('lm_loggedIn', '1');
+    sessionStorage.setItem('lm_userName', name);
     document.getElementById('loginWrap').remove(); // مش hide بس — لازم يتشال من الـ DOM خالص عشان كروم يبطل يقترح باسورد "Hazem" المحفوظ في أي حقل تاني في الصفحة
     document.getElementById('appRoot').style.display = 'flex';
     goTo(sessionStorage.getItem('lm_currentPage') || 'dashboard');
@@ -5525,8 +5274,8 @@ document.addEventListener('keydown', (e)=>{
 async function logout(){
   const ok = await openGenConfirm('هل تريد تسجيل الخروج؟', 'تسجيل الخروج');
   if (!ok) return;
-  localStorage.removeItem('lm_loggedIn');
-  localStorage.removeItem('lm_userName');
+  sessionStorage.removeItem('lm_loggedIn');
+  sessionStorage.removeItem('lm_userName');
   sessionStorage.clear();
   window.location.reload(); // بديل بسيط وآمن بدل إظهار فورم اللوجن تاني، وبيضمن مفيش أي بواقي من الصفحة القديمة تأثر على كروم
 }
@@ -5549,7 +5298,7 @@ async function submitChangePassword(){
   if (!oldPass || !newPass || !confirmPass) { show('err', 'من فضلك اكتب كل الحقول'); return; }
   if (newPass !== confirmPass) { show('err', 'كلمة السر الجديدة والتأكيد مش متطابقين'); return; }
   if (newPass.length < 4) { show('err', 'كلمة السر الجديدة قصيرة أوي (4 حروف/أرقام على الأقل)'); return; }
-  const name = localStorage.getItem('lm_userName') || '';
+  const name = sessionStorage.getItem('lm_userName') || '';
   if (!name) { show('err', 'حصل خطأ، برجاء تسجيل الخروج والدخول تاني'); return; }
   const btn = document.getElementById('cpSaveBtn'); btn.disabled = true; show('ok', '⏳ جاري الحفظ...');
   try {
@@ -5573,7 +5322,7 @@ async function _loadBuildVersion(){
 }
 
 /* ================= Init ================= */
-if (localStorage.getItem('lm_loggedIn') === '1') {
+if (sessionStorage.getItem('lm_loggedIn') === '1') {
   document.getElementById('loginWrap').remove();
   document.getElementById('appRoot').style.display = 'flex';
   goTo(sessionStorage.getItem('lm_currentPage') || 'dashboard');
