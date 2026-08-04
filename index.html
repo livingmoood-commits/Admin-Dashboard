@@ -20,7 +20,9 @@
   body{ font-family:'Cairo',sans-serif; background:var(--cream); color:var(--dark); display:flex; min-height:100vh; overflow-x:hidden; }
   .mono{ font-family:'IBM Plex Mono', monospace; direction:ltr; }
 
-  .sidebar{ width:235px; background:var(--dark); color:#f0e6d8; flex-shrink:0; display:flex; flex-direction:column; padding:22px 0; position:sticky; top:0; height:100vh; overflow-y:auto; overflow-x:hidden; transition:transform .35s var(--bounce), width .3s var(--bounce); }
+  .sidebar{ width:235px; background:var(--dark); color:#f0e6d8; flex-shrink:0; display:flex; flex-direction:column; padding:22px 0;
+    position:fixed; top:0; right:0; bottom:0; height:100vh; overflow-y:auto; overflow-x:hidden; z-index:50;
+    transition:transform .35s var(--bounce), width .3s var(--bounce); }
 
   /* ===== Sidebar collapse (desktop) ===== */
   .sidebar-toggle{ position:absolute; top:14px; left:10px; width:28px; height:28px; border-radius:50%; background:var(--gold); color:var(--dark); border:2px solid var(--dark); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:14px; font-weight:800; line-height:1; z-index:5; transition:transform .3s var(--bounce), background .2s, color .2s; }
@@ -60,7 +62,8 @@
   .sidebar-overlay{ display:none; }
   .bottom-nav{ display:none; }
 
-  .main{ flex:1; padding:26px 34px; max-width:1280px; min-width:0; }
+  .main{ flex:1; padding:26px 34px; max-width:1280px; min-width:0; margin-right:235px; transition:margin-right .3s var(--bounce); }
+  .sidebar.collapsed ~ .main{ margin-right:72px; }
   .topbar{ display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:22px; flex-wrap:wrap; gap:10px;}
   .topbar h2{ font-size:23px; font-weight:800; }
   .topbar p{ color:var(--muted); font-size:13px; margin-top:3px; }
@@ -133,7 +136,8 @@
       opacity:0; pointer-events:none; transition:opacity .3s;
     }
     .sidebar-overlay.open{ opacity:1; pointer-events:auto; }
-    .main{ padding:16px 14px calc(74px + env(safe-area-inset-bottom, 0px)) 14px; max-width:100%; width:100%; }
+    .main{ padding:16px 14px calc(74px + env(safe-area-inset-bottom, 0px)) 14px; max-width:100%; width:100%; margin-right:0; }
+    .sidebar.collapsed ~ .main{ margin-right:0; }
     .topbar{ align-items:center; }
 
     /* ===== شريط تنقّل ثابت تحت الشاشة على الموبايل — أهم 4 صفحات
@@ -901,12 +905,17 @@ document.addEventListener('copy', (e) => {
 
 async function _apiFetch(url, opts) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 45000); // فشل بسرعة معقولة بدل ما يعلّق للأبد، مع هامش أكبر لأي ملف كبير فيه شيتات كتير
+  // ⚠️ إصلاح: كان 45 ثانية بس — عمليات زي إضافة/تعديل/حذف/نقل موظف بتعمل إعادة
+  // بناء كاملة لشيتات الحضور (شهري + اسبوعي + Master، كل واحد فيهم معادلات كتير)
+  // في نفس الطلب، وده ممكن ياخد أكتر من 45 ثانية بسهولة في شهر فيه موظفين كتير —
+  // فكان بيقطع الطلب ويوهم إنه "فشل" وهو أصلاً لسه شغال وممكن ينجح فعليًا في
+  // السيرفر بعد ما المتصفح يبقى مستني. دلوقتي بننتظر لحد 100 ثانية قبل ما نعتبره تعليق فعلي.
+  const timeoutId = setTimeout(() => controller.abort(), 100000);
   let res;
   try {
     res = await fetch(url, { ...(opts || {}), signal: controller.signal });
   } catch (err) {
-    if (err.name === 'AbortError') throw new Error('السيرفر بياخد وقت طويل ومارّدش — جرب تاني بعد شوية');
+    if (err.name === 'AbortError') throw new Error('السيرفر بياخد وقت طويل أوي (أكتر من دقيقة ونص) — الأغلب إن الحفظ فعلاً حصل في الشيت، افتح الصفحة وتأكد قبل ما تعيد المحاولة عشان متكررش نفس العملية');
     throw new Error('فشل الاتصال بالسيرفر — تأكد من النت وحاول تاني');
   } finally {
     clearTimeout(timeoutId);
@@ -1393,7 +1402,7 @@ async function empLoadDetails(token){
     document.getElementById('empForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const btn = document.getElementById('empSubmitBtn'); const msg = document.getElementById('empMsg');
-      msg.className='msg'; msg.textContent=''; btn.disabled=true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
+      msg.className='msg'; msg.textContent=''; btn.disabled=true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ… ممكن ياخد لحظات لو الشهر مبني';
       const originalName = document.getElementById('e_originalName').value;
       const paymentType = document.getElementById('e_paymentType').value;
       const periodPay = document.getElementById('e_periodPay').value;
