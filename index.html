@@ -82,7 +82,11 @@
   th{ background:var(--dark); color:#fff; padding:9px 8px; text-align:center; font-weight:600; }
   td{ padding:8px 8px; text-align:center; border-bottom:1px solid var(--border); }
   tr:nth-child(even):not(.tbl-totals-row) td{ background:#fbf9f5; }
-  .pay-note-dot{ position:absolute; top:1px; left:2px; font-size:10px; line-height:1; cursor:help; z-index:1; }
+  .pay-note-btn{ all:unset; position:absolute; bottom:1px; left:2px; width:15px; height:15px; line-height:15px; font-size:10px;
+    text-align:center; border-radius:50%; cursor:pointer; z-index:2; color:#b9b0a0; background:rgba(255,255,255,.7); }
+  .pay-note-btn:hover{ background:#efe6d6; color:var(--dark); }
+  .pay-note-btn.has-note{ color:var(--gold, #D4B483); background:#3a2f22; }
+  .pay-note-btn.has-note:hover{ background:var(--dark); }
   tr{ transition:background .15s; }
   tbody tr:hover td{ background:#f3ead9; }
   .tbl-wrap{ overflow-x:auto; }
@@ -1786,14 +1790,31 @@ async function payrollLoadSheet(){
  * تتحرك صح بين الخلايا المجاورة لو المستخدم لصق نطاق من إكسل/جوجل شيتس. */
 function payrollDayCellHtml_(row, col, value, empIdx, dayIdx, iso, empName, note){
   const hasNote = !!(note && String(note).trim());
-  return `<td style="padding:2px;position:relative;">${hasNote ? `<span class="pay-note-dot" title="${qEsc(note)}">📝</span>` : ''}<textarea class="d-input pay-cell ${payCellClass(value)}" rows="2"
+  return `<td style="padding:2px;position:relative;"><button type="button" class="pay-note-btn${hasNote ? ' has-note' : ''}" data-row="${row}" data-col="${col}" data-note="${qEsc(note || '')}" title="${hasNote ? 'فيه ملاحظة — دوس تعدّلها' : 'إضافة ملاحظة على الخلية دي'}" onclick="payrollOpenCellNote(this)">📝</button><textarea class="d-input pay-cell ${payCellClass(value)}" rows="2"
     data-row="${row}" data-col="${col}" data-emp-idx="${empIdx}" data-day-idx="${dayIdx}"
     data-iso="${qEsc(iso || '')}" data-emp="${qEsc(empName || '')}"
-    ${hasNote ? `title="${qEsc(note)}"` : ''}
-    style="text-align:center;font-size:11px;padding:4px 2px;resize:vertical;min-width:70px;line-height:1.35;"
+    style="text-align:center;font-size:11px;padding:4px 2px 16px;min-width:70px;line-height:1.35;"
     oninput="payCellRecolor(this)"
     onchange="payrollCellEdited(${row}, ${col}, this)"
     onpaste="payrollHandlePaste(event, ${empIdx}, ${dayIdx})">${qEsc(value)}</textarea></td>`;
+}
+/* دوس على 📝 جوه أي خلية يوم — بيفتح بروومبت بسيط فيه نص الملاحظة الحالية (لو
+ * فيه) وتقدر تعدّلها/تمسحها وتحفظها فورًا في الشيت الحقيقي، من غير ما تعمل ريلود
+ * للجدول كله — بس الزرار ده نفسه بيتلوّن دهبي/رمادي حسب الحالة الجديدة. */
+async function payrollOpenCellNote(btn){
+  const row = Number(btn.dataset.row), col = Number(btn.dataset.col);
+  const current = btn.dataset.note || '';
+  const val = await openGenPrompt('ملاحظة الخلية — سيبها فاضية عشان تمسحها', current, 'ملاحظة الخلية');
+  if (val === null) return; // اتلغى
+  const clean = String(val || '').trim();
+  btn.disabled = true;
+  try {
+    await apiPost('payrollSetCellNote', { sheetName: PAYSTATE.data.sheetName, row, col, note: clean });
+    btn.dataset.note = clean;
+    btn.classList.toggle('has-note', !!clean);
+    btn.title = clean ? 'فيه ملاحظة — دوس تعدّلها' : 'إضافة ملاحظة على الخلية دي';
+  } catch(err){ showError(err); }
+  finally { btn.disabled = false; }
 }
 
 /* توزيع حسب نوع الشيت (شهري = بلوك واحد متصل / اسبوعي = كذا بلوك أسبوع) */
