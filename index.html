@@ -1739,7 +1739,7 @@ function payrollRenderWeeklyTable_(box, data){
     }).join('');
     const monthSumHtml = r.monthSummaryCells.map((v, si) => `<td class="sm-cell ${summaryCellClass(data.monthSummaryHeaders[si], v)}" data-sum-idx="${sumFlatIdx++}">${qEsc(v)}</td>`).join('');
     return `<tr data-emp="${qEsc(r.name)}">
-      <td class="pay-emp-name" data-emp="${qEsc(r.name)}" style="position:sticky;right:0;background:var(--white);font-weight:700;">${qEsc(r.name)}</td>
+      <td class="pay-emp-name" data-emp="${qEsc(r.name)}" style="position:sticky;right:0;background:var(--white);font-weight:700;z-index:1;">${qEsc(r.name)}</td>
       ${weeksHtml}
       ${sepTd}
       ${monthSumHtml}
@@ -1767,7 +1767,7 @@ function payrollRenderWeeklyTable_(box, data){
     <div class="panel">
       <h3 style="margin-bottom:10px;">${qEsc(data.sheetName)} (${data.rows.length} موظف)</h3>
       <div class="tbl-wrap tbl-wrap-scroll" style="max-height:70vh;">
-        <table style="width:auto;">
+        <table style="width:auto;border-collapse:separate;border-spacing:0;">
           <thead>${row1}${row2}</thead>
           <tbody>${bodyRows}${totalsHtml}</tbody>
         </table>
@@ -1783,7 +1783,7 @@ function payrollRenderMonthlyTable_(box, data){
   PAYSTATE._flatHeaders = data.summaryHeaders;
   const bodyRows = data.rows.map((r, empIdx) => `
     <tr data-emp="${qEsc(r.name)}">
-      <td class="pay-emp-name" data-emp="${qEsc(r.name)}" style="position:sticky;right:0;background:var(--white);font-weight:700;">${qEsc(r.name)}</td>
+      <td class="pay-emp-name" data-emp="${qEsc(r.name)}" style="position:sticky;right:0;background:var(--white);font-weight:700;z-index:1;">${qEsc(r.name)}</td>
       ${r.dayCells.map((v, i) => payrollDayCellHtml_(r.row, data.dayStart + i, v, empIdx, i, (data.dayDates||[])[i], r.name, (r.dayNotes||[])[i])).join('')}
       ${r.summaryCells.map((v, si) => `<td class="sm-cell ${summaryCellClass(data.summaryHeaders[si], v)}" data-sum-idx="${si}">${qEsc(v)}</td>`).join('')}
     </tr>`).join('');
@@ -1796,7 +1796,7 @@ function payrollRenderMonthlyTable_(box, data){
     <div class="panel">
       <h3 style="margin-bottom:10px;">${qEsc(data.sheetName)} (${data.rows.length} موظف)</h3>
       <div class="tbl-wrap tbl-wrap-scroll" style="max-height:70vh;">
-        <table>
+        <table style="border-collapse:separate;border-spacing:0;">
           <thead><tr>
             <th style="position:sticky;right:0;background:var(--dark);z-index:2;">اسم الموظف</th>
             ${data.dayHeaders.map((h,i) => `<th data-iso="${qEsc((data.dayDates||[])[i] || '')}" style="min-width:62px;white-space:pre-line;">${qEsc(h)}</th>`).join('')}
@@ -3897,6 +3897,12 @@ const PW_ID_BY_NAME = {};
 PW_PARTNERS.forEach((p, i) => { PW_ID_BY_NAME[p] = 'p' + i; });
 function qId(name){ return PW_ID_BY_NAME[name] || ('x' + String(name).replace(/[^a-zA-Z0-9]/g, '_')); }
 function qEscJs(s){ return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+// ⚠️ إضافة: قيم فريدة (من غير تكرار ولا فاضية) مرتبة أبجديًا — مستخدمة في بناء
+// الـ datalist بتاع "موجه إلى"/"العنوان" في الكوتيشنات وPayment Statements، عشان
+// المستخدم يشوف كل اسم مرة واحدة بس (مش "شادي" متكرر لكل كوتيشن سابق ليه)
+function qUniqueSorted_(arr){
+  return [...new Set((arr || []).map(v => String(v || '').trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b, 'ar'));
+}
 
 function pwRenderColumn(partnerName){
   const p = PWSTATE.data.partners.find(x => x.name === partnerName);
@@ -4132,33 +4138,92 @@ async function qRenderHome(token){
         <h3>إنشاء كوتيشن جديد</h3>
         <div class="msg" id="qCreateMsg"></div>
         <form class="form-row3" onsubmit="event.preventDefault(); qCreateQuote();">
-          <div class="field"><label>موجه إلى (Engineer)</label><input autocomplete="off" type="text" id="q_engineer"></div>
-          <div class="field"><label>العنوان / المشروع</label><input autocomplete="off" type="text" id="q_address"></div>
+          <div class="field"><label>موجه إلى (Engineer)</label><input autocomplete="off" type="text" id="q_engineer" list="q-eng-list"></div>
+          <div class="field"><label>العنوان / المشروع</label><input autocomplete="off" type="text" id="q_address" list="q-addr-list"></div>
           <div class="field"><label>سعر الدولار (جنيه)</label><input autocomplete="off" type="number" id="q_dollar" value="${QCFG.defaultDollar}" min="1">
             <span style="font-size:10px;color:var(--muted);">يظهر في الملاحظات بالـ PDF</span></div>
         </form>
+        <!-- ⚠️ إضافة: قائمة أسامي/عناوين سابقة (من غير تكرار) — بتظهر كـ dropdown أصلي
+             من المتصفح أول ما تدوس جوه الحقل، عشان تختار بدل ما تكتب نفس الاسم تاني -->
+        <datalist id="q-eng-list">${qUniqueSorted_(customers.map(c=>c.engineer)).map(v=>`<option value="${qEsc(v)}">`).join('')}</datalist>
+        <datalist id="q-addr-list">${qUniqueSorted_(customers.map(c=>c.address)).map(v=>`<option value="${qEsc(v)}">`).join('')}</datalist>
         <div style="margin-top:16px;display:flex;justify-content:flex-end;">
           <button class="btn btn-primary" onclick="qCreateQuote()">✦ إنشاء وبدء الكوتيشن</button>
         </div>
       </div>
       <div class="panel">
         <h3>الكوتيشنات السابقة (${customers.length})</h3>
-        <div class="q-clist">
-        ${customers.length ? customers.map(c => `
-          <div class="c-item">
-            <div class="ci-info" onclick='qOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
-              <div class="ci-name">${qEsc(c.engineer || c.name)}</div>
-              <div class="ci-meta">${qEsc(c.address || '')} ${c.date ? ' · ' + qEsc(qFormatListDate_(c.date)) : ''}</div>
-            </div>
-            <div class="ci-actions">
-              <button class="ci-badge" onclick='qOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>فتح ←</button>
-              <button class="btn btn-sm btn-danger" onclick="qDeleteCustomer('${c.name.replace(/'/g,"\\'")}')">🗑 حذف</button>
-            </div>
-          </div>`).join('') : `<div class="empty">مفيش كوتيشنات لسه</div>`}
-        </div>
+        <div class="q-clist" id="q-clist-panel"></div>
       </div>
     `;
+    _qHomeCustomers = customers;
+    _qOpenGroup = null;
+    qRenderCustomerListPanel_();
   } catch(err){ showError(err); }
+}
+
+// ⚠️ إضافة: بدل ما كل كوتيشن يظهر كسطر مستقل (فيتكرر اسم زي "شادي" 4 مرات لو
+// عنده 4 كوتيشنز)، بنجمعهم في كارت واحد لكل اسم — دوس على الكارت يفتحلك
+// قائمة كل الكوتيشنات/المشاريع بتاعة الاسم ده بس، ودوس على أي واحد فيها يفتحه
+// عادي زي ما كان. لو الكوتيشن من غير اسم مهندس، بيتجمع تحت العنوان، ولو
+// الاتنين فاضيين بيتحط في مجموعة "بدون اسم".
+let _qHomeCustomers = [];
+let _qOpenGroup = null; // null = شايف الكروت، أو مفتاح المجموعة المفتوحة دلوقتي
+
+function qGroupCustomers_(customers){
+  const groups = {};
+  const order = [];
+  customers.forEach(c => {
+    const key = (c.engineer && c.engineer.trim()) || (c.address && c.address.trim()) || 'بدون اسم';
+    if (!groups[key]) { groups[key] = []; order.push(key); }
+    groups[key].push(c);
+  });
+  // الأكتر كوتيشنز الأول، وبعدين أبجديًا
+  order.sort((a,b) => (groups[b].length - groups[a].length) || a.localeCompare(b, 'ar'));
+  return order.map(key => ({ key, items: groups[key] }));
+}
+
+function qOpenGroup_(key){ _qOpenGroup = key; qRenderCustomerListPanel_(); }
+function qCloseGroup_(){ _qOpenGroup = null; qRenderCustomerListPanel_(); }
+
+function qRenderCustomerListPanel_(){
+  const box = document.getElementById('q-clist-panel'); if (!box) return;
+  const customers = _qHomeCustomers;
+  if (!customers.length) { box.innerHTML = `<div class="empty">مفيش كوتيشنات لسه</div>`; return; }
+
+  if (_qOpenGroup) {
+    const group = qGroupCustomers_(customers).find(g => g.key === _qOpenGroup);
+    if (!group) { _qOpenGroup = null; return qRenderCustomerListPanel_(); }
+    const items = group.items.slice().sort((a,b) => String(b.date||'').localeCompare(String(a.date||'')));
+    box.innerHTML = `
+      <button class="btn btn-sm" style="margin-bottom:10px;" onclick="qCloseGroup_()">→ رجوع لكل الأسامي</button>
+      <div style="font-weight:700;margin-bottom:8px;">${qEsc(group.key)} (${items.length} كوتيشن)</div>
+      ${items.map(c => `
+        <div class="c-item">
+          <div class="ci-info" onclick='qOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
+            <div class="ci-name">${qEsc(c.address || c.engineer || c.name)}</div>
+            <div class="ci-meta">${c.date ? qEsc(qFormatListDate_(c.date)) : ''}</div>
+          </div>
+          <div class="ci-actions">
+            <button class="ci-badge" onclick='qOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>فتح ←</button>
+            <button class="btn btn-sm btn-danger" onclick="qDeleteCustomer('${c.name.replace(/'/g,"\\'")}')">🗑 حذف</button>
+          </div>
+        </div>`).join('')}
+    `;
+    return;
+  }
+
+  const groups = qGroupCustomers_(customers);
+  box.innerHTML = groups.map(g => `
+    <div class="c-item" onclick="qOpenGroup_('${qEscJs(g.key)}')" style="cursor:pointer;">
+      <div class="ci-info">
+        <div class="ci-name">${qEsc(g.key)}</div>
+        <div class="ci-meta">${g.items.length} كوتيشن${g.items.length > 1 ? 'ات' : ''}</div>
+      </div>
+      <div class="ci-actions">
+        <button class="ci-badge" onclick="event.stopPropagation(); qOpenGroup_('${qEscJs(g.key)}')">فتح ←</button>
+      </div>
+    </div>`).join('');
 }
 
 function qCreateQuote(){
@@ -4230,7 +4295,11 @@ function qDiscountAmt(){
   if (amt < 0) amt = 0; if (amt > sub) amt = sub; return amt;
 }
 function qNetTotal(){ return Math.max(0, qGrand() - qDiscountAmt()); }
-function qAddRow(){ QSTATE.rows.push(qNewRow()); qRenderRows(); qSaveSession(); }
+function qAddRow(n){
+  const count = Math.max(1, parseInt(n, 10) || 1);
+  for (let i = 0; i < count; i++) QSTATE.rows.push(qNewRow());
+  qRenderRows(); qSaveSession();
+}
 // ⚠️ إضافة: بدل ما مسح بند يبقى نهائي فورًا، بنحتفظ بآخر بند اتمسح وبمكانه
 // جوّه الجدول، وبنوري توست فيه زرار "تراجع" — لو دُست عليه بيرجّع البند
 // بالظبط في نفس الترتيب اللي كان فيه. لو محدش دَس عليه خلال ٦ ثواني بيتنسى.
@@ -4253,6 +4322,15 @@ function qUndoDeleteRow(){
 }
 function qSetField(id, f, v){ const r = QSTATE.rows.find(r => r._id === id); if (r) r[f] = v; qRefreshTotals(); qSaveSession(); }
 function qSetNumField(id, f, v){ const r = QSTATE.rows.find(r => r._id === id); if (r) r[f] = qNum(v); qRefreshTotals(); qSaveSession(); }
+// ⚠️ إضافة: زرار عداد +/- لخانة الكمية — بيزود/ينقّص 1 في كل ضغطة بدل ما تكتب
+// الرقم بإيدك كل مرة. مبيقلش عن 0.
+function qStepQty(id, delta){
+  const r = QSTATE.rows.find(r => r._id === id); if (!r) return;
+  r.qty = Math.max(0, qNum(r.qty) + delta);
+  qRenderRows();
+  qRefreshTotals();
+  qSaveSession();
+}
 
 function qSetDiscount(field, value){
   const sub = qGrand(); const v = qNum(value);
@@ -4299,7 +4377,13 @@ function qRenderRows(){
         onchange="qSetField(${r._id},'category',this.value)"></td>
       <td><input autocomplete="off" type="text" value="${qEsc(r.unit)}" placeholder="الوحده" onchange="qSetField(${r._id},'unit',this.value)"></td>
       <td><textarea placeholder="اكتب وصف العمل هنا..." onchange="qSetField(${r._id},'description',this.value)">${qEsc(r.description)}</textarea></td>
-      <td><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" value="${r.qty}" onchange="qSetNumField(${r._id},'qty',this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
+      <td style="white-space:nowrap;">
+        <div style="display:flex;align-items:center;gap:2px;">
+          <button type="button" class="btn btn-sm" title="نقص 1" onmousedown="event.preventDefault();" onclick="qStepQty(${r._id},-1)" style="padding:2px 7px;">−</button>
+          <input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" value="${r.qty}" onchange="qSetNumField(${r._id},'qty',this.value)" onkeypress="return /[0-9.]/.test(event.key)" style="width:48px;text-align:center;">
+          <button type="button" class="btn btn-sm" title="زود 1" onmousedown="event.preventDefault();" onclick="qStepQty(${r._id},1)" style="padding:2px 7px;">+</button>
+        </div>
+      </td>
       <td><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" value="${r.price}" onchange="qSetNumField(${r._id},'price',this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
       <td class="num-cell">${fmt(qTot(r))}</td>
       <td><textarea placeholder="ملاحظة..." onchange="qSetField(${r._id},'notes',this.value)">${qEsc(r.notes)}</textarea></td>
@@ -4368,7 +4452,10 @@ function qRenderEditor(){
           <tbody id="q-body"></tbody>
         </table>
       </div>
-      <button class="btn btn-outline btn-sm" onclick="qAddRow()" style="margin-bottom:18px;">+ إضافة سطر</button>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:18px;">
+        <button class="btn btn-outline btn-sm" onclick="qAddRow(document.getElementById('q-add-count').value)">+ إضافة سطر</button>
+        <input autocomplete="off" type="number" id="q-add-count" value="1" min="1" class="d-input" style="width:56px;" title="عدد الأسطر اللي عايز تضيفهم مرة واحدة">
+      </div>
 
       <div class="q-discount-card">
         <div class="dc-title">• خصم على العرض (اختياري)</div>
@@ -4673,10 +4760,12 @@ async function pRenderHome(token){
         <h3>إنشاء سجل دفعات جديد</h3>
         <div class="msg" id="pCreateMsg"></div>
         <form class="form-row3" onsubmit="event.preventDefault(); pCreateRecord();">
-          <div class="field"><label>موجه إلى (Engineer)</label><input type="text" autocomplete="off" id="p_engineer"></div>
-          <div class="field"><label>العنوان / المشروع</label><input type="text" autocomplete="off" id="p_address"></div>
+          <div class="field"><label>موجه إلى (Engineer)</label><input type="text" autocomplete="off" id="p_engineer" list="p-eng-list"></div>
+          <div class="field"><label>العنوان / المشروع</label><input type="text" autocomplete="off" id="p_address" list="p-addr-list"></div>
           <div class="field"><label>المبلغ الإجمالي</label><input type="text" class="ltr-num" autocomplete="off" inputmode="numeric" id="p_total" placeholder="0" onkeypress="return /[0-9.]/.test(event.key)"></div>
         </form>
+        <datalist id="p-eng-list">${qUniqueSorted_(customers.map(c=>c.engineer)).map(v=>`<option value="${qEsc(v)}">`).join('')}</datalist>
+        <datalist id="p-addr-list">${qUniqueSorted_(customers.map(c=>c.address)).map(v=>`<option value="${qEsc(v)}">`).join('')}</datalist>
         <div style="margin-top:16px;display:flex;justify-content:flex-end;">
           <button class="btn btn-primary" onclick="pCreateRecord()">✦ إنشاء وبدء المتابعة</button>
         </div>
