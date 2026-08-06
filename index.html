@@ -2819,6 +2819,7 @@ async function renderDailyExpenses(token) {
             <button type="button" class="btn btn-outline btn-sm" id="d-bulk-add-btn">+ إضافة عدد أسطر</button>
           </div>
           <button type="button" class="btn btn-primary" id="d-save-all" data-hotkey-save>حفظ</button>
+          <button type="button" class="btn btn-outline btn-sm" id="d-confirm-saved" title="لو الحفظ حصل فعلاً في الشيت (ظهرت رسالة تعليق/تايم أوت) بس السطور لسه ظاهرة هنا — دوس هنا نتأكد ونمسح الصفحة">اتحفظت بالفعل؟ تأكد وامسح</button>
           <div style="font-weight:800;font-size:15px;">الإجمالي: <span id="d-total" style="color:var(--red);">0</span> ج</div>
           <div class="msg" id="d-msg"></div>
         </div>
@@ -2845,6 +2846,7 @@ async function renderDailyExpenses(token) {
       dSaveDraft();
     });
     document.getElementById('d-save-all').addEventListener('click', dSaveAll);
+    document.getElementById('d-confirm-saved').addEventListener('click', dConfirmAlreadySaved);
     document.getElementById('d-date-bar').addEventListener('change', e => dLoadDayLog(e.target.value || todayStr()));
     document.getElementById('d-tbl-wrap').addEventListener('scroll', () => { dHideProjectSuggestions(); dCloseAllQuickTags(); }, { passive:true });
     window.addEventListener('resize', () => { dHideProjectSuggestions(); dCloseAllQuickTags(); });
@@ -3218,6 +3220,57 @@ async function dSaveAll(){
     dClearDraft();
   } catch(err){
     msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err) + (saved ? ` (اتسجل ${saved} قبل ما يحصل الخطأ)` : '');
+  } finally { btn.disabled = false; }
+}
+/* بترد على شكوى "الحفظ فعلاً حصل بس الصفحة فضلت شايلة السطور" (زي لما رسالة "السيرفر
+ * بياخد وقت طويل" تظهر بعد تايم أوت، والحفظ يكون فعلاً نجح في الشيت والرد بس ما وصلش).
+ * بدل ما نمسح المسودة على طول (خطر: ممكن سطر يكون فعلاً ماتسجلش)، بنجيب سجل اليوم
+ * الحقيقي من الشيت (getDailyExpenses) ونقارنه بكل سطر في المسودة (وصف + مبلغ) —
+ * السطور اللي لاقيناها متسجلة فعلاً بس تتمسح من الصفحة، وأي سطر لسه مش لاقيينه
+ * بيفضل ظاهر عشان تراجعه وتحفظه تاني. */
+async function dConfirmAlreadySaved(){
+  const msg = document.getElementById('d-msg');
+  const btn = document.getElementById('d-confirm-saved');
+  const valid = DSTATE.rows.filter(r => String(r.desc).trim() && qNum(r.amount) > 0);
+  if (!valid.length){
+    DSTATE.rows = [dNewRow(), dNewRow(), dNewRow()];
+    dRenderRows();
+    dClearDraft();
+    return;
+  }
+  btn.disabled = true;
+  msg.className = 'msg'; msg.innerHTML = '<span class="spinner"></span>بنتأكد من الشيت...';
+  try {
+    const log = await apiGet('getDailyExpenses', { date: DSTATE.date });
+    const saved = log.rows || [];
+    const isMatched = r => {
+      const desc = String(r.desc).trim();
+      const amount = qNum(r.amount);
+      return saved.some(s => String(s.desc).trim() === desc && Number(s.amount) === amount);
+    };
+    const stillMissing = valid.filter(r => !isMatched(r));
+    dRenderTodayLog(saved);
+
+    if (!stillMissing.length) {
+      // كل سطور المسودة فعلاً موجودة في الشيت — امسح الصفحة زي ما بيحصل بعد أي حفظ ناجح
+      DSTATE.rows = [dNewRow(), dNewRow(), dNewRow()];
+      dRenderRows();
+      dClearDraft();
+      msg.className = 'msg ok'; msg.textContent = '✔ اتأكدنا إن كل السطور فعلاً متسجلة في الشيت — الصفحة اتمسحت';
+    } else if (stillMissing.length < valid.length) {
+      // بعض السطور اتسجلت وبعضها لأ — امسح المتسجل بس وسيب الباقي عشان يتحفظ تاني
+      DSTATE.rows = stillMissing.map(r => ({ ...r }));
+      while (DSTATE.rows.length < 3) DSTATE.rows.push(dNewRow());
+      dRenderRows();
+      dSaveDraft();
+      msg.className = 'msg err';
+      msg.textContent = `اتسجل ${valid.length - stillMissing.length} من ${valid.length}، وفضل ${stillMissing.length} سطر مش لاقيينهم في الشيت — راجعهم واضغط حفظ تاني`;
+    } else {
+      msg.className = 'msg err';
+      msg.textContent = 'مفيش ولا سطر من دول لقيناه متسجل في الشيت لسه — اضغط "حفظ" العادي';
+    }
+  } catch(err) {
+    msg.className = 'msg err'; msg.textContent = 'خطأ في التأكد من الشيت: ' + (err.message || err);
   } finally { btn.disabled = false; }
 }
 // حالة سطور "مصاريف اليوم المسجلة فعليًا" — بتتخزن هنا عشان نقدر نعدّل/نحذف بالـ row الصحيح
