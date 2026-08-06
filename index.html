@@ -464,30 +464,29 @@
   .q-clist .ci-badge:hover{ transform:scale(1.1); background:var(--gold-dim); }
   .q-clist .ci-badge:active{ transform:scale(.9); }
 
-  /* ===== جدول تجميع الكوتيشنات حسب العميل — شكل مختلف عن كروت q-clist ===== */
-  .q-ctable-wrap{ border:1px solid var(--border); border-radius:10px; overflow:hidden; }
-  .q-ctable{ width:100%; border-collapse:collapse; font-size:13px; }
-  .q-ctable thead th{ background:var(--dark); color:#f0e6d8; text-align:right; padding:11px 14px; font-weight:700; font-size:12px; }
-  .q-ctable thead th.q-ctable-th-count{ text-align:center; width:110px; }
-  .q-ctable tbody tr.q-ctable-row{ cursor:pointer; border-top:1px solid var(--border); transition:background .2s; }
-  .q-ctable tbody tr.q-ctable-row:nth-child(4n+1){ background:#faf8f4; }
-  .q-ctable tbody tr.q-ctable-row:hover{ background:#f1ece2; }
-  .q-ctable td{ padding:12px 14px; vertical-align:middle; }
-  .q-ctable .qct-name{ font-weight:700; display:flex; align-items:center; gap:8px; }
-  .q-ctable .qct-arrow{ display:inline-block; font-size:11px; color:var(--gold); transition:transform .25s var(--bounce); }
-  .q-ctable tr.open .qct-arrow{ transform:rotate(90deg); }
-  .q-ctable .qct-count{ text-align:center; }
-  .q-ctable .qct-count-badge{ background:var(--gold); color:#fff; font-size:11px; padding:3px 11px; border-radius:20px; font-weight:700; }
-  .q-ctable tr.q-ctable-sub-row td{ padding:0; border-top:none; }
-  .q-ctable tr.q-ctable-sub-row{ display:none; }
-  .q-ctable tr.q-ctable-sub-row.open{ display:table-row; }
-  .q-ctable .qct-sub-wrap{ background:var(--cream); padding:4px 14px 12px 44px; }
-  .q-ctable .qct-sub-item{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 4px; border-bottom:1px dashed var(--border); }
-  .q-ctable .qct-sub-item:last-child{ border-bottom:none; }
-  .q-ctable .qct-sub-title{ font-weight:600; font-size:12.5px; }
-  .q-ctable .qct-sub-date{ font-size:11px; color:var(--muted); margin-top:1px; }
-  .q-ctable .qct-sub-actions{ display:flex; gap:6px; align-items:center; flex-shrink:0; }
-  @media(max-width:640px){ .q-ctable thead{ display:none; } .q-ctable .qct-sub-wrap{ padding-inline-start:16px; } }
+  /* ===== تجميع الكوتيشنات حسب العميل — كروت أكورديون بأفاتار، شكل مختلف
+     تمامًا عن كروت q-clist (اللي هي مستطيلة مسطحة) وعن أي شكل جدول تقليدي ===== */
+  .qc2-list{ display:flex; flex-direction:column; gap:10px; }
+  .qc2-card{ background:#fff; border:1px solid var(--border); border-radius:14px; overflow:hidden; transition:box-shadow .22s var(--bounce), border-color .22s var(--bounce); }
+  .qc2-card:hover{ box-shadow:0 6px 18px rgba(30,26,21,.07); border-color:#ddd2bd; }
+  .qc2-card.open{ border-color:var(--gold); box-shadow:0 10px 26px rgba(30,26,21,.09); }
+  .qc2-head{ display:flex; align-items:center; gap:12px; padding:13px 16px; cursor:pointer; user-select:none; }
+  .qc2-avatar{ flex-shrink:0; width:40px; height:40px; border-radius:50%; background:linear-gradient(150deg,var(--gold),var(--gold-dim)); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:15px; direction:ltr; }
+  .qc2-info{ flex:1; min-width:0; }
+  .qc2-name{ font-weight:700; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .qc2-meta{ font-size:11.5px; color:var(--muted); margin-top:2px; }
+  .qc2-meta b{ color:var(--gold-dim); }
+  .qc2-chevron{ flex-shrink:0; width:26px; height:26px; border-radius:50%; background:var(--cream); color:var(--dark); display:flex; align-items:center; justify-content:center; font-size:11px; transition:transform .28s var(--bounce), background .2s; }
+  .qc2-card.open .qc2-chevron{ transform:rotate(180deg); background:var(--gold); color:#fff; }
+  .qc2-body{ max-height:0; overflow:hidden; transition:max-height .32s var(--bounce); background:var(--cream); }
+  .qc2-card.open .qc2-body{ max-height:2000px; }
+  .qc2-body-in{ padding:4px 16px 12px; }
+  .qc2-item{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 8px; border-top:1px dashed var(--border); }
+  .qc2-item:first-child{ border-top:none; }
+  .qc2-item-title{ font-weight:600; font-size:12.5px; }
+  .qc2-item-date{ font-size:11px; color:var(--muted); margin-top:1px; }
+  .qc2-item-actions{ display:flex; gap:6px; align-items:center; flex-shrink:0; }
+  @media(max-width:640px){ .qc2-item{ flex-direction:column; align-items:stretch; gap:8px; } .qc2-item-actions{ justify-content:flex-end; } }
 
   .q-preview-box{ margin-top:14px; border-radius:10px; overflow:hidden; box-shadow:0 4px 24px rgba(30,26,21,.10); background:#fff; }
   .q-preview-frame{ width:100%; border:none; display:block; min-height:400px; }
@@ -683,7 +682,7 @@
     <div class="field pw-wrap" style="margin-bottom:16px;"><input type="password" id="cp-confirm" placeholder="تأكيد كلمة السر الجديدة" autocomplete="new-password"><button type="button" class="pw-eye" onclick="pwToggle(this)" tabindex="-1" aria-label="إظهار/إخفاء كلمة السر"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
     <div class="msg" id="cpStatus" style="margin-bottom:14px;"></div>
     <div class="q-confirm-btns">
-      <button class="btn btn-primary" id="cpSaveBtn" onclick="submitChangePassword()">حفظ</button>
+      <button class="btn btn-primary" id="cpSaveBtn" data-hotkey-save onclick="submitChangePassword()">حفظ</button>
       <button class="btn btn-outline" onclick="closeChangePassModal()">إلغاء</button>
     </div>
   </div>
@@ -754,7 +753,7 @@
       <div class="field"><label>سعر السهرة العادي (ج) — اختياري</label><input autocomplete="off" type="number" id="ee_eveningRate" step="1" min="0"></div>
       <div class="msg" id="empEditMsg"></div>
       <div class="q-confirm-btns">
-        <button type="submit" class="btn btn-primary" id="empEditSubmitBtn">حفظ التعديل</button>
+        <button type="submit" class="btn btn-primary" id="empEditSubmitBtn" data-hotkey-save>حفظ التعديل</button>
         <button type="button" class="btn btn-outline" onclick="closeEmpEditModal()">إلغاء</button>
       </div>
     </form>
@@ -975,6 +974,23 @@ document.addEventListener('keydown', (e) => {
   if (GSEL.cells.length < 2) return;
   e.preventDefault();
   GSEL.fillFromActive();
+});
+
+// ⚠️ إضافة: Ctrl+S (أو Cmd+S على ماك) بيحفظ زي ما لو دُست زرار "حفظ" بتاع
+// الصفحة/المودال المفتوح دلوقتي، من أي مكان في الشاشة (حتى لو واقف جوه حقل
+// كتابة). كل زرار حفظ رئيسي في الموقع معلّم بـ data-hotkey-save. لو فيه مودال
+// مفتوح فيه زرار حفظ، بياخد الأولوية عن أي زرار حفظ تاني وراه في الصفحة.
+document.addEventListener('keydown', (e) => {
+  const ctrlOrCmd = e.ctrlKey || e.metaKey;
+  if (!ctrlOrCmd || e.key.toLowerCase() !== 's') return;
+  e.preventDefault();
+  const isVisible = (el) => !!(el && el.offsetParent !== null && !el.disabled);
+  // أولوية 1: زرار حفظ جوه مودال مفتوح دلوقتي
+  const openModalBtn = document.querySelector('[id$="Modal"].open [data-hotkey-save]');
+  if (isVisible(openModalBtn)) { openModalBtn.click(); return; }
+  // أولوية 2: أول زرار حفظ ظاهر في الصفحة نفسها
+  const candidates = document.querySelectorAll('[data-hotkey-save]');
+  for (const btn of candidates) { if (isVisible(btn)) { btn.click(); return; } }
 });
 
 document.addEventListener('paste', (e) => {
@@ -1955,7 +1971,7 @@ function payrollQuickAddPanelHtml_(data){
       ${empNames.map(n => `<button type="button" class="btn btn-sm qa-emp-chip" data-emp="${qEsc(n)}" onclick="payrollQaToggleEmp('${qEsc(n)}')">${qEsc(n)}</button>`).join('')}
     </div>
     <div id="qa-emp-panels"><p style="font-size:12px;color:var(--muted);">اختار موظف واحد على الأقل الأول.</p></div>
-    <button class="btn btn-primary btn-sm" id="qa-save-btn" onclick="payrollQaSave()" style="margin-top:8px;">حفظ الإضافة</button>
+    <button class="btn btn-primary btn-sm" id="qa-save-btn" data-hotkey-save onclick="payrollQaSave()" style="margin-top:8px;">حفظ الإضافة</button>
   </div>`;
 }
 
@@ -2361,7 +2377,7 @@ async function payrollLoadDetails(){
                 ${_payDetailsList.map(e => `<option value="${qEsc(e.name)}">${qEsc(e.name)}</option>`).join('')}
               </select>
             </div>
-            <button type="submit" class="btn btn-primary" id="pdSubmitBtn">حفظ الموظف</button>
+            <button type="submit" class="btn btn-primary" id="pdSubmitBtn" data-hotkey-save>حفظ الموظف</button>
             <button type="button" class="btn btn-outline" id="pdResetBtn">إضافة جديد</button>
             <div class="msg" id="pdMsg"></div>
           </form>
@@ -2542,7 +2558,7 @@ async function renderTreasury(token) {
             </div>
           </div>
           <div style="display:flex;gap:8px;align-items:center;">
-            <button type="submit" class="btn btn-primary" id="moveBtn">حفظ الحركة</button>
+            <button type="submit" class="btn btn-primary" id="moveBtn" data-hotkey-save>حفظ الحركة</button>
             <button type="button" class="btn btn-outline btn-sm" id="cancelEditBtn" style="display:none;">إلغاء التعديل</button>
           </div>
           <div class="msg" id="moveMsg"></div>
@@ -2802,7 +2818,7 @@ async function renderDailyExpenses(token) {
             <input type="text" inputmode="numeric" class="d-input" id="d-bulk-count" value="5" style="width:56px;text-align:center;" onkeypress="return /[0-9]/.test(event.key)">
             <button type="button" class="btn btn-outline btn-sm" id="d-bulk-add-btn">+ إضافة عدد أسطر</button>
           </div>
-          <button type="button" class="btn btn-primary" id="d-save-all">حفظ</button>
+          <button type="button" class="btn btn-primary" id="d-save-all" data-hotkey-save>حفظ</button>
           <div style="font-weight:800;font-size:15px;">الإجمالي: <span id="d-total" style="color:var(--red);">0</span> ج</div>
           <div class="msg" id="d-msg"></div>
         </div>
@@ -3441,7 +3457,7 @@ async function renderProducts(token) {
               <div class="subtotal-line"><span>إجمالي العمالة (ساعات + سهرات)</span><b id="totLabor">0 ج</b></div>
               <div class="subtotal-line grand"><span>التكلفة الإجمالية المتوقعة</span><b id="totGrand">0 ج</b></div>
             </div>
-            <button type="submit" class="btn btn-primary" id="prodBtn">حفظ المنتج</button>
+            <button type="submit" class="btn btn-primary" id="prodBtn" data-hotkey-save>حفظ المنتج</button>
             <div class="msg" id="prodMsg"></div>
           </form>
         </div>
@@ -3573,7 +3589,7 @@ async function renderInstall(token) {
               <div class="subtotal-line"><span>إجمالي العمالة (ساعات + سهرات)</span><b id="insTotLabor">0 ج</b></div>
               <div class="subtotal-line grand"><span>التكلفة الإجمالية المتوقعة</span><b id="insTotGrand">0 ج</b></div>
             </div>
-            <button type="submit" class="btn btn-primary" id="insBtn">حفظ عملية التركيب</button>
+            <button type="submit" class="btn btn-primary" id="insBtn" data-hotkey-save>حفظ عملية التركيب</button>
             <div class="msg" id="insMsg"></div>
           </form>
         </div>
@@ -3714,7 +3730,7 @@ function renderDebtsPage(debts){
             <div class="field"><label>مسدد مبدئيًا (لو فيه)</label><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" id="dbt_paid" placeholder="0" onkeypress="return /[0-9.]/.test(event.key)"></div>
           </div>
           <div class="field"><label>ملاحظات</label><textarea id="dbt_notes" rows="2"></textarea></div>
-          <button type="submit" class="btn btn-primary" id="dbtBtn">حفظ الدين</button>
+          <button type="submit" class="btn btn-primary" id="dbtBtn" data-hotkey-save>حفظ الدين</button>
           <div class="msg" id="dbtMsg"></div>
         </form>
       </div>
@@ -3784,7 +3800,7 @@ function editDebtStart(id){
     <div class="field"><label>ملاحظات</label><textarea id="ed_notes" rows="2">${qEsc(d.notes||'')}</textarea></div>
     <div class="msg" id="edDebtMsg" style="margin-top:10px;"></div>
     <div class="q-confirm-btns" style="margin-top:14px;">
-      <button class="btn btn-primary" onclick="saveDebtEdit('${d.id}')">حفظ التعديل</button>
+      <button class="btn btn-primary" data-hotkey-save onclick="saveDebtEdit('${d.id}')">حفظ التعديل</button>
       <button class="btn btn-outline" onclick="closeCardModal()">إلغاء</button>
     </div>
   `);
@@ -3865,7 +3881,7 @@ async function renderFixedExp(token) {
             <div class="field"><label>اسم المصروف</label><input autocomplete="off" id="fx_name" required placeholder="مثال: إيجار المصنع"></div>
             <div class="field"><label>المبلغ الشهري (ج)</label><input autocomplete="off" type="number" id="fx_amount" step="1" min="0" required></div>
             <div class="field"><label>ملاحظات</label><input autocomplete="off" id="fx_notes"></div>
-            <button type="submit" class="btn btn-primary" id="fxBtn">حفظ</button>
+            <button type="submit" class="btn btn-primary" id="fxBtn" data-hotkey-save>حفظ</button>
             <div class="msg" id="fxMsg"></div>
           </form>
           <h3 style="margin-top:18px;">القائمة</h3>
@@ -4238,7 +4254,7 @@ async function qRenderHome(token){
       </div>
       <div class="panel">
         <h3>العملاء وكوتيشناتهم</h3>
-        <div class="q-ctable-wrap" id="q-ctable-panel"></div>
+        <div class="qc2-list" id="q-ctable-panel"></div>
       </div>
     `;
     _qHomeCustomers = customers;
@@ -4285,8 +4301,12 @@ function qGroupCustomers_(customers){
     if (!groups[key]) { groups[key] = []; order.push(key); }
     groups[key].push(c);
   });
-  // الأكتر كوتيشنز الأول، وبعدين أبجديًا
-  order.sort((a,b) => (groups[b].length - groups[a].length) || a.localeCompare(b, 'ar'));
+  // ترتيب أبجدي A→Z (عربي/إنجليزي مع بعض) — 'بدون اسم' آخر واحدة دايمًا
+  order.sort((a,b) => {
+    if (a === 'بدون اسم') return 1;
+    if (b === 'بدون اسم') return -1;
+    return a.localeCompare(b, 'en', { sensitivity:'base' });
+  });
   return order.map(key => ({ key, items: groups[key] }));
 }
 
@@ -4295,45 +4315,51 @@ function qToggleClientRow_(key){
   qRenderClientTablePanel_();
 }
 
+// أول حرف/حرفين (لاتيني أو عربي) لعرضهم جوه دائرة الأفاتار
+function qInitials_(key){
+  const clean = String(key || '').trim();
+  if (!clean || clean === 'بدون اسم') return '؟';
+  const m = clean.match(/[A-Za-z\u0600-\u06FF]/g);
+  if (!m) return clean.slice(0,1);
+  return m.slice(0,2).join('').toUpperCase();
+}
+
 function qRenderClientTablePanel_(){
   const box = document.getElementById('q-ctable-panel'); if (!box) return;
   const customers = _qHomeCustomers;
   if (!customers.length) { box.innerHTML = `<div class="empty">مفيش كوتيشنات لسه</div>`; return; }
 
   const groups = qGroupCustomers_(customers);
-  box.innerHTML = `
-    <table class="q-ctable">
-      <thead><tr><th>العميل</th><th class="q-ctable-th-count">عدد الكوتيشنات</th></tr></thead>
-      <tbody>
-        ${groups.map(g => {
-          const isOpen = _qOpenClientKeys.has(g.key);
-          const items = g.items.slice().sort((a,b) => String(b.date||'').localeCompare(String(a.date||'')));
-          return `
-          <tr class="q-ctable-row${isOpen ? ' open' : ''}" onclick="qToggleClientRow_('${qEscJs(g.key)}')">
-            <td class="qct-name"><span class="qct-arrow">◀</span>${qEsc(g.key)}</td>
-            <td class="qct-count"><span class="qct-count-badge">${g.items.length}</span></td>
-          </tr>
-          <tr class="q-ctable-sub-row${isOpen ? ' open' : ''}">
-            <td colspan="2">
-              <div class="qct-sub-wrap">
-                ${items.map(c => `
-                  <div class="qct-sub-item">
-                    <div onclick='event.stopPropagation(); qOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})' style="cursor:pointer;flex:1;min-width:0;">
-                      <div class="qct-sub-title">${qEsc(c.address || c.engineer || c.name)}</div>
-                      <div class="qct-sub-date">${c.date ? qEsc(qFormatListDate_(c.date)) : ''}</div>
-                    </div>
-                    <div class="qct-sub-actions">
-                      <button class="ci-badge" onclick='event.stopPropagation(); qOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>فتح ←</button>
-                      <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); qDeleteCustomer('${c.name.replace(/'/g,"\\'")}')">🗑 حذف</button>
-                    </div>
-                  </div>`).join('')}
+  box.innerHTML = groups.map(g => {
+    const isOpen = _qOpenClientKeys.has(g.key);
+    const items = g.items.slice().sort((a,b) => String(b.date||'').localeCompare(String(a.date||'')));
+    return `
+    <div class="qc2-card${isOpen ? ' open' : ''}">
+      <div class="qc2-head" onclick="qToggleClientRow_('${qEscJs(g.key)}')">
+        <div class="qc2-avatar">${qEsc(qInitials_(g.key))}</div>
+        <div class="qc2-info">
+          <div class="qc2-name">${qEsc(g.key)}</div>
+          <div class="qc2-meta"><b>${g.items.length}</b> كوتيشن${g.items.length > 1 ? 'ات' : ''}</div>
+        </div>
+        <div class="qc2-chevron">▾</div>
+      </div>
+      <div class="qc2-body">
+        <div class="qc2-body-in">
+          ${items.map(c => `
+            <div class="qc2-item">
+              <div onclick='event.stopPropagation(); qOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})' style="cursor:pointer;flex:1;min-width:0;">
+                <div class="qc2-item-title">${qEsc(c.address || c.engineer || c.name)}</div>
+                <div class="qc2-item-date">${c.date ? qEsc(qFormatListDate_(c.date)) : ''}</div>
               </div>
-            </td>
-          </tr>`;
-        }).join('')}
-      </tbody>
-    </table>
-  `;
+              <div class="qc2-item-actions">
+                <button class="ci-badge" onclick='event.stopPropagation(); qOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>فتح ←</button>
+                <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); qDeleteCustomer('${c.name.replace(/'/g,"\\'")}')">🗑 حذف</button>
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function qCreateQuote(){
@@ -4587,7 +4613,7 @@ function qRenderEditor(){
       <div class="q-grand-bar"><span>الإجمالي الكلي</span><span class="amt" id="q-grand-total">0 جنيه</span></div>
       <div class="action-bar" style="display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end;">
         <button class="btn btn-outline" onclick="qGoHome()">← رجوع</button>
-        <button class="btn btn-dark" id="qSaveBtn" onclick="qSaveQuotation()">💾 حفظ في الشيت</button>
+        <button class="btn btn-dark" id="qSaveBtn" data-hotkey-save onclick="qSaveQuotation()">💾 حفظ في الشيت</button>
         <button class="btn btn-primary" onclick="qRenderPreview()">👁 معاينة وطباعة</button>
       </div>
     </div>
@@ -5134,7 +5160,7 @@ function pRenderEditor(){
 
       <div class="action-bar" style="display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end;">
         <button class="btn btn-outline" onclick="pGoHome()">← رجوع</button>
-        <button class="btn btn-dark" id="pSaveBtn" onclick="pSaveCashFlow()">💾 حفظ في الشيت</button>
+        <button class="btn btn-dark" id="pSaveBtn" data-hotkey-save onclick="pSaveCashFlow()">💾 حفظ في الشيت</button>
         <button class="btn btn-primary" onclick="pRenderPreview()">👁 معاينة وطباعة</button>
       </div>
     </div>
