@@ -744,6 +744,13 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbzstJuI5EKdabQmOIechewi
 // بيسرّع التنقل بين الصفحات وبيقلل عدد الطلبات لسيرفر الـ Apps Script (اللي بطيء أصلًا في الـ cold start)
 const _apiCache = new Map();
 const API_CACHE_TTL_MS = 20000; // 20 ثانية — كفاية تقلل التكرار من غير ما تعرض بيانات قديمة كتير
+// ⚠️ إضافة: طلبات GET شغالة دلوقتي (لسه مردودش) — مفتاحها action+params. لو
+// اتنين مكان مختلفين في نفس الصفحة طلبوا نفس الـ action+params في نفس اللحظة
+// (زي ما بيحصل وقت تحميل صفحة فيها كذا component بيقروا نفس البيانات)، التاني
+// بياخد نفس الـ Promise بتاع الأول بدل ما يبعت طلب HTTP منفصل بالكامل — ده
+// بيقلل عدد الطلبات الفعلية لأبس اسكريبت (أبطأ حاجة في السيستم) وبيلغي تمامًا
+// سبب تصادم الـ echo key المؤقت اللي كان بيسبب 404 (شوف _apiFetch تحت).
+const _inFlight = new Map();
 
 function _apiCacheKey(action, params) { return action + '::' + JSON.stringify(params || {}); }
 
@@ -775,12 +782,15 @@ let _currentPage = null;
 // بيبعت نفس الطلب تاني في الخلفية (من غير ما حد ينتظره)، وبيحدّث الكاش، وبيعيد رسم
 // الصفحة بهدوء لو المستخدم لسه واقف في نفس الصفحة ونفس التوكن (يعني ملحقش يتنقل لحاجة تانية)
 function _refreshInBackground(action, params, key, url) {
+  if (_inFlight.has(key)) return; // ⚠️ فيه طلب شغال بالفعل بنفس الـ key (من apiGet أو تحديث خلفية تاني) — منبعتش نسخة تانية
   const pageAtCall = _currentPage, tokenAtCall = _navToken;
-  _apiFetch(url).then(data => {
+  const promise = _apiFetch(url).then(data => {
     _apiCache.set(key, { t: Date.now(), data });
     _lsSet(key, data);
     if (pageAtCall && tokenAtCall === _navToken && PAGES[pageAtCall]) PAGES[pageAtCall].render(tokenAtCall);
-  }).catch(() => { /* فشل تحديث الخلفية — البيانات المعروضة (القديمة) تفضل زي ما هي، مفيش داعي نزعج المستخدم */ });
+  }).catch(() => { /* فشل تحديث الخلفية — البيانات المعروضة (القديمة) تفضل زي ما هي، مفيش داعي نزعج المستخدم */ })
+    .finally(() => _inFlight.delete(key));
+  _inFlight.set(key, promise);
 }
 
 // بديل خفيف لـ showToast(, 'error') الافتراضي بتاع المتصفح (الشكل القبيح اللي بيظهر عليه اسم
@@ -979,7 +989,8 @@ document.addEventListener('copy', (e) => {
 
 
 
-async function _apiFetch(url, opts) {
+async function _apiFetch(url, opts, _retryCount) {
+  _retryCount = _retryCount || 0;
   const controller = new AbortController();
   // ⚠️ إصلاح: كان 45 ثانية بس — عمليات زي إضافة/تعديل/حذف/نقل موظف بتعمل إعادة
   // بناء كاملة لشيتات الحضور (شهري + اسبوعي + Master، كل واحد فيهم معادلات كتير)
@@ -989,12 +1000,26 @@ async function _apiFetch(url, opts) {
   const timeoutId = setTimeout(() => controller.abort(), 100000);
   let res;
   try {
-    res = await fetch(url, { ...(opts || {}), signal: controller.signal });
+    // ⚠️ إصلاح 404 على script.googleusercontent.com/macros/echo:
+    // Apps Script بيرد على أي طلب لـ exec بـ redirect لرابط "echo" مؤقت (single-use).
+    // من غير cache:'no-store'، بعض المتصفحات بتكاش الـ redirect ده وبتوجّه أي طلب
+    // تاني لنفس الـ action+params لنفس رابط الـ echo القديم اللي خلصت صلاحيته —
+    // فبيرجع 404 مع إن السيرفر شغال تمام. no-store بيجبر كل طلب يضرب exec من جديد.
+    res = await fetch(url, { ...(opts || {}), cache: 'no-store', signal: controller.signal });
   } catch (err) {
     if (err.name === 'AbortError') throw new Error('السيرفر بياخد وقت طويل أوي (أكتر من دقيقة ونص) — الأغلب إن الحفظ فعلاً حصل في الشيت، افتح الصفحة وتأكد قبل ما تعيد المحاولة عشان متكررش نفس العملية');
     throw new Error('فشل الاتصال بالسيرفر — تأكد من النت وحاول تاني');
   } finally {
     clearTimeout(timeoutId);
+  }
+
+  // ⚠️ إضافة: 404 هنا (حتى مع no-store) معناها غالبًا تصادم مؤقت على نفس الـ echo
+  // key (طلبين قريبين جدًا من بعض لنفس الرابط بالظبط). مش خطأ حقيقي في البيانات —
+  // بنعيد المحاولة تلقائي (طلب exec جديد بالكامل، مش نفس الـ echo) لحد مرتين قبل
+  // ما نطلّع أي رسالة خطأ للمستخدم، فمعظم الحالات بتتصلح لوحدها من غير ما يحس المستخدم.
+  if (res.status === 404 && _retryCount < 2) {
+    await new Promise(r => setTimeout(r, 300 * (_retryCount + 1)));
+    return _apiFetch(url, opts, _retryCount + 1);
   }
 
   const raw = await res.text();
@@ -1035,11 +1060,14 @@ async function apiGet(action, params) {
     return stale.data;
   }
 
-  // 3) أول مرة خالص لطلب زي ده على الجهاز ده — مفيش أي كاش، لازم ننتظر السيرفر
-  const data = await _apiFetch(url);
-  _apiCache.set(key, { t: Date.now(), data });
-  _lsSet(key, data);
-  return data;
+  // 3) أول مرة خالص لطلب زي ده على الجهاز ده — مفيش أي كاش، لازم ننتظر السيرفر.
+  // ⚠️ dedup: لو فيه طلب شغال بالفعل بنفس الـ key، استنى نتيجته بدل ما تبعت طلب تاني.
+  if (_inFlight.has(key)) return _inFlight.get(key);
+  const promise = _apiFetch(url)
+    .then(data => { _apiCache.set(key, { t: Date.now(), data }); _lsSet(key, data); return data; })
+    .finally(() => _inFlight.delete(key));
+  _inFlight.set(key, promise);
+  return promise;
 }
 async function apiPost(action, payload) {
   const actor = sessionStorage.getItem('lm_userName') || '';
