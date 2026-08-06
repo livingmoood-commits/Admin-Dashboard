@@ -712,6 +712,7 @@
     <form id="empEditForm">
       <input type="hidden" id="ee_originalName">
       <input type="hidden" id="ee_monthNum">
+      <input type="hidden" id="ee_year">
       <input type="hidden" id="ee_context">
       <div class="field"><label>اسم الموظف</label><input autocomplete="off" id="ee_name" required></div>
       <div class="form-row">
@@ -1013,12 +1014,15 @@ async function _apiFetch(url, opts, _retryCount) {
     clearTimeout(timeoutId);
   }
 
-  // ⚠️ إضافة: 404 هنا (حتى مع no-store) معناها غالبًا تصادم مؤقت على نفس الـ echo
+  // ⚠️ إصلاح: 404 هنا (حتى مع no-store) معناها غالبًا تصادم مؤقت على نفس الـ echo
   // key (طلبين قريبين جدًا من بعض لنفس الرابط بالظبط). مش خطأ حقيقي في البيانات —
-  // بنعيد المحاولة تلقائي (طلب exec جديد بالكامل، مش نفس الـ echo) لحد مرتين قبل
-  // ما نطلّع أي رسالة خطأ للمستخدم، فمعظم الحالات بتتصلح لوحدها من غير ما يحس المستخدم.
-  if (res.status === 404 && _retryCount < 2) {
-    await new Promise(r => setTimeout(r, 300 * (_retryCount + 1)));
+  // بنعيد المحاولة تلقائي (طلب exec جديد بالكامل، مش نفس الـ echo) قبل ما نطلّع
+  // أي رسالة خطأ للمستخدم. كان بيوقف بعد محاولتين بس — ده مكنش كفاية في بعض
+  // الحالات (خصوصًا أول ما تفتح صفحة "مرتبات" وبتحصل كذا طلب قريبين من بعض)،
+  // فكان بيوصل لخطأ نهائي والصفحة تفضل عالقة على "جاري التحميل..." للأبد. دلوقتي
+  // 5 محاولات (بدل 2) بفاصل زمني متزايد، وده بيغطي الأغلبية الساحقة من الحالات.
+  if (res.status === 404 && _retryCount < 5) {
+    await new Promise(r => setTimeout(r, 350 * (_retryCount + 1)));
     return _apiFetch(url, opts, _retryCount + 1);
   }
 
@@ -1619,6 +1623,24 @@ async function payrollConfirmBuild(){
   }
 }
 
+/* ⚠️ إصلاح: قبل كده أي خطأ في تحميل صفحة "مرتبات" (زي تصادم echo مؤقت أو أي مشكلة
+ * شبكة عابرة) كان بيسيب "جاري التحميل..." معلّقة للأبد جوه pay-box، لإن الكاتش كان
+ * بس بيعمل showError(err) (توست بيختفي) من غير ما يغيّر محتوى الصندوق نفسه — فكان
+ * لازم تعمل ريفريش يدوي للصفحة كلها عشان تشتغل. الدالة دي بتعيد المحاولة تلقائيًا
+ * مرة واحدة بصمت (معظم الحالات بتتصلح لوحدها)، ولو فشلت تاني بتوري رسالة خطأ حقيقية
+ * جوه pay-box نفسها مع زرار "حاول تاني" — الصفحة بقى مبتفضلش عالقة بصمت أبدًا. */
+async function _payrollHandleLoadError_(box, err, retryFn){
+  if (!box.dataset.autoRetried) {
+    box.dataset.autoRetried = '1';
+    await new Promise(r => setTimeout(r, 900));
+    if (_currentPage === 'payroll') return retryFn();
+  }
+  box.innerHTML = `<div class="panel"><div class="msg err" style="display:block;">تعذّر تحميل البيانات: ${qEsc(err.message || String(err))}</div>
+    <button class="btn btn-sm" id="pay-retry-btn" style="margin-top:10px;">حاول تاني</button></div>`;
+  const retryBtn = document.getElementById('pay-retry-btn');
+  if (retryBtn) retryBtn.addEventListener('click', () => { delete box.dataset.autoRetried; retryFn(); });
+  showError(err);
+}
 async function payrollLoadSheet(){
   const box = document.getElementById('pay-box');
   // نحفظ مكان السكرول (يمين/شمال + فوق/تحت) بتاع الجدول القديم قبل ما نمسحه،
@@ -1630,6 +1652,7 @@ async function payrollLoadSheet(){
   try {
     const data = await apiGet('payrollGetSheet', { year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex, kind: PAYSTATE.kind });
     if (_currentPage !== 'payroll') return; // المستخدم غيّر الصفحة وإحنا لسه بنستنى الرد
+    delete box.dataset.autoRetried; // نجح التحميل — نسمح بمحاولة تلقائية جديدة لو حصل خطأ في المرة الجاية
     PAYSTATE.data = data;
     if (!data.exists){ box.innerHTML = `<div class="panel"><div class="empty">شيت "${qEsc(data.sheetName)}" لسه مش موجود — ابنيه الأول من منيو "نظام المرتبات" في الشيت.</div></div>`; return; }
     payrollRenderTable();
@@ -1637,7 +1660,7 @@ async function payrollLoadSheet(){
       const wrap = box.querySelector('.tbl-wrap-scroll');
       if (wrap) { wrap.scrollLeft = prevScroll.left; wrap.scrollTop = prevScroll.top; }
     }
-  } catch(err){ showError(err); }
+  } catch(err){ if (_currentPage === 'payroll') await _payrollHandleLoadError_(box, err, payrollLoadSheet); else showError(err); }
 }
 /* خلية يوم واحدة — textarea بدل input: تقدر تدوس Enter عادي جوه الخلية
  * وتكتب كود تاني في سطر جديد (بديل Alt+Enter بتاع الشيتس)، وده بيتسجل
@@ -2194,6 +2217,7 @@ async function payrollLoadMaster(){
   try {
     const data = await apiGet('payrollGetMaster', { year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex });
     if (_currentPage !== 'payroll') return; // المستخدم غيّر الصفحة وإحنا لسه بنستنى الرد
+    delete box.dataset.autoRetried;
     if (data && data.error) { box.innerHTML = `<div class="panel"><div class="msg err" style="display:block;">خطأ: ${qEsc(data.error)}</div></div>`; return; }
     if (!data || !data.exists || !Array.isArray(data.headers) || !Array.isArray(data.rows)){
       box.innerHTML = `<div class="panel"><div class="empty">شيت "${qEsc(data && data.sheetName || '')}" لسه مش موجود — ابنيه الأول من منيو "نظام المرتبات" في الشيت.</div></div>`; return;
@@ -2234,7 +2258,7 @@ async function payrollLoadMaster(){
       const wrap = box.querySelector('.tbl-wrap-scroll');
       if (wrap) { wrap.scrollLeft = prevScroll.left; wrap.scrollTop = prevScroll.top; }
     }
-  } catch(err){ showError(err); }
+  } catch(err){ if (_currentPage === 'payroll') await _payrollHandleLoadError_(box, err, payrollLoadMaster); else showError(err); }
 }
 
 /* ================= مرتبات: تبويب "تفاصيل" (شيت "تفاصيل المرتبات شهر X") =================
@@ -2267,6 +2291,7 @@ async function payrollLoadDetails(){
     const monthNum = PAYSTATE.monthIndex + 1;
     const data = await apiGet('payrollListDetailsForMonth', { monthNum });
     if (_currentPage !== 'payroll') return; // المستخدم غيّر الصفحة وإحنا لسه بنستنى الرد
+    delete box.dataset.autoRetried;
     if (data.error){ box.innerHTML = `<div class="panel"><div class="empty">خطأ: ${qEsc(data.error)}</div></div>`; return; }
     PAYSTATE.detailsData = data;
     _payDetailsList = data.employees || [];
@@ -2345,7 +2370,10 @@ async function payrollLoadDetails(){
         const action = originalName ? 'payrollUpdateDetailsEmployee' : 'payrollAddDetailsEmployee';
         // afterName بس وقت الإضافة (موظف جديد) — مالهاش معنى وقت التعديل
         const afterName = originalName ? undefined : (document.getElementById('pd_afterName').value || undefined);
-        const res = await apiPost(action, { employee, monthNum, afterName });
+        // ⚠️ إصلاح: لازم نبعت السنة (PAYSTATE.year) مع الشهر — الباك اند كان بيفترض
+        // سنة النظام الحالية دايمًا، فلو الشهر ده بسنة مختلفة كان تحديث الـ Master
+        // (وشيتات الحضور) بيفشل بصمت لإنه بيدوّر على اسم شيت بسنة غلط.
+        const res = await apiPost(action, { employee, monthNum, afterName, year: PAYSTATE.year });
         if (res.error) throw new Error(res.error);
         await payrollLoadDetails();
         msg.className='msg ok'; msg.textContent = 'تم الحفظ بنجاح';
@@ -2353,7 +2381,7 @@ async function payrollLoadDetails(){
       } catch(err){ msg.className='msg err'; msg.textContent = 'خطأ: '+(err.message||err); }
       finally { _payrollDetailsSetBusy_(false); btn.textContent='حفظ الموظف'; }
     });
-  } catch(err){ showError(err); }
+  } catch(err){ if (_currentPage === 'payroll') await _payrollHandleLoadError_(box, err, payrollLoadDetails); else showError(err); }
 }
 function payrollDetailsUpdatePeriodLabel_(){
   const isMonthly = document.getElementById('pd_paymentType').value === 'شهري';
@@ -2428,7 +2456,7 @@ async function payrollMoveDetailsEmployee_(name, direction){
   if (_payDetailsBusy) return;
   _payrollDetailsSetBusy_(true);
   try {
-    const res = await apiPost('payrollReorderDetailsEmployee', { name, direction, monthNum: PAYSTATE.monthIndex + 1 });
+    const res = await apiPost('payrollReorderDetailsEmployee', { name, direction, monthNum: PAYSTATE.monthIndex + 1, year: PAYSTATE.year });
     if (res.error) throw new Error(res.error);
     await payrollLoadDetails();
     showToast('✔ تمام، اتنقل الموظف في الشيت', 'success');
@@ -2442,7 +2470,7 @@ async function payrollDeleteDetailsEmployeeConfirm_(name){
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح "'+name+'"؟', 'حذف الموظف'))) return;
   _payrollDetailsSetBusy_(true);
   try {
-    const res = await apiPost('payrollDeleteDetailsEmployee', { id: name, monthNum: PAYSTATE.monthIndex + 1 });
+    const res = await apiPost('payrollDeleteDetailsEmployee', { id: name, monthNum: PAYSTATE.monthIndex + 1, year: PAYSTATE.year });
     if (res.error) throw new Error(res.error);
     await payrollLoadDetails();
     showToast('✔ تمام، اتمسح الموظف من الشيت', 'success');
@@ -5248,6 +5276,7 @@ function openEmpEditModal(e, context){
   document.getElementById('ee_eveningRate').value = e.eveningRate || '';
   document.getElementById('ee_context').value = context || 'details';
   document.getElementById('ee_monthNum').value = PAYSTATE.monthIndex + 1;
+  document.getElementById('ee_year').value = PAYSTATE.year;
   empEditUpdatePeriodLabel_();
   const msg = document.getElementById('empEditMsg'); msg.className = 'msg'; msg.textContent = '';
   document.getElementById('empEditModal').classList.add('open');
@@ -5284,6 +5313,7 @@ document.getElementById('empEditForm').addEventListener('submit', async (e) => {
   const btn = document.getElementById('empEditSubmitBtn'); const msg = document.getElementById('empEditMsg');
   msg.className = 'msg'; msg.textContent = ''; btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ…';
   const monthNum = parseInt(document.getElementById('ee_monthNum').value, 10);
+  const year = parseInt(document.getElementById('ee_year').value, 10);
   const paymentType = document.getElementById('ee_paymentType').value;
   const periodPay = document.getElementById('ee_periodPay').value;
   const employee = {
@@ -5298,7 +5328,7 @@ document.getElementById('empEditForm').addEventListener('submit', async (e) => {
     monthlyPay: paymentType === 'شهري' ? periodPay : undefined
   };
   try {
-    const res = await apiPost('payrollUpdateDetailsEmployee', { employee, monthNum });
+    const res = await apiPost('payrollUpdateDetailsEmployee', { employee, monthNum, year });
     if (res.error) throw new Error(res.error);
     closeEmpEditModal();
     payrollLoadDetails();
