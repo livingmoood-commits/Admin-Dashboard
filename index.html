@@ -3930,7 +3930,7 @@ async function renderCosts(token) {
           <h3>تكلفة جديدة</h3>
           <form id="costForm">
             <div class="form-row">
-              <div class="field"><label>اسم العملية</label><input autocomplete="off" id="c_name" required placeholder="مثال: دولاب غرفة نوم / تركيب + نقل"></div>
+              <div class="field"><label>اسم العملية (اختياري)</label><input autocomplete="off" id="c_name" placeholder="مثال: دولاب غرفة نوم / تركيب + نقل"></div>
               <div class="field"><label>المشروع</label><select id="c_project" required><option value="">اختار المشروع</option>${projects.map(pr=>`<option value="${pr}">${pr}</option>`).join('')}</select></div>
             </div>
             <label style="font-size:12px;font-weight:700;color:var(--muted);">البنود (خامات / نقل / تحميل...)</label>
