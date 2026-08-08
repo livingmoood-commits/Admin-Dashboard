@@ -270,6 +270,22 @@
   .d-day-chip.active{ background:var(--dark); color:#fff; border-color:var(--dark); }
   .d-day-chip:active{ transform:scale(.94); }
 
+  /* ===== دروب داون "الأيام المسجلة" — الأحدث فوق + بحث ===== */
+  .d-days-dropdown{ position:relative; max-width:340px; margin-bottom:16px; }
+  .d-days-dd-btn{ all:unset; box-sizing:border-box; width:100%; display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 14px; border-radius:10px; background:var(--cream); border:1px solid var(--border); font-size:13px; font-weight:700; color:var(--dark); cursor:pointer; transition:border-color .2s, background .2s; }
+  .d-days-dd-btn:hover{ border-color:var(--gold); }
+  .d-days-dropdown.open .d-days-dd-btn{ border-color:var(--gold); background:#fff; }
+  .d-days-dd-arrow{ color:var(--muted); font-size:11px; transition:transform .2s var(--bounce); flex-shrink:0; }
+  .d-days-dropdown.open .d-days-dd-arrow{ transform:rotate(180deg); }
+  .d-days-dd-panel{ position:absolute; top:calc(100% + 6px); right:0; left:0; background:#fff; border:1px solid var(--border); border-radius:10px; box-shadow:0 12px 30px rgba(30,26,21,.14); padding:10px; z-index:30; display:none; }
+  .d-days-dropdown.open .d-days-dd-panel{ display:block; }
+  #d-days-search{ width:100%; }
+  .d-days-dd-list{ max-height:260px; overflow-y:auto; margin-top:8px; display:flex; flex-direction:column; gap:3px; }
+  .d-days-dd-item{ all:unset; box-sizing:border-box; width:100%; cursor:pointer; padding:8px 12px; border-radius:8px; font-size:12.5px; font-weight:600; color:var(--muted); transition:background .15s, color .15s; }
+  .d-days-dd-item:hover{ background:var(--cream); color:var(--dark); }
+  .d-days-dd-item.active{ background:var(--dark); color:#fff; font-weight:700; }
+  .d-days-dd-empty{ padding:10px; text-align:center; font-size:12px; color:var(--muted); }
+
   /* ===== جدول "مصاريف اليوم المسجلة فعليًا في الشيت" — قابل للتعديل المباشر ===== */
   .d-log-input{ width:100%; border:1.5px solid transparent; background:transparent; border-radius:7px; padding:7px 9px; font-size:13px; font-family:inherit; color:var(--dark); text-align:center; transition:border-color .15s, background .15s, box-shadow .15s; }
   .d-log-input:hover{ border-color:var(--border); background:#fff; }
@@ -2826,7 +2842,16 @@ async function renderDailyExpenses(token) {
       </div>
       <div class="panel">
         <h3>الأيام المسجلة</h3>
-        <div class="d-days-list" id="d-days-list"></div>
+        <div class="d-days-dropdown" id="d-days-dropdown">
+          <button type="button" class="d-days-dd-btn" id="d-days-dd-btn">
+            <span id="d-days-dd-label">اختر يوم...</span>
+            <span class="d-days-dd-arrow">▾</span>
+          </button>
+          <div class="d-days-dd-panel" id="d-days-dd-panel">
+            <input type="text" class="d-input" id="d-days-search" autocomplete="off" placeholder="ابحث... مثلا 06-08 أو الخميس">
+            <div class="d-days-dd-list" id="d-days-dd-list"></div>
+          </div>
+        </div>
         <h3 id="d-log-heading" style="margin-bottom:0;">مصاريف اليوم المسجلة فعليًا في الشيت (${DSTATE.date})</h3>
         <div id="d-today-box"></div>
       </div>
@@ -2848,6 +2873,13 @@ async function renderDailyExpenses(token) {
     document.getElementById('d-save-all').addEventListener('click', dSaveAll);
     document.getElementById('d-confirm-saved-top').addEventListener('click', dConfirmAlreadySaved);
     document.getElementById('d-date-bar').addEventListener('change', e => dLoadDayLog(e.target.value || todayStr()));
+    document.getElementById('d-days-dd-btn').addEventListener('click', e => { e.stopPropagation(); dToggleDaysDropdown(); });
+    document.getElementById('d-days-search').addEventListener('click', e => e.stopPropagation());
+    document.getElementById('d-days-search').addEventListener('input', dRenderDaysList);
+    document.addEventListener('click', e => {
+      const wrap = document.getElementById('d-days-dropdown');
+      if (wrap && !wrap.contains(e.target)) dCloseDaysDropdown();
+    });
     document.getElementById('d-tbl-wrap').addEventListener('scroll', () => { dHideProjectSuggestions(); dCloseAllQuickTags(); }, { passive:true });
     window.addEventListener('resize', () => { dHideProjectSuggestions(); dCloseAllQuickTags(); });
     // سكرول الصفحة نفسها (مش سكرول الجدول الداخلي بس) كان ممكن يسيب القايمة "طايرة"
@@ -2856,11 +2888,42 @@ async function renderDailyExpenses(token) {
   } catch(err){ showError(err); }
 }
 function dRenderDaysList(){
-  const box = document.getElementById('d-days-list'); if (!box) return;
-  if (!DSTATE.days.length){ box.innerHTML = '<span style="font-size:12.5px;color:var(--muted);">لسه مفيش أيام متسجلة</span>'; return; }
-  box.innerHTML = DSTATE.days.map(d => `
-    <button type="button" class="d-day-chip${d.date === DSTATE.date ? ' active' : ''}" onclick="dLoadDayLog('${d.date}')">${qEsc(d.dayName)} ${d.date}</button>
-  `).join('');
+  const list = document.getElementById('d-days-dd-list');
+  const label = document.getElementById('d-days-dd-label');
+  if (!list || !label) return;
+  const active = DSTATE.days.find(d => d.date === DSTATE.date);
+  label.textContent = active ? `${active.dayName} ${active.date}` : (DSTATE.date || 'اختر يوم...');
+  if (!DSTATE.days.length){
+    list.innerHTML = '<div class="d-days-dd-empty">لسه مفيش أيام متسجلة</div>';
+    return;
+  }
+  const searchInput = document.getElementById('d-days-search');
+  const term = (searchInput && searchInput.value || '').trim().toLowerCase();
+  const filtered = term
+    ? DSTATE.days.filter(d => `${d.dayName || ''} ${d.date || ''}`.toLowerCase().includes(term))
+    : DSTATE.days;
+  list.innerHTML = filtered.length
+    ? filtered.map(d => `
+      <button type="button" class="d-days-dd-item${d.date === DSTATE.date ? ' active' : ''}" onclick="dSelectDay('${d.date}')">${qEsc(d.dayName)} ${d.date}</button>
+    `).join('')
+    : '<div class="d-days-dd-empty">مفيش أيام مطابقة للبحث</div>';
+}
+function dSelectDay(dateStr){
+  dCloseDaysDropdown();
+  dLoadDayLog(dateStr);
+}
+function dToggleDaysDropdown(forceOpen){
+  const wrap = document.getElementById('d-days-dropdown'); if (!wrap) return;
+  const willOpen = typeof forceOpen === 'boolean' ? forceOpen : !wrap.classList.contains('open');
+  wrap.classList.toggle('open', willOpen);
+  if (willOpen){
+    const search = document.getElementById('d-days-search');
+    if (search){ search.value = ''; setTimeout(() => search.focus(), 30); }
+    dRenderDaysList();
+  }
+}
+function dCloseDaysDropdown(){
+  const wrap = document.getElementById('d-days-dropdown'); if (wrap) wrap.classList.remove('open');
 }
 async function dLoadDayLog(dateStr){
   DSTATE.date = dateStr || todayStr();
