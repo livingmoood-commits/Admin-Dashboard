@@ -643,8 +643,7 @@
     <button data-page="payroll"><span class="icon">&#128176;</span><span class="label">مرتبات</span></button>
     <div class="sep"></div>
     <button data-page="projects"><span class="icon">&#128188;</span><span class="label">المشاريع</span></button>
-    <button data-page="products"><span class="icon">&#128736;&#65039;</span><span class="label">تكلفة المنتجات</span></button>
-    <button data-page="install"><span class="icon">&#128230;</span><span class="label">تكلفة التركيب</span></button>
+    <button data-page="costs"><span class="icon">&#128176;</span><span class="label">التكاليف</span></button>
     <div class="sep"></div>
     <button data-page="treasury"><span class="icon">&#128176;</span><span class="label">الخزنة (Cash Flow)</span></button>
     <button data-page="projectExpenses"><span class="icon">&#128202;</span><span class="label">متابعة صرف المشاريع</span></button>
@@ -1210,8 +1209,7 @@ const PAGES = {
   projectExpenses: { title:'متابعة صرف المشاريع', sub:'اختار مشروع وشوف مصاريفه أسبوع أسبوع، بنفس البيانات المسجلة في شيته', render: renderProjectExpenses },
   dailyExpenses:{ title:'مصاريف يومية', sub:'سجّل كل مصاريف اليوم سطر سطر — بتتسجل في شيت اليوم بتاعك مباشرة', render: renderDailyExpenses },
   projects:     { title:'المشاريع', sub:'تكلفة كل مشروع بالتفصيل', render: renderProjects },
-  products:     { title:'تكلفة المنتجات', sub:'خامات + عمالة لكل منتج، بتتحمّل على المشروع', render: renderProducts },
-  install:      { title:'تكلفة التركيب', sub:'نقل + تحميل + عمالة تركيب لكل عملية، بتتحمّل على المشروع', render: renderInstall },
+  costs:        { title:'التكاليف', sub:'خامات + تركيب + عمالة — كل تكلفة بتتسجل في صفحة مشروعها', render: renderCosts },
   fixedExp:     { title:'المصاريف الثابتة', sub:'إيجار / كهرباء / إلخ — وطريقة توزيعها على المشاريع', render: renderFixedExp },
   quotation:    { title:'Quotations', sub:'قائمة العملاء وعروض الأسعار', render: renderQuotation },
   debtors:      { title:'Payment Statements', sub:'متابعة تحصيل الدفعات من العملاء — كل حاجة عن المستحق والمتبقي', render: renderDebtors },
@@ -1370,8 +1368,7 @@ async function renderDashboard(token) {
         <div class="card clickable" onclick="goTo('treasury')"><div class="label">رصيد الخزنة</div><div class="value green">${fmt(d.treasuryBalance)} ج</div></div>
         <div class="card"><div class="label">إجمالي تكلفة العمالة</div><div class="value gold">${fmt(d.totalLaborCost)} ج</div></div>
         <div class="card"><div class="label">إجمالي ساعات الشغل</div><div class="value">${fmt(d.totalLaborHours)} س</div></div>
-        <div class="card clickable" onclick="goTo('products')"><div class="label">تكلفة المنتجات (خامات)</div><div class="value gold">${fmt(d.totalProductsCost)} ج</div></div>
-        <div class="card clickable" onclick="goTo('install')"><div class="label">تكلفة التركيب</div><div class="value gold">${fmt(d.totalInstallCost)} ج</div></div>
+        <div class="card clickable" onclick="goTo('costs')"><div class="label">التكاليف (خامات + تركيب)</div><div class="value gold">${fmt(d.totalCostsNew)} ج</div></div>
       </div>
       <div class="panel">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
@@ -3496,23 +3493,24 @@ async function renderProjects(token) {
       <div class="panel">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
           <h3 style="margin:0;">ملخص تكلفة المشاريع (${projects.length})</h3>
-          <button type="button" class="btn btn-primary btn-sm" onclick="pjOpenCreateModal()">+ مشروع جديد</button>
         </div>
         ${projects.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>ساعات العمالة</th><th>تكلفة العمالة</th><th>تكلفة الخامات</th><th>إجمالي التكلفة</th><th>الإيرادات</th><th>صافي الربح</th><th></th></tr></thead>
         <tbody>${projects.map(p => `<tr><td>${p.project}</td><td>${fmt(p.laborHours)}</td><td>${fmt(p.laborCost)} ج</td><td>${fmt(p.materialsCost)} ج</td><td><b>${fmt(p.totalCost)} ج</b></td>
           <td>${p.financials ? fmt(p.financials.revenue)+' ج' : '—'}</td>
           <td>${p.netProfit===null ? '—' : `<b style="color:${p.netProfit>=0?'var(--green)':'var(--red)'}">${fmt(p.netProfit)} ج</b>`}</td>
           <td><button class="btn btn-sm btn-outline" onclick="showProjectDetail('${p.project.replace(/'/g,"\\'")}')">تفاصيل</button></td></tr>`).join('')}</tbody></table></div>`
-        : `<div class="empty">مفيش مشاريع لسه — دوس "+ مشروع جديد" فوق عشان تضيف أول مشروع</div>`}
+        : `<div class="empty">مفيش مشاريع لسه — من صفحة "متابعة صرف المشاريع" دوس "+ مشروع جديد" عشان تضيف أول مشروع</div>`}
       </div>
       <div id="projectDetailBox"></div>
     `;
   } catch(err){ showError(err); }
 }
-/* مودال "+ مشروع جديد" — بيعمل شيت جديد في ملف "مصاريف المشاريع" بنفس
- * شكل شيت مشروع عادي (فاصل اسبوعي/فورمولات/تنسيق) وبيسجله في Master
- * تلقائي، فيظهر فورًا هنا وفي كل دروب داونز "المشروع" (تكلفة المنتجات/
- * ساعات العمالة/تكلفة التركيب) من غير أي خطوة إضافية. */
+/* مودال "+ مشروع جديد" — بيتفتح من صفحة "متابعة صرف المشاريع" (المصدر
+ * الأساسي لأسامي المشاريع). بيعمل شيت جديد في ملف "مصاريف المشاريع"
+ * بنفس شكل شيت مشروع عادي (فاصل اسبوعي/فورمولات/تنسيق) وبيسجله في
+ * Master تلقائي، فيظهر فورًا في كل الصفحات التانية (المشاريع/التكاليف/
+ * ساعات العمالة...) من غير أي خطوة إضافية — لأنها كلها بتقرا أسامي
+ * المشاريع من نفس listProjects() اللي مصدرها شيتات "مصاريف المشاريع". */
 function pjOpenCreateModal(){
   openCardModal(`
     <h3 style="margin-bottom:14px;">+ مشروع جديد</h3>
@@ -3538,7 +3536,8 @@ async function pjSubmitCreate(){
   try {
     await apiPost('createProject', { name });
     closeCardModal();
-    await renderProjects(_navToken);
+    sessionStorage.setItem('lm_peProject', name); // المشروع الجديد يتفتح تلقائي في "متابعة صرف المشاريع"
+    await renderProjectExpenses(_navToken);
   } catch(err){
     msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err);
   } finally { btn.disabled = false; }
@@ -3598,10 +3597,13 @@ async function renderProjectExpenses(token) {
       <div class="panel">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
           <h3 style="margin:0;">متابعة صرف المشاريع</h3>
-          <div class="field" style="min-width:220px;margin:0;">
-            <select id="pe-project" onchange="peLoad(this.value)">
-              ${projects.length ? projects.map(p => `<option value="${p}" ${p===initial?'selected':''}>${p}</option>`).join('') : '<option value="">لا يوجد مشاريع</option>'}
-            </select>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <div class="field" style="min-width:220px;margin:0;">
+              <select id="pe-project" onchange="peLoad(this.value)">
+                ${projects.length ? projects.map(p => `<option value="${p}" ${p===initial?'selected':''}>${p}</option>`).join('') : '<option value="">لا يوجد مشاريع</option>'}
+              </select>
+            </div>
+            <button type="button" class="btn btn-primary btn-sm" onclick="pjOpenCreateModal()">+ مشروع جديد</button>
           </div>
         </div>
         <div id="peBox"></div>
@@ -3782,6 +3784,7 @@ async function deleteProductConfirm(id){
 
 /* ================= Installation Cost (تكلفة التركيب) ================= */
 let insItemRows = [], insLaborRows = [];
+let costItemRows = [], costLaborRows = [];
 async function renderInstall(token) {
   try {
     const [{projects}, {employees}, {items}] = await Promise.all([apiGet('listProjects'), apiGet('listEmployees'), apiGet('listInstall', {filters:{}})]);
@@ -3910,6 +3913,142 @@ function renderInstallList(items){
 async function deleteInstallConfirm(id){
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح عملية التركيب دي؟', 'حذف عملية التركيب'))) return;
   try { await apiPost('deleteInstall', { id }); renderInstall(); } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
+}
+
+/* ================= Costs (التكاليف — بديل موحّد لتكلفة المنتجات + تكلفة التركيب) =================
+ * كل تكلفة (خامات و/أو عمالة، سواء منتج أو تركيب) بتتسجل كصف في
+ * صفحة (تاب) مستقلة باسم المشروع نفسه في شيت "التكاليف" المستقل،
+ * بدل شيتين منفصلين بعمود "المشروع". */
+async function renderCosts(token) {
+  try {
+    const [{projects}, {employees}] = await Promise.all([apiGet('listProjects'), apiGet('listEmployees')]);
+    if (isStaleNav(token)) return;
+    costItemRows = [{name:'',qty:'',unit:'',unitPrice:''}]; costLaborRows=[{employee:'',hours:'',eveningHours:'',eveningAmount:'',showEvening:false}];
+    document.getElementById('content').innerHTML = `
+      <div class="grid2">
+        <div class="panel">
+          <h3>تكلفة جديدة</h3>
+          <form id="costForm">
+            <div class="form-row">
+              <div class="field"><label>اسم العملية</label><input autocomplete="off" id="c_name" required placeholder="مثال: دولاب غرفة نوم / تركيب + نقل"></div>
+              <div class="field"><label>المشروع</label><select id="c_project" required><option value="">اختار المشروع</option>${projects.map(pr=>`<option value="${pr}">${pr}</option>`).join('')}</select></div>
+            </div>
+            <label style="font-size:12px;font-weight:700;color:var(--muted);">البنود (خامات / نقل / تحميل...)</label>
+            <div id="costItemsBox"></div>
+            <button type="button" class="btn btn-outline btn-sm dyn-add" id="addCostItemBtn">+ إضافة بند</button>
+            <label style="font-size:12px;font-weight:700;color:var(--muted);margin-top:14px;display:block;">العمالة (الموظف + عدد الساعات) — لو حد اشتغل</label>
+            <div id="costLaborBox"></div>
+            <button type="button" class="btn btn-outline btn-sm dyn-add" id="addCostLaborBtn">+ إضافة عامل</button>
+            <div class="field" style="margin-top:14px;"><label>ملاحظات</label><textarea id="c_notes" rows="2"></textarea></div>
+            <div id="costTotals">
+              <div class="subtotal-line"><span>إجمالي البنود</span><b id="costTotItems">0 ج</b></div>
+              <div class="subtotal-line"><span>إجمالي العمالة (ساعات + سهرات)</span><b id="costTotLabor">0 ج</b></div>
+              <div class="subtotal-line grand"><span>التكلفة الإجمالية</span><b id="costTotGrand">0 ج</b></div>
+            </div>
+            <button type="submit" class="btn btn-primary" id="costBtn" data-hotkey-save>حفظ التكلفة</button>
+            <div class="msg" id="costMsg"></div>
+          </form>
+        </div>
+        <div class="panel">
+          <h3>التكاليف المسجلة</h3>
+          <div class="filters"><select id="costFilterProject"><option value="">كل المشاريع</option>${projects.map(pr=>`<option value="${pr}">${pr}</option>`).join('')}</select></div>
+          <div id="costsListBox"></div>
+        </div>
+      </div>
+    `;
+    const empOptions = employees.map(e=>`<option value="${e.name}">${e.name} — ${fmt(e.hourlyRate)} ج/س</option>`).join('');
+    window._costEmpOptionsHtml = empOptions;
+    const empRateMap = {}; employees.forEach(e=>{ empRateMap[e.name] = Number(e.hourlyRate)||0; });
+    window._costEmpRateMap = empRateMap;
+    renderCostDynRows();
+    const { costs: initialCosts } = await apiGet('listCosts', { filters:{} });
+    renderCostsList(initialCosts);
+    document.getElementById('addCostItemBtn').addEventListener('click', () => { costItemRows.push({name:'',qty:'',unit:'',unitPrice:''}); renderCostDynRows(); });
+    document.getElementById('addCostLaborBtn').addEventListener('click', () => { costLaborRows.push({employee:'',hours:'',eveningHours:'',eveningAmount:'',showEvening:false}); renderCostDynRows(); });
+    document.getElementById('costFilterProject').addEventListener('change', async (e) => {
+      const list = await apiGet('listCosts', { filters:{project:e.target.value} }); renderCostsList(list.costs);
+    });
+    document.getElementById('costForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('costBtn'); const msg = document.getElementById('costMsg');
+      msg.className='msg'; msg.textContent=''; btn.disabled=true; btn.innerHTML='<span class="spinner"></span>جاري الحفظ...';
+      const item = {
+        name: document.getElementById('c_name').value.trim(), project: document.getElementById('c_project').value,
+        items: costItemRows.filter(m=>m.name),
+        labor: costLaborRows.filter(l=>l.employee && (l.hours || l.eveningAmount)).map(l=>({
+          employee: l.employee, hours: l.hours, eveningHours: l.eveningHours, eveningAmount: l.eveningAmount
+        })),
+        notes: document.getElementById('c_notes').value
+      };
+      try {
+        const res = await apiPost('addCost', { item });
+        msg.className='msg ok';
+        msg.textContent = 'تم الحفظ — بنود: '+fmt(res.itemsCost)+' ج + عمالة: '+fmt(res.laborCost)+' ج = الإجمالي: '+fmt(res.totalCost)+' ج';
+        renderCosts();
+      } catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); btn.disabled=false; btn.textContent='حفظ التكلفة'; }
+    });
+  } catch(err){ showError(err); }
+}
+function renderCostDynRows(){
+  document.getElementById('costItemsBox').innerHTML = costItemRows.map((m,i) => `
+    <div class="dyn-row material">
+      <input autocomplete="off" placeholder="اسم البند (خامة، نقل، تحميل...)" value="${m.name}" oninput="costItemRows[${i}].name=this.value; updateCostTotal();">
+      <input autocomplete="off" type="number" placeholder="الكمية" value="${m.qty}" oninput="costItemRows[${i}].qty=this.value; updateCostTotal();">
+      <input autocomplete="off" placeholder="الوحدة" value="${m.unit}" oninput="costItemRows[${i}].unit=this.value;">
+      <input autocomplete="off" type="number" placeholder="سعر الوحدة" value="${m.unitPrice}" oninput="costItemRows[${i}].unitPrice=this.value; updateCostTotal();">
+      <span class="dyn-row-cost" id="costItemCost-${i}">—</span>
+      <button type="button" class="btn btn-sm btn-danger" onclick="costItemRows.splice(${i},1); renderCostDynRows();">✕</button>
+    </div>`).join('');
+  document.getElementById('costLaborBox').innerHTML = costLaborRows.map((l,i) => `
+    <div class="dyn-row labor">
+      <select onchange="costLaborRows[${i}].employee=this.value; updateCostTotal();"><option value="">اختار الموظف</option>${(window._costEmpOptionsHtml||'').replace(`value="${l.employee}"`, `value="${l.employee}" selected`)}</select>
+      <input autocomplete="off" type="number" placeholder="ساعات" value="${l.hours}" oninput="costLaborRows[${i}].hours=this.value; updateCostTotal();">
+      <span class="dyn-row-cost" id="costLaborCost-${i}">—</span>
+      <button type="button" class="btn btn-sm btn-outline" onclick="costLaborRows[${i}].showEvening=!costLaborRows[${i}].showEvening; renderCostDynRows();">${l.showEvening ? '− سهرة' : '+ سهرة'}</button>
+      <button type="button" class="btn btn-sm btn-danger" onclick="costLaborRows.splice(${i},1); renderCostDynRows();">✕</button>
+    </div>
+    ${l.showEvening ? `
+    <div class="evening-row">
+      <input autocomplete="off" type="number" step="0.5" min="0" placeholder="ساعات السهرة (للسجل فقط)" value="${l.eveningHours}" oninput="costLaborRows[${i}].eveningHours=this.value; updateCostTotal();">
+      <input autocomplete="off" type="number" step="1" min="0" placeholder="مبلغ السهرة (ج)" value="${l.eveningAmount}" oninput="costLaborRows[${i}].eveningAmount=this.value; updateCostTotal();">
+      <button type="button" class="btn btn-sm btn-danger" onclick="costLaborRows[${i}].showEvening=false; costLaborRows[${i}].eveningHours=''; costLaborRows[${i}].eveningAmount=''; renderCostDynRows();">✕</button>
+    </div>` : ''}`).join('');
+  updateCostTotal();
+}
+function updateCostTotal(){
+  let itemsTotal = 0;
+  costItemRows.forEach((m,i) => {
+    const cost = (Number(m.qty)||0) * (Number(m.unitPrice)||0);
+    itemsTotal += cost;
+    const el = document.getElementById('costItemCost-'+i);
+    if (el) el.textContent = cost ? fmt(cost)+' ج' : '—';
+  });
+  const rateMap = window._costEmpRateMap || {};
+  let laborTotal = 0;
+  costLaborRows.forEach((l,i) => {
+    const rate = rateMap[l.employee] || 0;
+    const hours = Number(l.hours) || 0;
+    const eveningAmount = Number(l.eveningAmount) || 0;
+    const cost = (hours * rate) + eveningAmount;
+    laborTotal += cost;
+    const el = document.getElementById('costLaborCost-'+i);
+    if (el) el.textContent = cost ? fmt(cost)+' ج' : '—';
+  });
+  const grand = itemsTotal + laborTotal;
+  const totItems = document.getElementById('costTotItems'); if (totItems) totItems.textContent = fmt(itemsTotal) + ' ج';
+  const totLabor = document.getElementById('costTotLabor'); if (totLabor) totLabor.textContent = fmt(laborTotal) + ' ج';
+  const totGrand = document.getElementById('costTotGrand'); if (totGrand) totGrand.textContent = fmt(grand) + ' ج';
+}
+function renderCostsList(costs){
+  const box = document.getElementById('costsListBox');
+  if (!costs.length){ box.innerHTML = '<div class="empty">مفيش تكاليف مسجلة</div>'; return; }
+  box.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>العملية</th><th>المشروع</th><th>بنود</th><th>عمالة</th><th>الإجمالي</th><th></th></tr></thead>
+    <tbody>${costs.map(p=>`<tr><td>${p.name}</td><td>${p.project}</td><td>${fmt(p.itemsCost)} ج</td><td>${fmt(p.laborCost)} ج</td><td><b>${fmt(p.totalCost)} ج</b></td>
+      <td><button class="btn btn-sm btn-danger" onclick="deleteCostConfirm('${p.project}','${p.id}')">حذف</button></td></tr>`).join('')}</tbody></table></div>`;
+}
+async function deleteCostConfirm(project, id){
+  if (!(await openGenConfirm('متأكد إنك عاوز تمسح التكلفة دي؟', 'حذف تكلفة'))) return;
+  try { await apiPost('deleteCost', { project, id }); renderCosts(); } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 
 /* ================= Debts (ديون) ================= */
