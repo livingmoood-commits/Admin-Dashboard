@@ -2797,6 +2797,7 @@ async function renderDailyExpenses(token) {
       <div class="panel">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
           <h3 style="margin:0;">مصاريف اليوم — سطر لكل مصروف</h3>
+          <button type="button" class="btn btn-outline btn-sm" id="d-confirm-saved-top" title="لو الحفظ حصل فعلاً في الشيت (ظهرت رسالة تعليق/تايم أوت) بس السطور لسه ظاهرة هنا — دوس هنا نتأكد ونمسح الصفحة">اتحفظت بالفعل؟ تأكد وامسح</button>
         </div>
         <div class="d-date-bar">
           <label for="d-date-bar">تاريخ المصاريف دي:</label>
@@ -2819,7 +2820,6 @@ async function renderDailyExpenses(token) {
             <button type="button" class="btn btn-outline btn-sm" id="d-bulk-add-btn">+ إضافة عدد أسطر</button>
           </div>
           <button type="button" class="btn btn-primary" id="d-save-all" data-hotkey-save>حفظ</button>
-          <button type="button" class="btn btn-outline btn-sm" id="d-confirm-saved" title="لو الحفظ حصل فعلاً في الشيت (ظهرت رسالة تعليق/تايم أوت) بس السطور لسه ظاهرة هنا — دوس هنا نتأكد ونمسح الصفحة">اتحفظت بالفعل؟ تأكد وامسح</button>
           <div style="font-weight:800;font-size:15px;">الإجمالي: <span id="d-total" style="color:var(--red);">0</span> ج</div>
           <div class="msg" id="d-msg"></div>
         </div>
@@ -2846,7 +2846,7 @@ async function renderDailyExpenses(token) {
       dSaveDraft();
     });
     document.getElementById('d-save-all').addEventListener('click', dSaveAll);
-    document.getElementById('d-confirm-saved').addEventListener('click', dConfirmAlreadySaved);
+    document.getElementById('d-confirm-saved-top').addEventListener('click', dConfirmAlreadySaved);
     document.getElementById('d-date-bar').addEventListener('change', e => dLoadDayLog(e.target.value || todayStr()));
     document.getElementById('d-tbl-wrap').addEventListener('scroll', () => { dHideProjectSuggestions(); dCloseAllQuickTags(); }, { passive:true });
     window.addEventListener('resize', () => { dHideProjectSuggestions(); dCloseAllQuickTags(); });
@@ -3230,7 +3230,7 @@ async function dSaveAll(){
  * بيفضل ظاهر عشان تراجعه وتحفظه تاني. */
 async function dConfirmAlreadySaved(){
   const msg = document.getElementById('d-msg');
-  const btn = document.getElementById('d-confirm-saved');
+  const btn = document.getElementById('d-confirm-saved-top');
   const valid = DSTATE.rows.filter(r => String(r.desc).trim() && qNum(r.amount) > 0);
   if (!valid.length){
     DSTATE.rows = [dNewRow(), dNewRow(), dNewRow()];
