@@ -765,6 +765,124 @@
   td.gsel-on{ background:rgba(184,151,90,.16) !important; }
   td.gsel-on input, td.gsel-on textarea{ background:rgba(184,151,90,.14) !important; border-color:var(--gold) !important; }
   td.gsel-anchor{ outline:2px solid var(--gold); outline-offset:-2px; position:relative; z-index:1; }
+
+  /* ═══════════════════ صفحة "بنود المشاريع" (تصميم كروت جديد) ═══════════════════ */
+  .form-grid2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media(max-width:640px){ .form-grid2{ grid-template-columns:1fr; gap:0; } }
+
+  /* ===== شريط اختيار المشروع ===== */
+  .proj-tabs-row{ display:flex; align-items:flex-start; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
+  .proj-tabs{ display:flex; gap:8px; flex-wrap:wrap; flex:1; }
+  .proj-tab{ position:relative; cursor:pointer; background:var(--white); border:1.5px solid var(--border);
+    border-radius:11px; padding:11px 16px; transition:border-color .2s, background .2s, transform .15s var(--bounce); min-width:150px; }
+  .proj-tab:hover{ border-color:var(--gold); transform:translateY(-1px); }
+  .proj-tab.active{ border-color:var(--gold); background:var(--dark); }
+  .proj-tab .pt-name{ font-weight:800; font-size:13px; color:var(--dark); cursor:pointer; }
+  .proj-tab.active .pt-name{ color:#f0e6d8; }
+  .proj-tab .pt-bar{ background:var(--border); border-radius:20px; height:6px; overflow:hidden; margin:8px 0 6px; }
+  .proj-tab.active .pt-bar{ background:#3a3226; }
+  .proj-tab .pt-fill{ height:100%; background:var(--green); border-radius:20px; }
+  .proj-tab .pt-stats{ font-size:11px; color:var(--muted); display:flex; justify-content:space-between; cursor:pointer; }
+  .proj-tab.active .pt-stats{ color:#cbbfae; }
+  .proj-tab .pt-stats .pending{ color:var(--red); font-weight:700; }
+  .proj-tab.active .pt-stats .pending{ color:#e8a5a0; }
+  .proj-tab.ready-to-close{ border-color:var(--green); }
+
+  .proj-add{ display:flex; gap:6px; align-items:center; min-width:220px; }
+  .proj-add input{ flex:1; padding:9px 11px; border:1.5px dashed var(--border); border-radius:9px; font-size:12.5px;
+    font-family:inherit; background:var(--white); color:var(--dark); }
+  .proj-add input:focus{ outline:none; border-color:var(--gold); border-style:solid; }
+  .proj-add button{ all:unset; box-sizing:border-box; cursor:pointer; padding:9px 14px; border-radius:9px;
+    font-size:12.5px; font-weight:700; background:var(--gold); color:var(--dark); white-space:nowrap; }
+  .proj-add button:hover{ background:var(--gold-dim); color:#fff; }
+  .proj-add button:disabled{ opacity:.55; cursor:not-allowed; }
+
+  /* ===== بنود المشروع المختار ===== */
+  .items-summary{ display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
+  .items-summary .isum-count{ font-size:12.5px; color:var(--muted); font-weight:700; }
+  .items-summary .isum-bar{ flex:1; min-width:140px; background:var(--cream); border-radius:20px; height:9px; overflow:hidden; }
+  .items-summary .isum-fill{ height:100%; background:var(--green); border-radius:20px; }
+  .items-summary .isum-pct{ font-weight:800; font-size:13px; color:var(--green); font-family:'IBM Plex Mono',monospace; }
+
+  .item-filter{ display:flex; gap:6px; margin-bottom:16px; }
+  .item-filter button{ all:unset; box-sizing:border-box; cursor:pointer; padding:7px 14px; border-radius:8px;
+    font-size:12.5px; font-weight:700; color:var(--muted); background:var(--cream); border:1px solid var(--border); }
+  .item-filter button.active{ background:var(--gold); color:var(--dark); border-color:var(--gold); }
+
+  /* ===== كارت البند ===== */
+  .item-card{ background:var(--cream); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:12px; transition:opacity .2s; }
+  .item-card.done{ opacity:.65; }
+  .item-card-head{ display:flex; align-items:flex-start; gap:12px; }
+  .item-check{ flex-shrink:0; margin-top:2px; }
+  .item-check input{ width:22px; height:22px; cursor:pointer; accent-color:var(--green); }
+  .item-main{ flex:1; min-width:0; }
+  .item-title-row{ display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap; }
+  .item-name{ font-weight:800; font-size:14.5px; }
+  .item-card.done .item-name{ text-decoration:line-through; text-decoration-color:rgba(44,95,58,.5); color:var(--green); }
+  .item-badge{ font-size:11px; font-weight:800; padding:3px 10px; border-radius:20px; white-space:nowrap; }
+  .item-badge.pending{ background:#fbe2e2; color:var(--red); }
+  .item-badge.done{ background:#e6f4ea; color:var(--green); }
+  .item-actions-mini{ display:flex; align-items:center; gap:8px; }
+  .item-del-btn{ all:unset; box-sizing:border-box; cursor:pointer; width:22px; height:22px; display:flex; align-items:center;
+    justify-content:center; border-radius:50%; color:var(--muted); font-size:12px; transition:background .15s, color .15s; }
+  .item-del-btn:hover{ background:#fbe2e2; color:var(--red); }
+  .item-meta{ display:flex; flex-wrap:wrap; gap:5px 14px; font-size:12px; color:var(--muted); margin-top:5px; }
+  .item-meta b{ color:var(--dark); font-weight:700; }
+
+  /* ===== سجل ملاحظات/فيد باك (تعليقات متتالية) ===== */
+  .item-notes{ margin-top:12px; border-top:1px dashed var(--border); padding-top:10px; }
+  .item-notes-toggle{ all:unset; box-sizing:border-box; cursor:pointer; display:flex; align-items:center; gap:6px;
+    font-size:12px; font-weight:700; color:var(--gold-dim); }
+  .item-notes-toggle .chev{ font-size:10px; transition:transform .2s var(--bounce); }
+  .item-notes-toggle.open .chev{ transform:rotate(180deg); }
+  .item-notes-list{ margin-top:10px; display:flex; flex-direction:column; gap:8px; }
+  .note-entry{ background:var(--white); border-right:3px solid var(--gold); border-radius:6px; padding:8px 11px; }
+  .note-entry .note-text{ font-size:12.5px; color:var(--dark); }
+  .note-entry .note-meta{ font-size:10.5px; color:var(--muted); margin-top:4px; display:flex; gap:8px; }
+  .note-add-row{ display:flex; gap:8px; margin-top:10px; }
+  .note-add-row input{ flex:1; }
+
+  /* ===== عداد بنود + ستيبر عدد النسخ المطلوب إضافتها ===== */
+  .add-footer{ display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-top:6px; }
+  .add-count{ font-size:12.5px; color:var(--muted); font-weight:700; }
+  .add-count b{ color:var(--dark); font-family:'IBM Plex Mono',monospace; font-size:14px; }
+  .add-actions{ display:flex; align-items:center; gap:10px; }
+  .copies-stepper{ display:flex; align-items:center; gap:0; border:1.5px solid var(--border); border-radius:8px; overflow:hidden; }
+  .copies-stepper button{ all:unset; box-sizing:border-box; width:32px; height:36px; display:flex; align-items:center;
+    justify-content:center; cursor:pointer; color:var(--gold-dim); font-size:16px; font-weight:800; background:var(--cream); }
+  .copies-stepper button:hover{ background:#fdf6e8; }
+  .copies-stepper button:active{ transform:scale(.92); }
+  .copies-stepper .copies-val{ width:38px; text-align:center; font-weight:800; font-size:14px; font-family:'IBM Plex Mono',monospace; background:var(--white); }
+  .copies-hint{ font-size:11px; color:var(--muted); }
+
+  /* ===== موبايل: صفحة بنود المشاريع ===== */
+  @media (max-width: 640px){
+    /* شريط المشاريع: تاب كل واحد ياخد عرض كامل تقريبًا، سهل باللمس */
+    .proj-tabs-row{ flex-direction:column; align-items:stretch; }
+    .proj-tabs{ flex-direction:column; }
+    .proj-tab{ min-width:0; width:100%; padding:12px 14px; }
+    .proj-add{ width:100%; min-width:0; }
+
+    .item-filter{ width:100%; }
+    .item-filter button{ flex:1; text-align:center; padding:9px 6px; }
+
+    .item-card{ padding:13px; }
+    .item-card-head{ gap:10px; }
+    .item-title-row{ gap:6px; }
+    .item-name{ font-size:14px; }
+    .item-meta{ gap:4px 10px; }
+
+    .note-add-row{ flex-direction:column; }
+    .note-add-row button{ width:100%; }
+
+    .add-footer{ flex-direction:column; align-items:stretch; gap:12px; }
+    .add-actions{ flex-wrap:wrap; justify-content:space-between; }
+    .add-actions #addMissingItemBtn{ flex:1; min-width:120px; }
+
+    /* تكبير مناطق اللمس شوية للموبايل */
+    .item-check input{ width:24px; height:24px; }
+    .copies-stepper button{ width:38px; height:40px; }
+  }
 </style>
 </head>
 <body>
@@ -6648,123 +6766,317 @@ async function wfrLoad(token) {
   } catch (err) { box.innerHTML = `<div class="panel"><div class="msg err" style="display:block;">خطأ: ${err.message || err}</div></div>`; }
 }
 
-/* ══════════════ 4.3) البنود الناقصة لكل مشروع ══════════════ */
-let MISTATE = { project: '', items: [], summary: [] };
+/* ══════════════ 4.3) بنود المشاريع (تصميم كروت + ثريد ملاحظات لكل بند) ══════════════ */
+let MISTATE = { projects: [], project: '', items: [], summary: [], filter: 'all', openNotes: new Set(), copies: 1 };
+const WORKFLOW_UNITS_JS = ['قطعة', 'متر طولي', 'متر مربع', 'متر مكعب', 'كجم', 'يوم', 'دفعة'];
+
 async function renderMissingItems(token) {
   try {
     const [{ projects }, { summary }] = await Promise.all([apiGet('listProjects'), apiGet('getMissingItemsSummary')]);
     if (isStaleNav(token)) return;
+    MISTATE.projects = projects || [];
     MISTATE.summary = summary || [];
-    if (!MISTATE.project && projects.length) MISTATE.project = projects[0];
+    if (!MISTATE.project || !MISTATE.projects.includes(MISTATE.project)) MISTATE.project = MISTATE.projects[0] || '';
+    MISTATE.filter = 'all';
     document.getElementById('content').innerHTML = `
-      <div class="panel">
-        <h3>بنود المشاريع</h3>
-        ${MISTATE.summary.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>لسه مش تمام</th><th>تمام</th><th>الإجمالي</th></tr></thead>
-        <tbody>${MISTATE.summary.map(s => `<tr style="cursor:pointer;" onclick="miSelectProject('${qEscJs(s.project)}')"><td>${qEsc(s.project)}</td><td style="color:${s.pending ? 'var(--red)' : 'var(--green)'};font-weight:700;">${s.pending}</td><td>${s.done}</td><td>${s.total}</td></tr>`).join('')}</tbody></table></div>`
-          : `<div class="empty">لسه مفيش بنود متسجلة</div>`}
+      <div class="proj-tabs-row">
+        <div class="proj-tabs" id="miProjTabs"></div>
+        <div class="proj-add">
+          <input type="text" id="miNewProjName" placeholder="اسم مشروع جديد...">
+          <button type="button" id="miAddProjBtn">+ مشروع</button>
+        </div>
       </div>
-      <div class="grid2">
-        <div class="panel">
-          <h3>إضافة بند</h3>
-          <form id="miForm">
-            <div class="field"><label>المشروع</label>
-              <select id="mi_project">${projects.map(p => `<option value="${qEsc(p)}" ${p === MISTATE.project ? 'selected' : ''}>${qEsc(p)}</option>`).join('')}</select>
-            </div>
-            <div class="field"><label>اسم البند</label><input autocomplete="off" id="mi_name" required placeholder="مثال: كوع ألوميتال 90 درجة"></div>
-            <div class="field"><label>المقاس</label><input autocomplete="off" id="mi_size" placeholder="مثال: 4 سم"></div>
-            <div class="field"><label>الوحدة</label>
-              <select id="mi_unit"><option value=""></option>${WORKFLOW_UNITS_JS.map(u => `<option value="${qEsc(u)}">${qEsc(u)}</option>`).join('')}</select>
-            </div>
-            <div class="field"><label>الكمية</label><input autocomplete="off" id="mi_qty" placeholder="مثال: 12"></div>
-            <div class="field"><label>ملاحظة/فيد باك</label><input autocomplete="off" id="mi_notes" placeholder="اختياري — ممكن تعدّله بعدين برضه"></div>
-            <button type="submit" class="btn btn-primary" id="miBtn">إضافة</button>
-            <div class="msg" id="miMsg"></div>
-          </form>
+      <div class="panel">
+        <h3 id="miItemsPanelTitle">بنود المشروع</h3>
+        <div class="items-summary" id="miItemsSummary"></div>
+        <div class="item-filter" id="miItemFilter">
+          <button type="button" data-f="all" class="active">الكل</button>
+          <button type="button" data-f="pending">لسه ناقص</button>
+          <button type="button" data-f="done">خلص</button>
         </div>
-        <div class="panel">
-          <h3>بنود مشروع: <span id="mi-list-title">${qEsc(MISTATE.project)}</span></h3>
-          <div id="mi-list-box"><div class="loading-row">جاري التحميل...</div></div>
+        <div id="miItemsList"><div class="loading-row">جاري التحميل...</div></div>
+      </div>
+      <div class="panel">
+        <h3>إضافة بند جديد</h3>
+        <div class="form-grid2">
+          <div class="field"><label>المشروع</label>
+            <select class="d-input" id="mi_project">${MISTATE.projects.map(p => `<option value="${qEsc(p)}" ${p === MISTATE.project ? 'selected' : ''}>${qEsc(p)}</option>`).join('')}</select>
+          </div>
+          <div class="field"><label>اسم البند</label><input class="d-input" autocomplete="off" id="mi_name" placeholder="مثال: كوع ألوميتال 90 درجة"></div>
         </div>
+        <div class="form-grid2">
+          <div class="field"><label>المقاس</label><input class="d-input" autocomplete="off" id="mi_size" placeholder="مثال: 4 سم"></div>
+          <div class="field"><label>الوحدة</label>
+            <select class="d-input" id="mi_unit"><option value=""></option>${WORKFLOW_UNITS_JS.map(u => `<option value="${qEsc(u)}">${qEsc(u)}</option>`).join('')}</select>
+          </div>
+        </div>
+        <div class="form-grid2">
+          <div class="field"><label>الكمية</label><input class="d-input" autocomplete="off" id="mi_qty" placeholder="مثال: 12"></div>
+          <div class="field"><label>ملاحظة (اختياري)</label><input class="d-input" autocomplete="off" id="mi_notes" placeholder="أي تفاصيل إضافية..."></div>
+        </div>
+        <div class="add-footer">
+          <span class="add-count">إجمالي بنود <b id="miCurProjLabel"></b>: <b id="miTotalItemsCount">0</b> بند</span>
+          <div class="add-actions">
+            <span class="copies-hint">عدد النسخ</span>
+            <div class="copies-stepper">
+              <button type="button" id="miCopiesMinus">−</button>
+              <span class="copies-val" id="miCopiesVal">1</span>
+              <button type="button" id="miCopiesPlus">+</button>
+            </div>
+            <button type="button" class="btn btn-primary" id="addMissingItemBtn">+ إضافة</button>
+          </div>
+        </div>
+        <div class="msg" id="miMsg"></div>
       </div>
     `;
-    document.getElementById('miForm').addEventListener('submit', miAddSubmit);
-    document.getElementById('mi_project').addEventListener('change', e => { MISTATE.project = e.target.value; miLoadList(); });
+    miBindStaticEvents();
+    miRenderProjTabs();
     miLoadList();
   } catch (err) { showError(err); }
 }
-const WORKFLOW_UNITS_JS = ['قطعة', 'متر طولي', 'متر مربع', 'متر مكعب', 'كجم', 'يوم', 'دفعة'];
+
+function miBindStaticEvents() {
+  document.getElementById('miAddProjBtn').addEventListener('click', miAddProject);
+  document.getElementById('miNewProjName').addEventListener('keydown', e => { if (e.key === 'Enter') miAddProject(); });
+  document.getElementById('mi_project').addEventListener('change', e => { MISTATE.project = e.target.value; miLoadList(); });
+  document.getElementById('miItemFilter').addEventListener('click', e => {
+    const btn = e.target.closest('button'); if (!btn) return;
+    MISTATE.filter = btn.dataset.f;
+    document.querySelectorAll('#miItemFilter button').forEach(b => b.classList.toggle('active', b === btn));
+    miRenderItemsList();
+  });
+  document.getElementById('miCopiesMinus').addEventListener('click', () => { MISTATE.copies = Math.max(1, MISTATE.copies - 1); miRenderCopies(); });
+  document.getElementById('miCopiesPlus').addEventListener('click', () => { MISTATE.copies = Math.min(50, MISTATE.copies + 1); miRenderCopies(); });
+  document.getElementById('addMissingItemBtn').addEventListener('click', miAddItemSubmit);
+}
+function miRenderCopies() { const el = document.getElementById('miCopiesVal'); if (el) el.textContent = MISTATE.copies; }
+
+function miProjectSummary(p) {
+  return MISTATE.summary.find(s => s.project === p) || { project: p, total: 0, done: 0, pending: 0 };
+}
+
+function miRenderProjTabs() {
+  const box = document.getElementById('miProjTabs'); if (!box) return;
+  box.innerHTML = MISTATE.projects.map(p => {
+    const s = miProjectSummary(p);
+    const pct = s.total ? Math.round(s.done / s.total * 100) : 0;
+    const readyToClose = s.total > 0 && s.pending === 0;
+    return `<div class="proj-tab ${p === MISTATE.project ? 'active' : ''} ${readyToClose ? 'ready-to-close' : ''}" data-selectproj="${qEsc(p)}">
+      <div class="pt-name">${qEsc(p)}</div>
+      <div class="pt-bar"><div class="pt-fill" style="width:${pct}%;"></div></div>
+      <div class="pt-stats"><span class="pending">${s.pending} ناقص</span><span>${s.done}/${s.total} خلص</span></div>
+    </div>`;
+  }).join('') || `<div class="empty" style="padding:14px;">مفيش مشاريع في النظام دلوقتي — ضيف مشروع جديد من فوق</div>`;
+  box.querySelectorAll('[data-selectproj]').forEach(el => {
+    el.addEventListener('click', () => miSelectProject(el.dataset.selectproj));
+  });
+}
+
 function miSelectProject(name) {
   MISTATE.project = name;
+  MISTATE.filter = 'all';
+  document.querySelectorAll('#miItemFilter button').forEach(b => b.classList.toggle('active', b.dataset.f === 'all'));
   const sel = document.getElementById('mi_project'); if (sel) sel.value = name;
-  document.getElementById('mi-list-title').textContent = name;
+  miRenderProjTabs();
   miLoadList();
 }
-async function miAddSubmit(e) {
-  e.preventDefault();
-  const btn = document.getElementById('miBtn'); const msg = document.getElementById('miMsg');
-  msg.className = 'msg'; msg.textContent = ''; btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
-  const item = {
-    project: document.getElementById('mi_project').value,
-    name: document.getElementById('mi_name').value.trim(),
-    size: document.getElementById('mi_size').value.trim(),
-    unit: document.getElementById('mi_unit').value,
-    qty: document.getElementById('mi_qty').value.trim(),
-    notes: document.getElementById('mi_notes').value.trim()
-  };
+
+// إضافة مشروع جديد فعليًا في النظام (نفس createProject المستخدمة في صفحة "المشاريع" —
+// بتعمل شيت مالي كامل للمشروع، عشان يظهر صح في كل صفحات الداش بورد التانية كمان)
+async function miAddProject() {
+  const input = document.getElementById('miNewProjName');
+  const name = input.value.trim();
+  if (!name) return;
+  const btn = document.getElementById('miAddProjBtn');
+  btn.disabled = true;
   try {
-    await apiPost('addMissingItem', { item });
-    document.getElementById('mi_name').value = ''; document.getElementById('mi_size').value = '';
-    document.getElementById('mi_qty').value = ''; document.getElementById('mi_notes').value = '';
-    msg.className = 'msg ok'; msg.textContent = '✅ اتضاف';
+    const res = await apiPost('createProject', { name });
+    if (res && res.error) { showToast(res.error, 'error'); return; }
+    input.value = '';
+    const { projects } = await apiGet('listProjects');
+    MISTATE.projects = projects || [];
+    MISTATE.project = name;
+    const sel = document.getElementById('mi_project');
+    if (sel) sel.innerHTML = MISTATE.projects.map(p => `<option value="${qEsc(p)}" ${p === MISTATE.project ? 'selected' : ''}>${qEsc(p)}</option>`).join('');
+    showToast('✅ اتضاف المشروع: ' + name, 'success');
+    miRenderProjTabs();
     miLoadList();
-  } catch (err) { msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
-  finally { btn.disabled = false; btn.textContent = 'إضافة'; }
+  } catch (err) { showToast('خطأ: ' + (err.message || err), 'error'); }
+  finally { btn.disabled = false; }
 }
+
+function miRenderItemsSummary() {
+  const box = document.getElementById('miItemsSummary'); if (!box) return;
+  const titleEl = document.getElementById('miItemsPanelTitle');
+  if (!MISTATE.project) { if (titleEl) titleEl.textContent = 'بنود المشروع'; box.innerHTML = ''; return; }
+  const s = miProjectSummary(MISTATE.project);
+  const pct = s.total ? Math.round(s.done / s.total * 100) : 0;
+  if (titleEl) titleEl.innerHTML = `بنود: ${qEsc(MISTATE.project)} <span class="sub">${s.done}/${s.total} خلص</span>`;
+  box.innerHTML = `
+    <span class="isum-count">${s.pending} بند لسه ناقص</span>
+    <div class="isum-bar"><div class="isum-fill" style="width:${pct}%;"></div></div>
+    <span class="isum-pct">${pct}%</span>
+  `;
+}
+
+function miFmtDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso);
+  return d.getDate() + '/' + (d.getMonth() + 1);
+}
+
+function miRenderItemsList() {
+  const box = document.getElementById('miItemsList'); if (!box) return;
+  if (!MISTATE.project) { box.innerHTML = `<div class="empty">مفيش مشاريع في النظام دلوقتي — ضيف مشروع جديد من فوق</div>`; return; }
+  let items = MISTATE.items;
+  if (MISTATE.filter === 'pending') items = items.filter(i => !i.done);
+  if (MISTATE.filter === 'done') items = items.filter(i => i.done);
+  if (!items.length) {
+    box.innerHTML = `<div class="empty">مفيش بنود ${MISTATE.filter === 'pending' ? 'ناقصة' : MISTATE.filter === 'done' ? 'خالصة' : ''} للمشروع ده</div>`;
+    return;
+  }
+  box.innerHTML = items.map(it => {
+    const notesOpen = MISTATE.openNotes.has(it.id);
+    const notes = it.notesList || (it.notes ? [{ text: it.notes, author: '(ملاحظة أصلية)', date: it.addedDate || '' }] : []);
+    return `
+    <div class="item-card ${it.done ? 'done' : ''}">
+      <div class="item-card-head">
+        <label class="item-check"><input type="checkbox" ${it.done ? 'checked' : ''} data-toggledone="${it.id}"></label>
+        <div class="item-main">
+          <div class="item-title-row">
+            <span class="item-name">${qEsc(it.name)}</span>
+            <div class="item-actions-mini">
+              <span class="item-badge ${it.done ? 'done' : 'pending'}">${it.done ? 'خلص' : 'ناقص'}</span>
+              <button type="button" class="item-del-btn" data-delitem="${it.id}" title="حذف البند">✕</button>
+            </div>
+          </div>
+          <div class="item-meta">
+            ${it.size ? `<span><b>المقاس:</b> ${qEsc(it.size)}</span>` : ''}
+            ${it.unit ? `<span><b>الوحدة:</b> ${qEsc(it.unit)}</span>` : ''}
+            ${it.qty ? `<span><b>الكمية:</b> ${qEsc(it.qty)}</span>` : ''}
+          </div>
+          <div class="item-notes">
+            <button type="button" class="item-notes-toggle ${notesOpen ? 'open' : ''}" data-notestoggle="${it.id}">
+              <span class="chev">▾</span>
+              <span>ملاحظات وفيد باك (${notes.length})</span>
+            </button>
+            ${notesOpen ? `
+              <div class="item-notes-list">
+                ${notes.length ? notes.map(n => `
+                  <div class="note-entry">
+                    <div class="note-text">${qEsc(n.text)}</div>
+                    <div class="note-meta"><span>${qEsc(n.author)}</span><span>${miFmtDate(n.date)}</span></div>
+                  </div>
+                `).join('') : `<div style="font-size:12px;color:var(--muted);">لسه مفيش ملاحظات على البند ده</div>`}
+                <div class="note-add-row">
+                  <input class="d-input" placeholder="اكتب ملاحظة أو فيد باك جديد..." data-noteinput="${it.id}">
+                  <button type="button" class="btn btn-primary btn-sm" data-noteadd="${it.id}">إضافة</button>
+                </div>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  box.querySelectorAll('[data-toggledone]').forEach(chk => {
+    chk.addEventListener('change', () => miToggleDone(chk.dataset.toggledone, chk.checked));
+  });
+  box.querySelectorAll('[data-delitem]').forEach(btn => {
+    btn.addEventListener('click', () => miDelete(btn.dataset.delitem));
+  });
+  box.querySelectorAll('[data-notestoggle]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.notestoggle;
+      if (MISTATE.openNotes.has(id)) MISTATE.openNotes.delete(id); else MISTATE.openNotes.add(id);
+      miRenderItemsList();
+    });
+  });
+  box.querySelectorAll('[data-noteadd]').forEach(btn => {
+    btn.addEventListener('click', () => miAddNote(btn.dataset.noteadd));
+  });
+  box.querySelectorAll('[data-noteinput]').forEach(inp => {
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); miAddNote(inp.dataset.noteinput); } });
+  });
+}
+
+function miRenderAddFormFooter() {
+  const lbl = document.getElementById('miCurProjLabel'); if (lbl) lbl.textContent = MISTATE.project || '—';
+  const cnt = document.getElementById('miTotalItemsCount'); if (cnt) cnt.textContent = MISTATE.items.length;
+}
+
 async function miLoadList() {
-  const box = document.getElementById('mi-list-box'); if (!box) return;
-  box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  const box = document.getElementById('miItemsList');
+  if (box) box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  miRenderItemsSummary();
   try {
     const { items } = await apiGet('listMissingItems', { filters: { project: MISTATE.project } });
     MISTATE.items = items || [];
-    if (!items.length) { box.innerHTML = '<div class="empty">مفيش بنود ناقصة مسجلة للمشروع ده</div>'; return; }
-    const doneCount = items.filter(i => i.done).length;
-    const pct = items.length ? Math.round((doneCount / items.length) * 100) : 0;
-    box.innerHTML = `
-      <div style="font-size:12.5px;color:var(--muted);margin-bottom:4px;">${doneCount} من ${items.length} اتوفر (${pct}%)</div>
-      <div class="mi-progress-bar"><div class="mi-progress-fill" style="width:${pct}%;"></div></div>
-      <div class="tbl-wrap" style="margin-top:12px;"><table>
-        <thead><tr><th style="width:30px;">تم</th><th>البند</th><th>المقاس</th><th>الوحدة</th><th>الكمية</th><th>ملاحظة</th><th></th></tr></thead>
-        <tbody>${items.map(i => `
-          <tr class="${i.done ? 'mi-done-row' : ''}">
-            <td><input type="checkbox" class="mi-check" ${i.done ? 'checked' : ''} onchange="miToggleDone('${i.id}', this.checked)"></td>
-            <td>${qEsc(i.name)}</td><td>${qEsc(i.size)}</td><td>${qEsc(i.unit)}</td><td>${qEsc(i.qty)}</td><td>${qEsc(i.notes)}</td>
-            <td><button class="btn btn-sm btn-danger" onclick="miDelete('${i.id}')">✕</button></td>
-          </tr>`).join('')}</tbody>
-      </table></div>
-    `;
-  } catch (err) { box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
+    miRenderItemsList();
+    miRenderAddFormFooter();
+  } catch (err) { if (box) box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
 }
-async function miToggleDone(id, done) {
-  try { await apiPost('updateMissingItem', { item: { id, done } }); miLoadList(); renderMissingItemsSummaryOnly(); }
-  catch (err) { showToast('خطأ: ' + (err.message || err), 'error'); miLoadList(); }
-}
-async function miDelete(id) {
-  if (!(await openGenConfirm('متأكد؟', 'حذف'))) return;
-  try { await apiPost('deleteMissingItem', { id }); miLoadList(); renderMissingItemsSummaryOnly(); }
-  catch (err) { showToast('خطأ: ' + (err.message || err), 'error'); }
-}
-// بيحدّث جدول الملخص فوق (ناقص/اتوفر/إجمالي لكل مشروع) من غير ما يعيد بناء الصفحة كلها
-async function renderMissingItemsSummaryOnly() {
+
+async function miRefreshSummary() {
   try {
     const { summary } = await apiGet('getMissingItemsSummary');
     MISTATE.summary = summary || [];
-    const box = document.querySelector('.panel'); // أول panel في الصفحة هو بانل الملخص
-    if (!box) return;
-    box.innerHTML = `<h3>البنود الناقصة حسب المشروع</h3>
-      ${MISTATE.summary.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>ناقص</th><th>اتوفر</th><th>الإجمالي</th></tr></thead>
-      <tbody>${MISTATE.summary.map(s => `<tr style="cursor:pointer;" onclick="miSelectProject('${qEscJs(s.project)}')"><td>${qEsc(s.project)}</td><td style="color:${s.pending ? 'var(--red)' : 'var(--green)'};font-weight:700;">${s.pending}</td><td>${s.done}</td><td>${s.total}</td></tr>`).join('')}</tbody></table></div>`
-        : `<div class="empty">لسه مفيش بنود ناقصة متسجلة</div>`}`;
+    miRenderProjTabs();
+    miRenderItemsSummary();
   } catch (e) { /* تجاهل — مش حرج، هيتحدث لوحده أول ما يفتح الصفحة تاني */ }
+}
+
+async function miToggleDone(id, done) {
+  try { await apiPost('updateMissingItem', { item: { id, done } }); await Promise.all([miRefreshSummary(), miLoadList()]); }
+  catch (err) { showToast('خطأ: ' + (err.message || err), 'error'); miLoadList(); }
+}
+
+async function miDelete(id) {
+  if (!(await openGenConfirm('متأكد إنك عاوز تمسح البند ده؟', 'حذف'))) return;
+  try { await apiPost('deleteMissingItem', { id }); await Promise.all([miRefreshSummary(), miLoadList()]); }
+  catch (err) { showToast('خطأ: ' + (err.message || err), 'error'); }
+}
+
+async function miAddNote(itemId) {
+  const input = document.querySelector(`[data-noteinput="${itemId}"]`);
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  input.disabled = true;
+  try { await apiPost('addMissingItemNote', { itemId, text }); input.value = ''; await miLoadList(); }
+  catch (err) { showToast('خطأ: ' + (err.message || err), 'error'); }
+  finally { input.disabled = false; }
+}
+
+async function miAddItemSubmit() {
+  const btn = document.getElementById('addMissingItemBtn');
+  const msg = document.getElementById('miMsg');
+  const project = document.getElementById('mi_project').value;
+  const name = document.getElementById('mi_name').value.trim();
+  if (!name) { msg.className = 'msg err'; msg.textContent = 'محتاج تكتب اسم البند'; return; }
+  const size = document.getElementById('mi_size').value.trim();
+  const unit = document.getElementById('mi_unit').value;
+  const qty = document.getElementById('mi_qty').value.trim();
+  const notes = document.getElementById('mi_notes').value.trim();
+  const copies = MISTATE.copies || 1;
+  msg.className = 'msg'; msg.textContent = '';
+  btn.disabled = true; const oldLabel = btn.textContent; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
+  try {
+    const item = { project, name, size, unit, qty, notes };
+    if (copies > 1) await apiPost('addMissingItems', { items: Array.from({ length: copies }, () => item) });
+    else await apiPost('addMissingItem', { item });
+    document.getElementById('mi_name').value = '';
+    document.getElementById('mi_size').value = '';
+    document.getElementById('mi_qty').value = '';
+    document.getElementById('mi_notes').value = '';
+    MISTATE.copies = 1; miRenderCopies();
+    MISTATE.project = project;
+    msg.className = 'msg ok'; msg.textContent = copies > 1 ? `✅ اتضاف ${copies} نسخة` : '✅ اتضاف البند';
+    await Promise.all([miRefreshSummary(), miLoadList()]);
+  } catch (err) { msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
+  finally { btn.disabled = false; btn.textContent = oldLabel; }
 }
 </script>
 </body>
