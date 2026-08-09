@@ -6217,7 +6217,7 @@ async function toRenderDailyTab(token) {
   if (isStaleNav(token)) return;
   TO_STATE.todayEntries = entries || [];
   const box = document.getElementById('to-tab-content'); if (!box) return;
-  const grouped = TO_STATE.craftsmen.map(name => ({ name, items: TO_STATE.todayEntries.filter(e => e.craftsman === name) }));
+  const grouped = TO_STATE.craftsmen.map(name => ({ name, items: TO_STATE.todayEntries.filter(e => e.craftsman === name) })).filter(g => g.items.length);
   box.innerHTML = `
     <div class="panel">
       <h3>تسجيل شغل <span class="sub">هيتسجل في شيت "سجل الشغل اليومي" مباشرة</span></h3>
