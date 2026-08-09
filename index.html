@@ -68,6 +68,24 @@
   .topbar h2{ font-size:23px; font-weight:800; }
   .topbar p{ color:var(--muted); font-size:13px; margin-top:3px; }
   .badge-live{ background:#e6f4ea; color:var(--green); font-size:12px; font-weight:700; padding:6px 14px; border-radius:20px; white-space:nowrap; }
+  /* Work Flow */
+  .nav-section-label{ font-size:10.5px; font-weight:800; letter-spacing:.5px; color:var(--gold);
+    text-transform:uppercase; padding:10px 16px 4px; opacity:.85; }
+  .sidebar.collapsed .nav-section-label{ display:none; }
+  .wf-card{ background:var(--white); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:14px; }
+  .wf-card-head{ display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+  .wf-craftsman-name{ font-size:15px; font-weight:800; }
+  .wf-specialty-pill{ display:inline-block; background:var(--cream); color:var(--muted); font-size:11px; font-weight:700; padding:3px 10px; border-radius:20px; margin-inline-start:8px; }
+  .wf-item{ border-top:1px dashed var(--border); padding:10px 0; }
+  .wf-item:first-child{ border-top:none; }
+  .wf-item-row{ display:flex; flex-wrap:wrap; gap:6px 16px; font-size:12.5px; color:var(--muted); margin-bottom:4px; }
+  .wf-item-row b{ color:var(--dark); font-weight:700; }
+  .wf-feedback{ background:#fdf6e8; border-right:3px solid var(--gold); padding:8px 10px; border-radius:6px; font-size:13px; margin-top:6px; }
+  .wf-empty-day{ text-align:center; color:var(--muted); padding:30px; }
+  .mi-progress-bar{ background:var(--cream); border-radius:20px; height:8px; overflow:hidden; margin-top:6px; }
+  .mi-progress-fill{ height:100%; background:var(--green); border-radius:20px; }
+  .mi-check{ width:20px; height:20px; cursor:pointer; }
+  .mi-done-row td{ opacity:.55; text-decoration:line-through; }
 
   .cards{ display:grid; grid-template-columns:repeat(auto-fit, minmax(185px,1fr)); gap:14px; margin-bottom:22px; }
   .cards-pair{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:22px; }
@@ -652,6 +670,11 @@
     <button data-page="debts"><span class="icon">&#128308;</span><span class="label">ديون</span></button>
     <button data-page="partnerWithdrawals"><span class="icon">&#129309;</span><span class="label">مسحوبات شركاء</span></button>
     <div class="sep"></div>
+    <div class="nav-section-label">Work Flow</div>
+    <button data-page="workflowDaily"><span class="icon">&#128221;</span><span class="label">الشيت اليومي</span></button>
+    <button data-page="workflowReport"><span class="icon">&#128203;</span><span class="label">تقرير يومي بالصنايعية</span></button>
+    <button data-page="missingItems"><span class="icon">&#128230;</span><span class="label">البنود الناقصة</span></button>
+    <div class="sep"></div>
     <button data-page="quotation"><span class="icon">&#128221;</span><span class="label">Quotations</span></button>
     <button data-page="debtors"><span class="icon">&#128184;</span><span class="label">Payment Statements</span></button>
   </div>
@@ -1214,7 +1237,10 @@ const PAGES = {
   quotation:    { title:'Quotations', sub:'قائمة العملاء وعروض الأسعار', render: renderQuotation },
   debtors:      { title:'Payment Statements', sub:'متابعة تحصيل الدفعات من العملاء — كل حاجة عن المستحق والمتبقي', render: renderDebtors },
   debts:        { title:'ديون', sub:'المبالغ اللي المصنع مديون بيها لجهات تانية ومتابعة سدادها', render: renderDebts },
-  partnerWithdrawals: { title:'مسحوبات شركاء', sub:'مسحوبات الشركاء التلاتة — عمود لكل واحد، وإجمالي تحت كل عمود + إجمالي كلي', render: renderPartnerWithdrawals }
+  partnerWithdrawals: { title:'مسحوبات شركاء', sub:'مسحوبات الشركاء التلاتة — عمود لكل واحد، وإجمالي تحت كل عمود + إجمالي كلي', render: renderPartnerWithdrawals },
+  workflowDaily:  { title:'الشيت اليومي', sub:'سجّل شغل كل صنايعي اليوم — هيتسجل في شيت "سجل الشغل اليومي" مباشرة', render: renderWorkflowDaily },
+  workflowReport: { title:'تقرير يومي بالصنايعية', sub:'كل صنيعي فين وشغال ع ايه، بالفيد باك', render: renderWorkflowReport },
+  missingItems:   { title:'البنود الناقصة', sub:'كل مشروع ناقصه بنود ايه — مقاسات ووحدات وتحديد اللي اتوفر', render: renderMissingItems }
 };
 
 /* ================= Sidebar (mobile off-canvas + desktop collapse) ================= */
@@ -5914,6 +5940,302 @@ if (sessionStorage.getItem('lm_loggedIn') === '1') {
   _loadBuildVersion();
 } else {
   document.getElementById('l_name').focus();
+}
+</script>
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+ *  Work Flow — الشيت اليومي بالصنايعية + تقرير يومي + البنود الناقصة
+ *  (مدمج من ملف الإضافة المنفصل)
+ * ═══════════════════════════════════════════════════════════════════════ */
+/* ══════════════ 4.1) الشيت اليومي — فورم إدخال شغل الصنايعية ══════════════
+ * نفس فكرة "مصاريف يومية" (جدول أسطر + إضافة سطر + حفظ الكل دفعة واحدة)،
+ * بس بأعمدة الشغل اليومي بدل المصاريف */
+let WFSTATE = { rows: [], meta: { craftsmen: [], specialties: [], units: [] }, projects: [] };
+let _wfRid = 1;
+function wfNewRow() {
+  return { _id: _wfRid++, date: todayStr(), craftsman: '', specialty: '', project: '', location: '',
+    title: '', details: '', sizes: '', qty: '', attendance: '', notes: '', supervision: '', feedback: '' };
+}
+async function renderWorkflowDaily(token) {
+  try {
+    const [{ projects }, meta] = await Promise.all([apiGet('listProjects'), apiGet('getWorkflowMeta')]);
+    if (isStaleNav(token)) return;
+    WFSTATE.projects = projects || [];
+    WFSTATE.meta = meta || { craftsmen: [], specialties: [], units: [] };
+    WFSTATE.rows = [wfNewRow(), wfNewRow()];
+    document.getElementById('content').innerHTML = `
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+          <h3 style="margin:0;">الشيت اليومي — سطر لكل صنيعي/بند شغل</h3>
+        </div>
+        <div class="tbl-wrap tbl-wrap-scroll" style="max-height:65vh;">
+          <table>
+            <thead><tr>
+              <th style="width:26px;">#</th><th>التاريخ</th><th>الصنيعي</th><th>التخصص</th><th>الموقع/المشروع</th>
+              <th>العنوان</th><th>المطلوب</th><th>التفاصيل</th><th>المقاسات</th><th>الكمية</th>
+              <th>الحضور</th><th>ملاحظات</th><th>اشراف</th><th>فيد باك</th><th></th>
+            </tr></thead>
+            <tbody id="wf-body"></tbody>
+          </table>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap;">
+          <button type="button" class="btn btn-outline btn-sm" id="wf-add-row">+ إضافة سطر</button>
+          <button type="button" class="btn btn-primary" id="wf-save-all">حفظ</button>
+          <div class="msg" id="wf-msg"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>آخر السطور المسجلة فعليًا</h3>
+        <div id="wf-recent-box"><div class="loading-row">جاري التحميل...</div></div>
+      </div>
+    `;
+    wfRenderRows();
+    wfLoadRecent();
+    document.getElementById('wf-add-row').addEventListener('click', () => { WFSTATE.rows.push(wfNewRow()); wfRenderRows(); });
+    document.getElementById('wf-save-all').addEventListener('click', wfSaveAll);
+  } catch (err) { showError(err); }
+}
+function wfDatalist(id, list) {
+  return `<datalist id="${id}">${(list || []).map(v => `<option value="${qEsc(v)}">`).join('')}</datalist>`;
+}
+function wfRenderRows() {
+  const tb = document.getElementById('wf-body'); if (!tb) return;
+  const craftsmenNames = WFSTATE.meta.craftsmen.map(c => c.name);
+  tb.innerHTML =
+    wfDatalist('wf-dl-craftsmen', craftsmenNames) +
+    wfDatalist('wf-dl-specialties', WFSTATE.meta.specialties) +
+    wfDatalist('wf-dl-projects', WFSTATE.projects) +
+    WFSTATE.rows.map((r, i) => `
+    <tr>
+      <td style="text-align:center;color:var(--muted);font-size:11px;">${i + 1}</td>
+      <td><input type="date" class="d-input" style="width:130px;" value="${r.date}" onchange="wfSetField(${r._id},'date',this.value)"></td>
+      <td><input type="text" class="d-input" style="width:110px;" list="wf-dl-craftsmen" value="${qEsc(r.craftsman)}" placeholder="اسم الصنيعي" onchange="wfSetField(${r._id},'craftsman',this.value)"></td>
+      <td><input type="text" class="d-input" style="width:100px;" list="wf-dl-specialties" value="${qEsc(r.specialty)}" placeholder="التخصص" onchange="wfSetField(${r._id},'specialty',this.value)"></td>
+      <td><input type="text" class="d-input" style="width:150px;" list="wf-dl-projects" value="${qEsc(r.project)}" placeholder="اسم المشروع" onchange="wfSetField(${r._id},'project',this.value)"></td>
+      <td><input type="text" class="d-input" style="width:130px;" value="${qEsc(r.location)}" placeholder="العنوان/الدور" onchange="wfSetField(${r._id},'location',this.value)"></td>
+      <td><input type="text" class="d-input" style="width:170px;" value="${qEsc(r.title)}" placeholder="مثال: تركيب أبواب" onchange="wfSetField(${r._id},'title',this.value)"></td>
+      <td><textarea class="d-input" style="width:200px;min-height:38px;" placeholder="خامات/تفاصيل الشغل" onchange="wfSetField(${r._id},'details',this.value)">${qEsc(r.details)}</textarea></td>
+      <td><input type="text" class="d-input" style="width:100px;" value="${qEsc(r.sizes)}" placeholder="المقاسات" onchange="wfSetField(${r._id},'sizes',this.value)"></td>
+      <td><input type="text" class="d-input" style="width:70px;" value="${qEsc(r.qty)}" onchange="wfSetField(${r._id},'qty',this.value)"></td>
+      <td><input type="text" class="d-input" style="width:80px;" value="${qEsc(r.attendance)}" placeholder="8ص" onchange="wfSetField(${r._id},'attendance',this.value)"></td>
+      <td><input type="text" class="d-input" style="width:150px;" value="${qEsc(r.notes)}" onchange="wfSetField(${r._id},'notes',this.value)"></td>
+      <td><input type="text" class="d-input" style="width:130px;" value="${qEsc(r.supervision)}" placeholder="اشراف" onchange="wfSetField(${r._id},'supervision',this.value)"></td>
+      <td><textarea class="d-input" style="width:170px;min-height:38px;" placeholder="فيد باك" onchange="wfSetField(${r._id},'feedback',this.value)">${qEsc(r.feedback)}</textarea></td>
+      <td><button type="button" class="btn btn-sm btn-danger" onclick="wfDelRow(${r._id})">✕</button></td>
+    </tr>`).join('');
+}
+function wfSetField(id, field, value) {
+  const row = WFSTATE.rows.find(r => r._id === id); if (row) row[field] = value;
+}
+function wfDelRow(id) {
+  WFSTATE.rows = WFSTATE.rows.filter(r => r._id !== id);
+  if (!WFSTATE.rows.length) WFSTATE.rows.push(wfNewRow());
+  wfRenderRows();
+}
+async function wfSaveAll() {
+  const btn = document.getElementById('wf-save-all'); const msg = document.getElementById('wf-msg');
+  const valid = WFSTATE.rows.filter(r => r.craftsman.trim() && r.project.trim());
+  if (!valid.length) { msg.className = 'msg err'; msg.textContent = 'محتاج تكتب صنيعي ومشروع في سطر واحد على الأقل'; return; }
+  msg.className = 'msg'; msg.textContent = ''; btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
+  try {
+    await apiPost('addWorkflowEntries', { entries: valid });
+    msg.className = 'msg ok'; msg.textContent = `✅ اتحفظ ${valid.length} سطر`;
+    WFSTATE.rows = [wfNewRow(), wfNewRow()];
+    wfRenderRows();
+    wfLoadRecent();
+  } catch (err) { msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
+  finally { btn.disabled = false; btn.textContent = 'حفظ'; }
+}
+async function wfLoadRecent() {
+  const box = document.getElementById('wf-recent-box'); if (!box) return;
+  try {
+    const { entries } = await apiGet('listWorkflowEntries', { filters: { limit: 15 } });
+    box.innerHTML = entries.length
+      ? `<div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>الصنيعي</th><th>المشروع</th><th>المطلوب</th><th>فيد باك</th><th></th></tr></thead>
+      <tbody>${entries.map(e => `<tr>
+        <td>${e.date}</td><td>${qEsc(e.craftsman)}</td><td>${qEsc(e.project)}</td><td>${qEsc(e.title)}</td><td>${qEsc(e.feedback)}</td>
+        <td><button class="btn btn-sm btn-danger" onclick="wfDeleteEntry('${e.id}')">حذف</button></td>
+      </tr>`).join('')}</tbody></table></div>`
+      : `<div class="empty">لسه مفيش سطور متسجلة</div>`;
+  } catch (err) { box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
+}
+async function wfDeleteEntry(id) {
+  if (!(await openGenConfirm('متأكد؟', 'حذف'))) return;
+  try { await apiPost('deleteWorkflowEntry', { id }); wfLoadRecent(); } catch (err) { showToast('خطأ: ' + (err.message || err), 'error'); }
+}
+
+/* ══════════════ 4.2) تقرير يومي — كل صنيعي فين وشغال ع ايه + فيد باك ══════════════ */
+let WFR_DATE = todayStr();
+async function renderWorkflowReport(token) {
+  document.getElementById('content').innerHTML = `
+    <div class="panel">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <label style="font-weight:700;font-size:13px;">اليوم:</label>
+        <input type="date" class="d-input" id="wfr-date" style="width:160px;" value="${WFR_DATE}">
+        <button type="button" class="btn btn-outline btn-sm" id="wfr-today">النهاردة</button>
+        <button type="button" class="btn btn-outline btn-sm" id="wfr-yesterday">إمبارح</button>
+      </div>
+    </div>
+    <div id="wfr-box"><div class="loading-row">جاري التحميل...</div></div>
+  `;
+  document.getElementById('wfr-date').addEventListener('change', e => { WFR_DATE = e.target.value; wfrLoad(); });
+  document.getElementById('wfr-today').addEventListener('click', () => { WFR_DATE = todayStr(); document.getElementById('wfr-date').value = WFR_DATE; wfrLoad(); });
+  document.getElementById('wfr-yesterday').addEventListener('click', () => { WFR_DATE = yesterdayStr(); document.getElementById('wfr-date').value = WFR_DATE; wfrLoad(); });
+  wfrLoad(token);
+}
+async function wfrLoad(token) {
+  const box = document.getElementById('wfr-box');
+  box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  try {
+    const data = await apiGet('getWorkflowDailyReport', { date: WFR_DATE });
+    if (isStaleNav(token)) return;
+    if (!data.craftsmen.length) { box.innerHTML = `<div class="panel wf-empty-day">مفيش أي شغل متسجل في يوم ${WFR_DATE}</div>`; return; }
+    box.innerHTML = data.craftsmen.map(c => `
+      <div class="wf-card">
+        <div class="wf-card-head">
+          <div><span class="wf-craftsman-name">${qEsc(c.craftsman)}</span>${c.specialty ? `<span class="wf-specialty-pill">${qEsc(c.specialty)}</span>` : ''}</div>
+          <div style="font-size:12px;color:var(--muted);">${c.items.length} بند</div>
+        </div>
+        ${c.items.map(it => `
+          <div class="wf-item">
+            <div class="wf-item-row">
+              <span><b>المشروع:</b> ${qEsc(it.project)}</span>
+              ${it.location ? `<span><b>العنوان:</b> ${qEsc(it.location)}</span>` : ''}
+              ${it.attendance ? `<span><b>الحضور:</b> ${qEsc(it.attendance)}</span>` : ''}
+              ${it.supervision ? `<span><b>الإشراف:</b> ${qEsc(it.supervision)}</span>` : ''}
+            </div>
+            ${it.title ? `<div style="font-weight:700;font-size:13.5px;margin-bottom:3px;">${qEsc(it.title)}</div>` : ''}
+            ${it.details ? `<div style="font-size:12.5px;color:var(--muted);margin-bottom:3px;">${qEsc(it.details)}</div>` : ''}
+            <div class="wf-item-row">
+              ${it.sizes ? `<span><b>المقاسات:</b> ${qEsc(it.sizes)}</span>` : ''}
+              ${it.qty ? `<span><b>الكمية:</b> ${qEsc(it.qty)}</span>` : ''}
+            </div>
+            ${it.notes ? `<div style="font-size:12.5px;color:var(--muted);">📝 ${qEsc(it.notes)}</div>` : ''}
+            ${it.feedback ? `<div class="wf-feedback">💬 ${qEsc(it.feedback)}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `).join('');
+  } catch (err) { box.innerHTML = `<div class="panel"><div class="msg err" style="display:block;">خطأ: ${err.message || err}</div></div>`; }
+}
+
+/* ══════════════ 4.3) البنود الناقصة لكل مشروع ══════════════ */
+let MISTATE = { project: '', items: [], summary: [] };
+async function renderMissingItems(token) {
+  try {
+    const [{ projects }, { summary }] = await Promise.all([apiGet('listProjects'), apiGet('getMissingItemsSummary')]);
+    if (isStaleNav(token)) return;
+    MISTATE.summary = summary || [];
+    if (!MISTATE.project && projects.length) MISTATE.project = projects[0];
+    document.getElementById('content').innerHTML = `
+      <div class="panel">
+        <h3>البنود الناقصة حسب المشروع</h3>
+        ${MISTATE.summary.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>ناقص</th><th>اتوفر</th><th>الإجمالي</th></tr></thead>
+        <tbody>${MISTATE.summary.map(s => `<tr style="cursor:pointer;" onclick="miSelectProject('${qEscJs(s.project)}')"><td>${qEsc(s.project)}</td><td style="color:${s.pending ? 'var(--red)' : 'var(--green)'};font-weight:700;">${s.pending}</td><td>${s.done}</td><td>${s.total}</td></tr>`).join('')}</tbody></table></div>`
+          : `<div class="empty">لسه مفيش بنود ناقصة متسجلة</div>`}
+      </div>
+      <div class="grid2">
+        <div class="panel">
+          <h3>إضافة بند ناقص</h3>
+          <form id="miForm">
+            <div class="field"><label>المشروع</label>
+              <select id="mi_project">${projects.map(p => `<option value="${qEsc(p)}" ${p === MISTATE.project ? 'selected' : ''}>${qEsc(p)}</option>`).join('')}</select>
+            </div>
+            <div class="field"><label>اسم البند</label><input autocomplete="off" id="mi_name" required placeholder="مثال: كوع ألوميتال 90 درجة"></div>
+            <div class="field"><label>المقاس</label><input autocomplete="off" id="mi_size" placeholder="مثال: 4 سم"></div>
+            <div class="field"><label>الوحدة</label>
+              <select id="mi_unit"><option value=""></option>${WORKFLOW_UNITS_JS.map(u => `<option value="${qEsc(u)}">${qEsc(u)}</option>`).join('')}</select>
+            </div>
+            <div class="field"><label>الكمية</label><input autocomplete="off" id="mi_qty" placeholder="مثال: 12"></div>
+            <div class="field"><label>ملاحظة</label><input autocomplete="off" id="mi_notes" placeholder="اختياري"></div>
+            <button type="submit" class="btn btn-primary" id="miBtn">إضافة</button>
+            <div class="msg" id="miMsg"></div>
+          </form>
+        </div>
+        <div class="panel">
+          <h3>بنود مشروع: <span id="mi-list-title">${qEsc(MISTATE.project)}</span></h3>
+          <div id="mi-list-box"><div class="loading-row">جاري التحميل...</div></div>
+        </div>
+      </div>
+    `;
+    document.getElementById('miForm').addEventListener('submit', miAddSubmit);
+    document.getElementById('mi_project').addEventListener('change', e => { MISTATE.project = e.target.value; miLoadList(); });
+    miLoadList();
+  } catch (err) { showError(err); }
+}
+const WORKFLOW_UNITS_JS = ['قطعة', 'متر طولي', 'متر مربع', 'متر مكعب', 'كجم', 'يوم', 'دفعة'];
+function miSelectProject(name) {
+  MISTATE.project = name;
+  const sel = document.getElementById('mi_project'); if (sel) sel.value = name;
+  document.getElementById('mi-list-title').textContent = name;
+  miLoadList();
+}
+async function miAddSubmit(e) {
+  e.preventDefault();
+  const btn = document.getElementById('miBtn'); const msg = document.getElementById('miMsg');
+  msg.className = 'msg'; msg.textContent = ''; btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
+  const item = {
+    project: document.getElementById('mi_project').value,
+    name: document.getElementById('mi_name').value.trim(),
+    size: document.getElementById('mi_size').value.trim(),
+    unit: document.getElementById('mi_unit').value,
+    qty: document.getElementById('mi_qty').value.trim(),
+    notes: document.getElementById('mi_notes').value.trim()
+  };
+  try {
+    await apiPost('addMissingItem', { item });
+    document.getElementById('mi_name').value = ''; document.getElementById('mi_size').value = '';
+    document.getElementById('mi_qty').value = ''; document.getElementById('mi_notes').value = '';
+    msg.className = 'msg ok'; msg.textContent = '✅ اتضاف';
+    miLoadList();
+  } catch (err) { msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
+  finally { btn.disabled = false; btn.textContent = 'إضافة'; }
+}
+async function miLoadList() {
+  const box = document.getElementById('mi-list-box'); if (!box) return;
+  box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  try {
+    const { items } = await apiGet('listMissingItems', { filters: { project: MISTATE.project } });
+    MISTATE.items = items || [];
+    if (!items.length) { box.innerHTML = '<div class="empty">مفيش بنود ناقصة مسجلة للمشروع ده</div>'; return; }
+    const doneCount = items.filter(i => i.done).length;
+    const pct = items.length ? Math.round((doneCount / items.length) * 100) : 0;
+    box.innerHTML = `
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:4px;">${doneCount} من ${items.length} اتوفر (${pct}%)</div>
+      <div class="mi-progress-bar"><div class="mi-progress-fill" style="width:${pct}%;"></div></div>
+      <div class="tbl-wrap" style="margin-top:12px;"><table>
+        <thead><tr><th style="width:30px;">تم</th><th>البند</th><th>المقاس</th><th>الوحدة</th><th>الكمية</th><th>ملاحظة</th><th></th></tr></thead>
+        <tbody>${items.map(i => `
+          <tr class="${i.done ? 'mi-done-row' : ''}">
+            <td><input type="checkbox" class="mi-check" ${i.done ? 'checked' : ''} onchange="miToggleDone('${i.id}', this.checked)"></td>
+            <td>${qEsc(i.name)}</td><td>${qEsc(i.size)}</td><td>${qEsc(i.unit)}</td><td>${qEsc(i.qty)}</td><td>${qEsc(i.notes)}</td>
+            <td><button class="btn btn-sm btn-danger" onclick="miDelete('${i.id}')">✕</button></td>
+          </tr>`).join('')}</tbody>
+      </table></div>
+    `;
+  } catch (err) { box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
+}
+async function miToggleDone(id, done) {
+  try { await apiPost('updateMissingItem', { item: { id, done } }); miLoadList(); renderMissingItemsSummaryOnly(); }
+  catch (err) { showToast('خطأ: ' + (err.message || err), 'error'); miLoadList(); }
+}
+async function miDelete(id) {
+  if (!(await openGenConfirm('متأكد؟', 'حذف'))) return;
+  try { await apiPost('deleteMissingItem', { id }); miLoadList(); renderMissingItemsSummaryOnly(); }
+  catch (err) { showToast('خطأ: ' + (err.message || err), 'error'); }
+}
+// بيحدّث جدول الملخص فوق (ناقص/اتوفر/إجمالي لكل مشروع) من غير ما يعيد بناء الصفحة كلها
+async function renderMissingItemsSummaryOnly() {
+  try {
+    const { summary } = await apiGet('getMissingItemsSummary');
+    MISTATE.summary = summary || [];
+    const box = document.querySelector('.panel'); // أول panel في الصفحة هو بانل الملخص
+    if (!box) return;
+    box.innerHTML = `<h3>البنود الناقصة حسب المشروع</h3>
+      ${MISTATE.summary.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>ناقص</th><th>اتوفر</th><th>الإجمالي</th></tr></thead>
+      <tbody>${MISTATE.summary.map(s => `<tr style="cursor:pointer;" onclick="miSelectProject('${qEscJs(s.project)}')"><td>${qEsc(s.project)}</td><td style="color:${s.pending ? 'var(--red)' : 'var(--green)'};font-weight:700;">${s.pending}</td><td>${s.done}</td><td>${s.total}</td></tr>`).join('')}</tbody></table></div>`
+        : `<div class="empty">لسه مفيش بنود ناقصة متسجلة</div>`}`;
+  } catch (e) { /* تجاهل — مش حرج، هيتحدث لوحده أول ما يفتح الصفحة تاني */ }
 }
 </script>
 </body>
