@@ -6267,6 +6267,7 @@ let TO_STATE = {
   planCache: {},    // { [project]: items[] }
 };
 const TO_DAY_NAMES = ["السبت","الأحد","الاثنين","الثلاثاء","الأربعاء","الخميس","الجمعة"];
+let TO_WARMED = false; // عشان التحميل المسبق في الخلفية ما يتكررش كل ما ندخل الصفحة تاني
 
 function toISO(d){ const x = new Date(d); x.setMinutes(x.getMinutes() - x.getTimezoneOffset()); return x.toISOString().slice(0,10); }
 function toFmtDayDate(d){ return d.getDate()+'/'+(d.getMonth()+1); }
@@ -6317,6 +6318,7 @@ async function renderTaskOrganize(token) {
 
     await toRenderActiveTab(token);
     toRenderStatStrip();
+    toWarmupBackground(token); // مش بننتظرها — بتجيب كل حاجة في الخلفية عشان أي تنقل بعد كده يبان فورًا
   } catch (err) { showError(err); }
 }
 
@@ -6337,6 +6339,70 @@ function toRenderStatStrip() {
       <div class="to-stat-card"><div class="lbl">نسبة إنجاز البنود إجمالًا</div><div class="val">${pct}<small>%</small></div></div>
     </div>
   `;
+}
+
+/* ═══ تحميل مسبق في الخلفية ═══
+   بمجرد ما الصفحة تفتح، بنجيب من السيرفر (من غير ما نوقف أو نعطّل حاجة على المستخدم):
+   - شغل النهاردة/بكرة/إمبارح (أزرار الاختصار في تاب "شغل يومي")
+   - الأسبوع الحالي + اللي قبله واللي بعده (تنقل تاب "اسبوعي")
+   - بنود كل المشاريع (تاب "تايم بلاننج")
+   عشان لما المستخدم يغيّر تاريخ أو يفتح تاب أو يبدّل مشروع، البيانات تكون جاهزة
+   في الذاكرة فعلاً وتبان فورًا من غير أي انتظار أو "تحميل من الأول". */
+async function toWarmupBackground(token) {
+  if (TO_WARMED) return;
+  TO_WARMED = true;
+  try {
+    // 1) شغل يومي: النهاردة + بكرة + إمبارح
+    const tmr = new Date(); tmr.setDate(tmr.getDate() + 1);
+    const dailyDates = [todayStr(), toISO(tmr), yesterdayStr()];
+    for (const d of dailyDates) {
+      if (isStaleNav(token)) return;
+      if (TO_STATE.dailyCache[d]) continue;
+      try {
+        const { entries } = await apiGet('listWorkflowEntries', { filters: { date: d } });
+        if (isStaleNav(token)) return;
+        TO_STATE.dailyCache[d] = entries || [];
+        if (TO_STATE.activeTab === 'daily' && TO_STATE.formDate === d) {
+          TO_STATE.todayEntries = TO_STATE.dailyCache[d];
+          toRenderDailyForm();
+          toRenderStatStrip();
+        }
+      } catch (e) { /* تجاهل — التحميل المسبق مش حرج، هيتجاب عادي أول ما يتفتح فعليًا */ }
+    }
+
+    // 2) الأسبوع الحالي + اللي قبله واللي بعده
+    const baseAnchor = new Date(TO_STATE.weekAnchor);
+    for (const offset of [0, -7, 7]) {
+      if (isStaleNav(token)) return;
+      const anchor = new Date(baseAnchor); anchor.setDate(anchor.getDate() + offset);
+      const dts = toGetWeekDates(anchor);
+      const from = toISO(dts[0]), to = toISO(dts[6]);
+      const key = from + '_' + to;
+      if (TO_STATE.weekCache[key]) continue;
+      try {
+        const { entries } = await apiGet('getWorkflowWeek', { from, to });
+        if (isStaleNav(token)) return;
+        TO_STATE.weekCache[key] = entries || [];
+        if (TO_STATE.activeTab === 'week') {
+          const curDts = toGetWeekDates(TO_STATE.weekAnchor);
+          const curKey = toISO(curDts[0]) + '_' + toISO(curDts[6]);
+          if (curKey === key) { TO_STATE.weekEntries = TO_STATE.weekCache[key]; toRenderWeekGrid(curDts, toISO(curDts[0]), toISO(curDts[6])); }
+        }
+      } catch (e) { /* تجاهل */ }
+    }
+
+    // 3) بنود كل المشاريع (تايم بلاننج) — واحد ورا التاني عشان ما نضغطش على السيرفر مرة واحدة
+    for (const p of TO_STATE.projects) {
+      if (isStaleNav(token)) return;
+      if (TO_STATE.planCache[p]) continue;
+      try {
+        const { items } = await apiGet('listMissingItems', { filters: { project: p } });
+        if (isStaleNav(token)) return;
+        TO_STATE.planCache[p] = items || [];
+        if (TO_STATE.activeTab === 'plan' && TO_PLAN_PROJECT === p) toRenderPlanBody(TO_STATE.planCache[p]);
+      } catch (e) { /* تجاهل */ }
+    }
+  } catch (e) { /* التحميل المسبق اختياري بالكامل — أي خطأ فيه ما ينفعش يعطّل الصفحة */ }
 }
 
 // موجّه بس — كل تاب بقى ليه لودر مسؤول عن الكاش بتاعه، فمفيش "مسح الشاشة وابدأ من الأول"
