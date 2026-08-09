@@ -1284,8 +1284,12 @@ document.getElementById('bottomNav').addEventListener('click', e => {
 // ما تكتب في الـ DOM إن التوكن بتاعها لسه هو الحالي — لو المستخدم دخل صفحة تانية
 // قبل ما تخلص، بتلاقي التوكن اتغير فبتلغي نفسها من غير ما تكتب حاجة فوق الصفحة الجديدة
 let _navToken = 0;
+// صفحات Work Flow — المستخدمين اللي مش Role=Lead بيشوفوا دول بس (شوف applyRoleAccess تحت)
+const WORKFLOW_ONLY_PAGES = ['workflowDaily', 'workflowReport', 'missingItems'];
+function _isLeadRole(){ return sessionStorage.getItem('lm_userRole') === 'Lead'; }
 function goTo(page) {
   if (!PAGES[page]) page = 'dashboard';
+  if (!_isLeadRole() && !WORKFLOW_ONLY_PAGES.includes(page)) page = WORKFLOW_ONLY_PAGES[0];
   const token = ++_navToken;
   _currentPage = page;
   sessionStorage.setItem('lm_currentPage', page);
@@ -1297,6 +1301,24 @@ function goTo(page) {
   PAGES[page].render(token);
 }
 function isStaleNav(token){ return token !== undefined && token !== _navToken; }
+/* Role-based access: Role="Lead" (شيت users، عمود C) بيشوف النظام كله، أي
+ * حد تاني بيشوف صفحات Work Flow بس. goTo() فوق فيها الحارس الأساسي، والدالة
+ * دي بتخفي الأزرار اللي المستخدم مش مفروض يشوفها من الأساس. */
+function _defaultPageForRole(savedPage) {
+  if (_isLeadRole()) return (savedPage && PAGES[savedPage]) ? savedPage : 'dashboard';
+  return (savedPage && WORKFLOW_ONLY_PAGES.includes(savedPage)) ? savedPage : WORKFLOW_ONLY_PAGES[0];
+}
+function applyRoleAccess() {
+  const isLead = _isLeadRole();
+  document.querySelectorAll('.nav button[data-page], .bottom-nav button[data-page]').forEach(btn => {
+    const allowed = isLead || WORKFLOW_ONLY_PAGES.includes(btn.dataset.page);
+    btn.style.display = allowed ? '' : 'none';
+  });
+  // مش Lead: يشوف بس تصنيف "Work Flow" وأزراره — من غير الخطوط الفاصلة الفاضية
+  // اللي كانت بتفصل بين مجموعات تانية دلوقتي مخفية كلها
+  document.querySelectorAll('#nav > .sep').forEach(sep => { sep.style.display = isLead ? '' : 'none'; });
+}
+
 function showError(err){
   const msg = (err && err.message) || String(err);
   if (_isUnknownActionError(msg)) {
@@ -5811,12 +5833,14 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
   const pass = document.getElementById('l_pass').value.trim();
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الدخول...';
   try {
-    await apiGet('login', { name, pass }); // apiGet بيرمي Error لو data.error موجودة
+    const data = await apiGet('login', { name, pass }); // apiGet بيرمي Error لو data.error موجودة
     sessionStorage.setItem('lm_loggedIn', '1');
     sessionStorage.setItem('lm_userName', name);
+    sessionStorage.setItem('lm_userRole', data.role || '');
     document.getElementById('loginWrap').remove(); // مش hide بس — لازم يتشال من الـ DOM خالص عشان كروم يبطل يقترح باسورد "Hazem" المحفوظ في أي حقل تاني في الصفحة
     document.getElementById('appRoot').style.display = 'flex';
-    goTo(sessionStorage.getItem('lm_currentPage') || 'dashboard');
+    applyRoleAccess();
+    goTo(_defaultPageForRole(sessionStorage.getItem('lm_currentPage')));
   } catch (err) {
     const m = err.message || String(err);
     msg.className = 'msg err';
@@ -5887,6 +5911,7 @@ async function logout(){
   if (!ok) return;
   sessionStorage.removeItem('lm_loggedIn');
   sessionStorage.removeItem('lm_userName');
+  sessionStorage.removeItem('lm_userRole');
   sessionStorage.clear();
   window.location.reload(); // بديل بسيط وآمن بدل إظهار فورم اللوجن تاني، وبيضمن مفيش أي بواقي من الصفحة القديمة تأثر على كروم
 }
@@ -5936,13 +5961,13 @@ async function _loadBuildVersion(){
 if (sessionStorage.getItem('lm_loggedIn') === '1') {
   document.getElementById('loginWrap').remove();
   document.getElementById('appRoot').style.display = 'flex';
-  goTo(sessionStorage.getItem('lm_currentPage') || 'dashboard');
+  applyRoleAccess();
+  goTo(_defaultPageForRole(sessionStorage.getItem('lm_currentPage')));
   _loadBuildVersion();
 } else {
   document.getElementById('l_name').focus();
 }
-</script>
-<script>
+
 /* ═══════════════════════════════════════════════════════════════════════
  *  Work Flow — الشيت اليومي بالصنايعية + تقرير يومي + البنود الناقصة
  *  (مدمج من ملف الإضافة المنفصل)
