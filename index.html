@@ -6247,7 +6247,12 @@ let TO_STATE = {
   qCraftsman: '',
   csOpen: false,
   moreOpen: false,
-  loaded: false
+  loaded: false,
+  // ═══ كاش محلي بالتاب — عشان الرجوع لتاب/يوم/أسبوع/مشروع اتشاف قبل كده
+  // يبان فورًا من غير ما نستنى السيرفر تاني، ومن غير ما الشاشة "تفضّى" وتحمّل من الأول.
+  dailyCache: {},   // { [date]: entries[] }
+  weekCache: {},    // { [from_to]: entries[] }
+  planCache: {},    // { [project]: items[] }
 };
 const TO_DAY_NAMES = ["السبت","الأحد","الاثنين","الثلاثاء","الأربعاء","الخميس","الجمعة"];
 
@@ -6292,6 +6297,7 @@ async function renderTaskOrganize(token) {
 
     document.getElementById('toTabs').addEventListener('click', e => {
       const btn = e.target.closest('button'); if (!btn) return;
+      if (btn.dataset.t === TO_STATE.activeTab) return; // نفس التاب المفتوح أصلاً — مفيش داعي لأي حاجة
       TO_STATE.activeTab = btn.dataset.t;
       document.querySelectorAll('#toTabs button').forEach(b => b.classList.toggle('active', b===btn));
       toRenderActiveTab();
@@ -6321,19 +6327,40 @@ function toRenderStatStrip() {
   `;
 }
 
+// موجّه بس — كل تاب بقى ليه لودر مسؤول عن الكاش بتاعه، فمفيش "مسح الشاشة وابدأ من الأول"
+// إلا أول مرة فعلاً بيتفتح فيها التاب/اليوم/الأسبوع/المشروع ده.
 async function toRenderActiveTab(token) {
   const box = document.getElementById('to-tab-content'); if (!box) return;
-  box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
-  if (TO_STATE.activeTab === 'daily') await toRenderDailyTab(token);
-  else if (TO_STATE.activeTab === 'week') await toRenderWeekTab(token);
-  else await toRenderPlanTab(token);
+  if (TO_STATE.activeTab === 'daily') await toLoadDailyTab(token);
+  else if (TO_STATE.activeTab === 'week') await toLoadWeekTab(token);
+  else await toLoadPlanTab(token);
 }
 
 /* ===================== تاب 1: شغل يومي ===================== */
-async function toRenderDailyTab(token) {
-  const { entries } = await apiGet('listWorkflowEntries', { filters: { date: TO_STATE.formDate } });
-  if (isStaleNav(token)) return;
-  TO_STATE.todayEntries = entries || [];
+// بيجيب من السيرفر بس لو مفيش كاش لليوم ده، أو لو force=true (بعد حفظ سطر جديد فعلاً)
+async function toLoadDailyTab(token, opts) {
+  opts = opts || {};
+  const box = document.getElementById('to-tab-content'); if (!box) return;
+  const date = TO_STATE.formDate;
+  const cached = TO_STATE.dailyCache[date];
+  if (cached && !opts.force) {
+    TO_STATE.todayEntries = cached;
+    toRenderDailyForm(); // فوري من الكاش، من غير أي طلب سيرفر
+    return;
+  }
+  if (!cached) box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  try {
+    const { entries } = await apiGet('listWorkflowEntries', { filters: { date } });
+    if (isStaleNav(token)) return;
+    TO_STATE.todayEntries = entries || [];
+    TO_STATE.dailyCache[date] = TO_STATE.todayEntries;
+    toRenderDailyForm();
+  } catch (err) { box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
+}
+
+// رندر بس — من غير أي فيتش — بيتستخدم لأي تفاعل UI محلي (فتح/قفل الليستة، اختيار صنيعي،
+// فتح الحقول الإضافية، تحديث حالة بند...) عشان مفيش داعي نكلم السيرفر ولا نمسح الشاشة كل ما نضغط حاجة.
+function toRenderDailyForm() {
   const box = document.getElementById('to-tab-content'); if (!box) return;
   const grouped = TO_STATE.craftsmen.map(name => ({ name, items: TO_STATE.todayEntries.filter(e => e.craftsman === name) })).filter(g => g.items.length);
   box.innerHTML = `
@@ -6442,20 +6469,22 @@ const WORKFLOW_SPECIALTIES_FALLBACK = ['نجار','دهان','ألوميتال',
 
 function toWireDailyTab() {
   const extraBtn = document.getElementById('toExtraToggleBtn');
-  if (extraBtn) extraBtn.addEventListener('click', () => { TO_STATE.moreOpen = !TO_STATE.moreOpen; toRenderActiveTab(); });
+  // تفاعل UI بحت — بيبان/بيتقفل من غير ما يكلم السيرفر ولا يمسح الشاشة
+  if (extraBtn) extraBtn.addEventListener('click', () => { TO_STATE.moreOpen = !TO_STATE.moreOpen; toRenderDailyForm(); });
 
   const csTrigger = document.getElementById('toCsTrigger');
   const csList = document.getElementById('toCsList');
   if (csTrigger) {
-    csTrigger.addEventListener('click', e => { e.stopPropagation(); TO_STATE.csOpen = !TO_STATE.csOpen; toRenderActiveTab(); });
+    csTrigger.addEventListener('click', e => { e.stopPropagation(); TO_STATE.csOpen = !TO_STATE.csOpen; toRenderDailyForm(); });
     csList.querySelectorAll('.to-cs-option').forEach(opt => {
-      opt.addEventListener('click', e => { e.stopPropagation(); TO_STATE.qCraftsman = opt.dataset.name; TO_STATE.csOpen = false; toRenderActiveTab(); });
+      opt.addEventListener('click', e => { e.stopPropagation(); TO_STATE.qCraftsman = opt.dataset.name; TO_STATE.csOpen = false; toRenderDailyForm(); });
     });
   }
   const dateInput = document.getElementById('to_date');
-  if (dateInput) dateInput.addEventListener('change', e => { TO_STATE.formDate = e.target.value || TO_STATE.formDate; toRenderActiveTab(); });
+  // تغيير التاريخ فعلاً محتاج بيانات تانية من السيرفر — لكن لو اليوم ده اتفتح قبل كده هيبان فورًا من الكاش
+  if (dateInput) dateInput.addEventListener('change', e => { TO_STATE.formDate = e.target.value || TO_STATE.formDate; toLoadDailyTab(); });
   document.querySelectorAll('[data-quickdate]').forEach(b => {
-    b.addEventListener('click', () => { TO_STATE.formDate = b.dataset.quickdate; toRenderActiveTab(); });
+    b.addEventListener('click', () => { TO_STATE.formDate = b.dataset.quickdate; toLoadDailyTab(); });
   });
   document.querySelectorAll('[data-statusid]').forEach(btn => {
     btn.addEventListener('click', () => toSetItemStatus(btn.dataset.statusid, btn.dataset.status));
@@ -6492,24 +6521,34 @@ async function toSaveEntry() {
     await apiPost('addWorkflowEntries', { entries: [entry] });
     msg.className = 'msg ok'; msg.textContent = '&#9989; اتحفظ السطر';
     TO_STATE.moreOpen = false;
-    await toRenderDailyTab();
+    delete TO_STATE.dailyCache[TO_STATE.formDate]; // البيانات اتغيرت فعلاً — لازم نجيبها تاني من السيرفر
+    await toLoadDailyTab(undefined, { force: true });
     toRenderStatStrip();
   } catch (err) { msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
   finally { btn.disabled = false; btn.textContent = 'حفظ السطر'; }
 }
 
+// تحديث "تفاؤلي": بنغيّر الحالة في الشاشة فورًا من غير ما نستنى السيرفر ولا نعمل أي فيتش،
+// ولو السيرفر رفض بنرجّع الحالة القديمة تاني ونطلع رسالة خطأ.
 async function toSetItemStatus(id, status) {
-  // toggle: لو نفس الحالة مفعّلة بالفعل، إلغيها (رجّعها "شغال")
   const findIn = TO_STATE.todayEntries.concat(TO_STATE.weekEntries);
   const cur = findIn.find(x => String(x.id) === String(id));
   const newStatus = (cur && cur.status === status) ? 'working' : status;
+  const prevStatus = cur ? cur.status : null;
+  const prevNote = cur ? cur.blockedNote : '';
+  if (cur) { cur.status = newStatus; if (newStatus !== 'blocked') cur.blockedNote = ''; }
+  if (TO_STATE.activeTab === 'daily') toRenderDailyForm();
+  else if (TO_STATE.activeTab === 'week') toRenderWeekLocal();
+  toRenderStatStrip();
   try {
     await apiPost('updateWorkflowEntryStatus', { id, status: newStatus, blockedNote: cur ? cur.blockedNote : '' });
-    if (cur) cur.status = newStatus;
-    if (newStatus !== 'blocked' && cur) cur.blockedNote = '';
-    toRenderActiveTab();
+  } catch (err) {
+    if (cur) { cur.status = prevStatus; cur.blockedNote = prevNote; }
+    if (TO_STATE.activeTab === 'daily') toRenderDailyForm();
+    else if (TO_STATE.activeTab === 'week') toRenderWeekLocal();
     toRenderStatStrip();
-  } catch (err) { showToast('خطأ: ' + (err.message || err), 'error'); }
+    showToast('خطأ: ' + (err.message || err), 'error');
+  }
 }
 
 async function toSaveBlockedNote(id, val) {
@@ -6518,12 +6557,35 @@ async function toSaveBlockedNote(id, val) {
 }
 
 /* ===================== تاب 2: اسبوعي ===================== */
-async function toRenderWeekTab(token) {
+async function toLoadWeekTab(token, opts) {
+  opts = opts || {};
+  const box = document.getElementById('to-tab-content'); if (!box) return;
   const dates = toGetWeekDates(TO_STATE.weekAnchor);
   const from = toISO(dates[0]), to = toISO(dates[6]);
-  const { entries } = await apiGet('getWorkflowWeek', { from, to });
-  if (isStaleNav(token)) return;
-  TO_STATE.weekEntries = entries || [];
+  const key = from + '_' + to;
+  const cached = TO_STATE.weekCache[key];
+  if (cached && !opts.force) {
+    TO_STATE.weekEntries = cached;
+    toRenderWeekGrid(dates, from, to); // فوري من الكاش
+    return;
+  }
+  if (!cached) box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  try {
+    const { entries } = await apiGet('getWorkflowWeek', { from, to });
+    if (isStaleNav(token)) return;
+    TO_STATE.weekEntries = entries || [];
+    TO_STATE.weekCache[key] = TO_STATE.weekEntries;
+    toRenderWeekGrid(dates, from, to);
+  } catch (err) { box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
+}
+
+// إعادة رسم الأسبوع الحالي من الكاش (من غير فيتش) — بتتستخدم بعد أي تحديث محلي لحالة بند
+function toRenderWeekLocal() {
+  const dates = toGetWeekDates(TO_STATE.weekAnchor);
+  toRenderWeekGrid(dates, toISO(dates[0]), toISO(dates[6]));
+}
+
+function toRenderWeekGrid(dates, from, to) {
   const box = document.getElementById('to-tab-content'); if (!box) return;
   const weekLabel = toFmtDayDate(dates[0]) + ' — ' + toFmtDayDate(dates[6]);
   const todayIso = todayStr();
@@ -6563,18 +6625,20 @@ async function toRenderWeekTab(token) {
       <div id="toWeekDetail"></div>
     </div>
   `;
-  document.getElementById('toPrevWeek').addEventListener('click', () => { TO_STATE.weekAnchor.setDate(TO_STATE.weekAnchor.getDate()-7); TO_STATE.selectedCell=null; toRenderActiveTab(); toRenderStatStrip(); });
-  document.getElementById('toNextWeek').addEventListener('click', () => { TO_STATE.weekAnchor.setDate(TO_STATE.weekAnchor.getDate()+7); TO_STATE.selectedCell=null; toRenderActiveTab(); toRenderStatStrip(); });
-  document.getElementById('toThisWeekBtn').addEventListener('click', () => { TO_STATE.weekAnchor=new Date(); TO_STATE.selectedCell=null; toRenderActiveTab(); toRenderStatStrip(); });
+  // التنقل بين الأسابيع: كل أسبوع اتشاف قبل كده هيبان فورًا من الكاش من غير أي فيتش
+  document.getElementById('toPrevWeek').addEventListener('click', () => { TO_STATE.weekAnchor.setDate(TO_STATE.weekAnchor.getDate()-7); TO_STATE.selectedCell=null; toLoadWeekTab(); toRenderStatStrip(); });
+  document.getElementById('toNextWeek').addEventListener('click', () => { TO_STATE.weekAnchor.setDate(TO_STATE.weekAnchor.getDate()+7); TO_STATE.selectedCell=null; toLoadWeekTab(); toRenderStatStrip(); });
+  document.getElementById('toThisWeekBtn').addEventListener('click', () => { TO_STATE.weekAnchor=new Date(); TO_STATE.selectedCell=null; toLoadWeekTab(); toRenderStatStrip(); });
+  // اختيار خلية: تفاعل UI بحت — بتحديث الشكل فورًا من غير أي فيتش أو مسح للشاشة
   document.querySelectorAll('td.to-day-cell').forEach(td => {
     td.addEventListener('click', () => {
       TO_STATE.selectedCell = { emp: td.dataset.emp, date: td.dataset.date };
+      document.querySelectorAll('td.to-day-cell').forEach(t => t.classList.toggle('selected', t===td));
       toRenderWeekDetail();
       document.getElementById('toWeekDetail').scrollIntoView({behavior:'smooth', block:'nearest'});
     });
   });
   toRenderWeekDetail();
-  toRenderStatStrip();
 }
 
 function toRenderWeekDetail() {
@@ -6609,7 +6673,12 @@ function toRenderWeekDetail() {
     `).join('') : `<div class="empty">مفيش تسجيل ليه في اليوم ده</div>`}
   `;
   const closeBtn = document.getElementById('toDpClose');
-  if (closeBtn) closeBtn.addEventListener('click', () => { TO_STATE.selectedCell = null; toRenderActiveTab(); });
+  // قفل التفاصيل: تفاعل UI بحت — من غير فيتش ولا إعادة رسم الجدول كله
+  if (closeBtn) closeBtn.addEventListener('click', () => {
+    TO_STATE.selectedCell = null;
+    document.querySelectorAll('td.to-day-cell').forEach(t => t.classList.remove('selected'));
+    box.innerHTML = '';
+  });
   box.querySelectorAll('[data-statusid]').forEach(btn => {
     btn.addEventListener('click', () => toSetItemStatus(btn.dataset.statusid, btn.dataset.status));
   });
@@ -6620,14 +6689,29 @@ function toRenderWeekDetail() {
 
 /* ===================== تاب 3: تايم بلاننج (بيستخدم نفس شيت "بنود ناقصة") ===================== */
 let TO_PLAN_PROJECT = '';
-async function toRenderPlanTab(token) {
+async function toLoadPlanTab(token, opts) {
+  opts = opts || {};
   if (!TO_PLAN_PROJECT && TO_STATE.projects.length) TO_PLAN_PROJECT = TO_STATE.projects[0];
-  const [{ items }, summaryRes] = await Promise.all([
-    apiGet('listMissingItems', { filters: TO_PLAN_PROJECT ? { project: TO_PLAN_PROJECT } : {} }),
-    apiGet('getMissingItemsSummary')
-  ]);
-  if (isStaleNav(token)) return;
-  TO_STATE.missingSummary = summaryRes.summary || [];
+  const box = document.getElementById('to-tab-content'); if (!box) return;
+  const cached = TO_STATE.planCache[TO_PLAN_PROJECT];
+  if (cached && !opts.force) {
+    toRenderPlanBody(cached); // فوري من الكاش
+    return;
+  }
+  if (!cached) box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  try {
+    const [{ items }, summaryRes] = await Promise.all([
+      apiGet('listMissingItems', { filters: TO_PLAN_PROJECT ? { project: TO_PLAN_PROJECT } : {} }),
+      apiGet('getMissingItemsSummary')
+    ]);
+    if (isStaleNav(token)) return;
+    TO_STATE.missingSummary = summaryRes.summary || [];
+    TO_STATE.planCache[TO_PLAN_PROJECT] = items || [];
+    toRenderPlanBody(TO_STATE.planCache[TO_PLAN_PROJECT]);
+  } catch (err) { box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
+}
+
+function toRenderPlanBody(items) {
   const box = document.getElementById('to-tab-content'); if (!box) return;
   const summaryMap = {};
   TO_STATE.missingSummary.forEach(s => { summaryMap[s.project] = s; });
@@ -6677,15 +6761,32 @@ async function toRenderPlanTab(token) {
       </div>
     </div>
   `;
+  // تبديل المشروع: هيبان فورًا لو اتشاف قبل كده (كاش)، وهيفيتش تاني بس أول مرة
   document.querySelectorAll('.to-tp-card').forEach(c => {
-    c.addEventListener('click', () => { TO_PLAN_PROJECT = c.dataset.proj; toRenderActiveTab(); });
+    c.addEventListener('click', () => { TO_PLAN_PROJECT = c.dataset.proj; toLoadPlanTab(); });
   });
   const sel = document.getElementById('to_mi_project');
-  if (sel) sel.addEventListener('change', e => { TO_PLAN_PROJECT = e.target.value; toRenderActiveTab(); });
+  if (sel) sel.addEventListener('change', e => { TO_PLAN_PROJECT = e.target.value; toLoadPlanTab(); });
+  // تحديث الحالة: تفاؤلي ومحلي فورًا، والسيرفر بيتحدث في الخلفية من غير ما يوقف حاجة
   document.querySelectorAll('.mi-check').forEach(chk => {
     chk.addEventListener('change', async () => {
-      try { await apiPost('updateMissingItem', { item: { id: chk.dataset.miid, done: chk.checked } }); toRenderActiveTab(); toRenderStatStrip(); }
-      catch (err) { showToast('خطأ: ' + (err.message || err), 'error'); }
+      const id = chk.dataset.miid;
+      const list = TO_STATE.planCache[TO_PLAN_PROJECT] || [];
+      const item = list.find(i => String(i.id) === String(id));
+      const prevDone = item ? item.done : null;
+      if (item) item.done = chk.checked;
+      toRenderPlanBody(list);
+      try {
+        await apiPost('updateMissingItem', { item: { id, done: chk.checked } });
+        const { summary } = await apiGet('getMissingItemsSummary');
+        TO_STATE.missingSummary = summary || [];
+        toRenderPlanBody(TO_STATE.planCache[TO_PLAN_PROJECT]);
+        toRenderStatStrip();
+      } catch (err) {
+        if (item) item.done = prevDone;
+        toRenderPlanBody(list);
+        showToast('خطأ: ' + (err.message || err), 'error');
+      }
     });
   });
   const addBtn = document.getElementById('to_mi_add');
@@ -6702,14 +6803,18 @@ async function toRenderPlanTab(token) {
     try {
       await apiPost('addMissingItem', { item });
       msg.className = 'msg ok'; msg.textContent = '&#9989; اتضاف البند';
-      toRenderActiveTab(); toRenderStatStrip();
+      delete TO_STATE.planCache[item.project]; // البيانات اتغيرت فعلاً — لازم تتجاب تاني
+      TO_PLAN_PROJECT = item.project;
+      await toLoadPlanTab(undefined, { force: true });
+      toRenderStatStrip();
     } catch (err) { msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
     finally { addBtn.disabled = false; }
   });
 }
 
 document.addEventListener('click', () => {
-  if (TO_STATE.csOpen && TO_STATE.activeTab === 'daily') { TO_STATE.csOpen = false; toRenderActiveTab(); }
+  // قفل ليستة اختيار الصنيعي: تفاعل UI بحت — من غير فيتش ولا مسح الشاشة
+  if (TO_STATE.csOpen && TO_STATE.activeTab === 'daily') { TO_STATE.csOpen = false; toRenderDailyForm(); }
 });
 
 let WFR_DATE = todayStr();
