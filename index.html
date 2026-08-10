@@ -5272,6 +5272,22 @@ function qAddRow(n){
   for (let i = 0; i < count; i++) QSTATE.rows.push(qNewRow());
   qRenderRows(); qSaveSession();
 }
+// ⚠️ إضافة: زرارين "أول الجدول" / "آخر الجدول" — بيعملوا سكرول سموث لأول/آخر
+// صف فعلي في جدول البنود، من غير ما يلمسوا أي بيانات. لو الجدول فاضي، بيعمل
+// سكرول لجسم الجدول نفسه (q-body) بدل ما ميعملش حاجة.
+function qScrollTableTop(){
+  const body = document.getElementById('q-body');
+  if (!body) return;
+  const firstRow = body.querySelector('tr');
+  (firstRow || body).scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+function qScrollTableBottom(){
+  const body = document.getElementById('q-body');
+  if (!body) return;
+  const rows = body.querySelectorAll('tr');
+  const lastRow = rows.length ? rows[rows.length - 1] : null;
+  (lastRow || body).scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
 // ⚠️ إضافة: بدل ما مسح بند يبقى نهائي فورًا، بنحتفظ بآخر بند اتمسح وبمكانه
 // جوّه الجدول، وبنوري توست فيه زرار "تراجع" — لو دُست عليه بيرجّع البند
 // بالظبط في نفس الترتيب اللي كان فيه. لو محدش دَس عليه خلال ٦ ثواني بيتنسى.
@@ -5424,9 +5440,11 @@ function qRenderEditor(){
           <tbody id="q-body"></tbody>
         </table>
       </div>
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:18px;">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:18px;flex-wrap:wrap;">
         <button class="btn btn-outline btn-sm" onclick="qAddRow(document.getElementById('q-add-count').value)">+ إضافة سطر</button>
         <input autocomplete="off" type="number" id="q-add-count" value="1" min="1" class="d-input" style="width:56px;" title="عدد الأسطر اللي عايز تضيفهم مرة واحدة">
+        <button type="button" class="btn btn-outline btn-sm" onclick="qScrollTableTop()" title="روح لأول الجدول">⬆ أول الجدول</button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="qScrollTableBottom()" title="روح لآخر الجدول">⬇ آخر الجدول</button>
       </div>
 
       <div class="q-discount-card">
@@ -5897,6 +5915,21 @@ function pGoEditor(){ PSTATE.subpage = 'editor'; pSaveSession(); pRenderEditor()
 /* ---- row helpers ---- */
 function pReceived(){ return PSTATE.rows.reduce((s,r) => s + qNum(r.amount), 0); }
 function pAddRow(){ PSTATE.rows.push(pNewRow(PSTATE.rows.length)); pRenderRows(); pSaveSession(); }
+// ⚠️ إضافة: نفس فكرة qScrollTableTop/qScrollTableBottom بالظبط، لكن لجدول
+// الدفعات في صفحة Payment Statements (p-body) بدل جدول بنود الكوتيشن.
+function pScrollTableTop(){
+  const body = document.getElementById('p-body');
+  if (!body) return;
+  const firstRow = body.querySelector('tr');
+  (firstRow || body).scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+function pScrollTableBottom(){
+  const body = document.getElementById('p-body');
+  if (!body) return;
+  const rows = body.querySelectorAll('tr');
+  const lastRow = rows.length ? rows[rows.length - 1] : null;
+  (lastRow || body).scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
 function pDelRow(id){ PSTATE.rows = PSTATE.rows.filter(r => r._id !== id); pRenderRows(); pSaveSession(); }
 function pSetField(id, f, v){ const r = PSTATE.rows.find(r => r._id === id); if (r) r[f] = v; pSaveSession(); }
 function pSetAmount(id, v){
@@ -5983,7 +6016,11 @@ function pRenderEditor(){
           <tbody id="p-body"></tbody>
         </table>
       </div>
-      <button class="btn btn-outline btn-sm" onclick="pAddRow()" style="margin-bottom:18px;">+ إضافة دفعة</button>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:18px;flex-wrap:wrap;">
+        <button class="btn btn-outline btn-sm" onclick="pAddRow()">+ إضافة دفعة</button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="pScrollTableTop()" title="روح لأول الجدول">⬆ أول الجدول</button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="pScrollTableBottom()" title="روح لآخر الجدول">⬇ آخر الجدول</button>
+      </div>
 
       <div class="q-grand-bar"><span>الإجمالي الكلي</span><span class="amt" id="p-total-amt">0 جنيه</span></div>
       <div class="q-grand-bar"><span>إجمالي المستلم</span><span class="amt" id="p-received-amt">0 جنيه</span></div>
