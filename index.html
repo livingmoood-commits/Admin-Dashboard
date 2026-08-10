@@ -108,6 +108,11 @@
   .to-tabs button.active{ background:var(--gold); color:var(--dark); animation:toPop .35s var(--bounce); }
   @keyframes toPop{ 0%{transform:scale(.9);} 55%{transform:scale(1.04);} 100%{transform:scale(1);} }
   .to-tabs .ico{ margin-inline-end:6px; }
+  .cost-day-group{ margin-bottom:22px; }
+  .cost-day-head{ display:flex; align-items:baseline; gap:10px; padding:8px 12px; background:var(--dark); color:#fff; border-radius:10px 10px 0 0; }
+  .cost-day-head .sub{ color:var(--gold); font-size:12px; margin-inline-start:auto; }
+  .cost-day-group .tbl-wrap{ border-radius:0 0 10px 10px; overflow:hidden; }
+
 
   .to-stat-strip{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:20px; }
   @media(max-width:820px){ .to-stat-strip{ grid-template-columns:1fr 1fr; } }
@@ -4240,12 +4245,39 @@ async function deleteInstallConfirm(id){
  * كل تكلفة (خامات و/أو عمالة، سواء منتج أو تركيب) بتتسجل كصف في
  * صفحة (تاب) مستقلة باسم المشروع نفسه في شيت "التكاليف" المستقل،
  * بدل شيتين منفصلين بعمود "المشروع". */
+let COST_TAB = 'entries';
+let REV_STATE = { project: '', entries: [], loggedTotal: 0, total: 0, editingRow: null };
+
 async function renderCosts(token) {
   try {
     const [{projects}, {employees}] = await Promise.all([apiGet('listProjects'), apiGet('listEmployees')]);
     if (isStaleNav(token)) return;
-    costItemRows = [{name:'',qty:'',unit:'',unitPrice:''}]; costLaborRows=[{employee:'',hours:'',eveningHours:'',eveningAmount:'',showEvening:false}];
+    window._costsProjects = projects; window._costsEmployees = employees;
+    if (!REV_STATE.project && projects.length) REV_STATE.project = projects[0];
     document.getElementById('content').innerHTML = `
+      <div class="to-tabs" id="costTabs">
+        <button data-ct="entries" class="${COST_TAB==='entries'?'active':''}">التكاليف</button>
+        <button data-ct="revenue" class="${COST_TAB==='revenue'?'active':''}">الإيرادات (منفصلة)</button>
+      </div>
+      <div id="costTabBody"></div>
+    `;
+    document.getElementById('costTabs').addEventListener('click', e => {
+      const btn = e.target.closest('button'); if (!btn) return;
+      COST_TAB = btn.dataset.ct;
+      document.querySelectorAll('#costTabs button').forEach(b => b.classList.toggle('active', b===btn));
+      if (COST_TAB === 'entries') renderCostsEntriesTab(); else renderRevenueTab();
+    });
+    if (COST_TAB === 'entries') await renderCostsEntriesTab(); else await renderRevenueTab();
+  } catch(err){ showError(err); }
+}
+
+/* ===== تاب التكاليف: نفس الفورم زي الأول + حقل تاريخ + عرض السجل مجمّع باليوم في عواميد
+   واضحة (مين اشتغل + كام ساعة) — عشان يبقى واضح مين عمل إيه في أي يوم بالظبط. ===== */
+async function renderCostsEntriesTab() {
+  const projects = window._costsProjects || []; const employees = window._costsEmployees || [];
+  costItemRows = [{name:'',qty:'',unit:'',unitPrice:''}]; costLaborRows=[{employee:'',hours:'9',eveningHours:'',eveningAmount:'',showEvening:false}];
+  const box = document.getElementById('costTabBody'); if (!box) return;
+  box.innerHTML = `
       <div class="grid2">
         <div class="panel">
           <h3>تكلفة جديدة</h3>
@@ -4254,10 +4286,11 @@ async function renderCosts(token) {
               <div class="field"><label>اسم العملية (اختياري)</label><input autocomplete="off" id="c_name" placeholder="مثال: دولاب غرفة نوم / تركيب + نقل"></div>
               <div class="field"><label>المشروع</label><select id="c_project" required><option value="">اختار المشروع</option>${projects.map(pr=>`<option value="${pr}">${pr}</option>`).join('')}</select></div>
             </div>
+            <div class="field"><label>اليوم (التاريخ)</label><input type="date" id="c_date" value="${todayStr()}"></div>
             <label style="font-size:12px;font-weight:700;color:var(--muted);">البنود (خامات / نقل / تحميل...)</label>
             <div id="costItemsBox"></div>
             <button type="button" class="btn btn-outline btn-sm dyn-add" id="addCostItemBtn">+ إضافة بند</button>
-            <label style="font-size:12px;font-weight:700;color:var(--muted);margin-top:14px;display:block;">العمالة (الموظف + عدد الساعات) — لو حد اشتغل</label>
+            <label style="font-size:12px;font-weight:700;color:var(--muted);margin-top:14px;display:block;">العمالة (الموظف + عدد الساعات — اليوم افتراضيًا 9 ساعات) — لو حد اشتغل</label>
             <div id="costLaborBox"></div>
             <button type="button" class="btn btn-outline btn-sm dyn-add" id="addCostLaborBtn">+ إضافة عامل</button>
             <div class="field" style="margin-top:14px;"><label>ملاحظات</label><textarea id="c_notes" rows="2"></textarea></div>
@@ -4271,44 +4304,45 @@ async function renderCosts(token) {
           </form>
         </div>
         <div class="panel">
-          <h3>التكاليف المسجلة</h3>
+          <h3>التكاليف المسجلة <span class="sub">مجمّعة باليوم — كل يوم لوحده وواضح فيه مين اشتغل وكام ساعة</span></h3>
           <div class="filters"><select id="costFilterProject"><option value="">كل المشاريع</option>${projects.map(pr=>`<option value="${pr}">${pr}</option>`).join('')}</select></div>
           <div id="costsListBox"></div>
         </div>
       </div>
-    `;
-    const empOptions = employees.map(e=>`<option value="${e.name}">${e.name} — ${fmt(e.hourlyRate)} ج/س</option>`).join('');
-    window._costEmpOptionsHtml = empOptions;
-    const empRateMap = {}; employees.forEach(e=>{ empRateMap[e.name] = Number(e.hourlyRate)||0; });
-    window._costEmpRateMap = empRateMap;
-    renderCostDynRows();
-    const { costs: initialCosts } = await apiGet('listCosts', { filters:{} });
-    renderCostsList(initialCosts);
-    document.getElementById('addCostItemBtn').addEventListener('click', () => { costItemRows.push({name:'',qty:'',unit:'',unitPrice:''}); renderCostDynRows(); });
-    document.getElementById('addCostLaborBtn').addEventListener('click', () => { costLaborRows.push({employee:'',hours:'',eveningHours:'',eveningAmount:'',showEvening:false}); renderCostDynRows(); });
-    document.getElementById('costFilterProject').addEventListener('change', async (e) => {
-      const list = await apiGet('listCosts', { filters:{project:e.target.value} }); renderCostsList(list.costs);
-    });
-    document.getElementById('costForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const btn = document.getElementById('costBtn'); const msg = document.getElementById('costMsg');
-      msg.className='msg'; msg.textContent=''; btn.disabled=true; btn.innerHTML='<span class="spinner"></span>جاري الحفظ...';
-      const item = {
-        name: document.getElementById('c_name').value.trim(), project: document.getElementById('c_project').value,
-        items: costItemRows.filter(m=>m.name),
-        labor: costLaborRows.filter(l=>l.employee && (l.hours || l.eveningAmount)).map(l=>({
-          employee: l.employee, hours: l.hours, eveningHours: l.eveningHours, eveningAmount: l.eveningAmount
-        })),
-        notes: document.getElementById('c_notes').value
-      };
-      try {
-        const res = await apiPost('addCost', { item });
-        msg.className='msg ok';
-        msg.textContent = 'تم الحفظ — بنود: '+fmt(res.itemsCost)+' ج + عمالة: '+fmt(res.laborCost)+' ج = الإجمالي: '+fmt(res.totalCost)+' ج';
-        renderCosts();
-      } catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); btn.disabled=false; btn.textContent='حفظ التكلفة'; }
-    });
-  } catch(err){ showError(err); }
+  `;
+  const empOptions = employees.map(e=>`<option value="${e.name}">${e.name} — ${fmt(e.hourlyRate)} ج/س</option>`).join('');
+  window._costEmpOptionsHtml = empOptions;
+  const empRateMap = {}; employees.forEach(e=>{ empRateMap[e.name] = Number(e.hourlyRate)||0; });
+  window._costEmpRateMap = empRateMap;
+  renderCostDynRows();
+  const { costs: initialCosts } = await apiGet('listCosts', { filters:{} });
+  renderCostsList(initialCosts);
+  document.getElementById('addCostItemBtn').addEventListener('click', () => { costItemRows.push({name:'',qty:'',unit:'',unitPrice:''}); renderCostDynRows(); });
+  document.getElementById('addCostLaborBtn').addEventListener('click', () => { costLaborRows.push({employee:'',hours:'9',eveningHours:'',eveningAmount:'',showEvening:false}); renderCostDynRows(); });
+  document.getElementById('costFilterProject').addEventListener('change', async (e) => {
+    const list = await apiGet('listCosts', { filters:{project:e.target.value} }); renderCostsList(list.costs);
+  });
+  document.getElementById('costForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('costBtn'); const msg = document.getElementById('costMsg');
+    msg.className='msg'; msg.textContent=''; btn.disabled=true; btn.innerHTML='<span class="spinner"></span>جاري الحفظ...';
+    const dateVal = document.getElementById('c_date').value || todayStr();
+    const item = {
+      name: document.getElementById('c_name').value.trim(), project: document.getElementById('c_project').value,
+      date: dateVal,
+      items: costItemRows.filter(m=>m.name),
+      labor: costLaborRows.filter(l=>l.employee && (l.hours || l.eveningAmount)).map(l=>({
+        employee: l.employee, hours: l.hours, eveningHours: l.eveningHours, eveningAmount: l.eveningAmount
+      })),
+      notes: document.getElementById('c_notes').value
+    };
+    try {
+      const res = await apiPost('addCost', { item });
+      msg.className='msg ok';
+      msg.textContent = 'تم الحفظ — بنود: '+fmt(res.itemsCost)+' ج + عمالة: '+fmt(res.laborCost)+' ج = الإجمالي: '+fmt(res.totalCost)+' ج';
+      renderCostsEntriesTab();
+    } catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); btn.disabled=false; btn.textContent='حفظ التكلفة'; }
+  });
 }
 function renderCostDynRows(){
   document.getElementById('costItemsBox').innerHTML = costItemRows.map((m,i) => `
@@ -4323,7 +4357,7 @@ function renderCostDynRows(){
   document.getElementById('costLaborBox').innerHTML = costLaborRows.map((l,i) => `
     <div class="dyn-row labor">
       <select onchange="costLaborRows[${i}].employee=this.value; updateCostTotal();"><option value="">اختار الموظف</option>${(window._costEmpOptionsHtml||'').replace(`value="${l.employee}"`, `value="${l.employee}" selected`)}</select>
-      <input autocomplete="off" type="number" placeholder="ساعات" value="${l.hours}" oninput="costLaborRows[${i}].hours=this.value; updateCostTotal();">
+      <input autocomplete="off" type="number" placeholder="ساعات (افتراضي 9)" value="${l.hours}" oninput="costLaborRows[${i}].hours=this.value; updateCostTotal();">
       <span class="dyn-row-cost" id="costLaborCost-${i}">—</span>
       <button type="button" class="btn btn-sm btn-outline" onclick="costLaborRows[${i}].showEvening=!costLaborRows[${i}].showEvening; renderCostDynRows();">${l.showEvening ? '− سهرة' : '+ سهرة'}</button>
       <button type="button" class="btn btn-sm btn-danger" onclick="costLaborRows.splice(${i},1); renderCostDynRows();">✕</button>
@@ -4360,16 +4394,139 @@ function updateCostTotal(){
   const totLabor = document.getElementById('costTotLabor'); if (totLabor) totLabor.textContent = fmt(laborTotal) + ' ج';
   const totGrand = document.getElementById('costTotGrand'); if (totGrand) totGrand.textContent = fmt(grand) + ' ج';
 }
+// بتجمع التكاليف باليوم (تاريخ)، وبتعرض تحت كل يوم جدول بعواميد واضحة: العملية، المشروع،
+// البنود، تفصيل العمالة (كل عامل وكام ساعة اشتغل)، الإجمالي — عشان يبقى واضح مين عمل إيه امتى.
 function renderCostsList(costs){
   const box = document.getElementById('costsListBox');
   if (!costs.length){ box.innerHTML = '<div class="empty">مفيش تكاليف مسجلة</div>'; return; }
-  box.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>العملية</th><th>المشروع</th><th>بنود</th><th>عمالة</th><th>الإجمالي</th><th></th></tr></thead>
-    <tbody>${costs.map(p=>`<tr><td>${p.name}</td><td>${p.project}</td><td>${fmt(p.itemsCost)} ج</td><td>${fmt(p.laborCost)} ج</td><td><b>${fmt(p.totalCost)} ج</b></td>
-      <td><button class="btn btn-sm btn-danger" onclick="deleteCostConfirm('${p.project}','${p.id}')">حذف</button></td></tr>`).join('')}</tbody></table></div>`;
+  const byDate = {};
+  costs.forEach(c => { const k = c.date || 'بدون تاريخ'; (byDate[k] = byDate[k] || []).push(c); });
+  const dates = Object.keys(byDate).sort((a,b) => a<b?1:(a>b?-1:0));
+  box.innerHTML = dates.map(d => {
+    const rows = byDate[d];
+    const dayTotal = rows.reduce((s,r)=>s+r.totalCost,0);
+    return `
+    <div class="cost-day-group">
+      <div class="cost-day-head"><b>${qEsc(d)}</b><span class="sub">${rows.length} عملية — إجمالي اليوم: ${fmt(dayTotal)} ج</span></div>
+      <div class="tbl-wrap"><table><thead><tr><th>العملية</th><th>المشروع</th><th>البنود</th><th>العمالة (مين وكام ساعة)</th><th>الإجمالي</th><th></th></tr></thead>
+        <tbody>${rows.map(p=>{
+          const laborTxt = (p.labor||[]).filter(l=>l.employee).map(l=>`${qEsc(l.employee)} (${fmt(l.hours)} س${l.eveningAmount?' + سهرة '+fmt(l.eveningAmount)+'ج':''})`).join('، ') || '—';
+          const itemsTxt = (p.items||[]).map(m=>qEsc(m.name)+(m.qty?' × '+m.qty:'')).join('، ') || '—';
+          return `<tr><td>${qEsc(p.name)}</td><td>${qEsc(p.project)}</td><td>${itemsTxt}</td><td>${laborTxt}</td><td><b>${fmt(p.totalCost)} ج</b></td>
+          <td><button class="btn btn-sm btn-danger" onclick="deleteCostConfirm('${qEscJs(p.project)}','${qEscJs(p.id)}')">حذف</button></td></tr>`;
+        }).join('')}</tbody></table></div>
+    </div>`;
+  }).join('');
 }
 async function deleteCostConfirm(project, id){
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح التكلفة دي؟', 'حذف تكلفة'))) return;
-  try { await apiPost('deleteCost', { project, id }); renderCosts(); } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
+  try { await apiPost('deleteCost', { project, id }); renderCostsEntriesTab(); } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
+}
+
+/* ===== تاب الإيرادات: منفصل تمامًا عن التكاليف — سجل مستقل لكل مشروع، قابل للتعديل
+   والحذف، بيستخدم listProjectRevenueEntries/addProjectRevenueEntry/updateProjectRevenueEntry/
+   deleteProjectRevenueEntry الموجودين في الباك إند أصلاً. ===== */
+async function renderRevenueTab() {
+  const box = document.getElementById('costTabBody'); if (!box) return;
+  const projects = window._costsProjects || [];
+  box.innerHTML = `
+    <div class="panel">
+      <h3>الإيرادات — منفصلة عن التكاليف</h3>
+      <div class="filters"><select id="rev_project">${projects.map(pr=>`<option value="${qEsc(pr)}" ${pr===REV_STATE.project?'selected':''}>${qEsc(pr)}</option>`).join('')}</select></div>
+    </div>
+    <div class="grid2">
+      <div class="panel">
+        <h3 id="revFormTitle">إيراد جديد</h3>
+        <form id="revForm">
+          <div class="field"><label>التاريخ</label><input type="date" id="rev_date" value="${todayStr()}"></div>
+          <div class="field"><label>الوصف</label><input autocomplete="off" id="rev_desc" placeholder="مثال: دفعة مقدمة من العميل"></div>
+          <div class="field"><label>المبلغ</label><input autocomplete="off" type="number" id="rev_amount" placeholder="0"></div>
+          <button type="submit" class="btn btn-primary" id="revBtn">حفظ الإيراد</button>
+          <button type="button" class="btn btn-outline" id="revCancelEdit" style="display:none;">إلغاء التعديل</button>
+          <div class="msg" id="revMsg"></div>
+        </form>
+      </div>
+      <div class="panel">
+        <div class="cards" style="margin-bottom:12px;">
+          <div class="card"><div class="label">إجمالي الإيرادات المسجلة (سطور)</div><div class="value green" id="revLoggedTotal">0 ج</div></div>
+          <div class="card"><div class="label">إجمالي الإيرادات (شامل رصيد يدوي قديم)</div><div class="value gold" id="revGrandTotal">0 ج</div></div>
+        </div>
+        <div id="revListBox"></div>
+      </div>
+    </div>
+  `;
+  document.getElementById('rev_project').addEventListener('change', e => { REV_STATE.project = e.target.value; revLoadEntries(); });
+  document.getElementById('revForm').addEventListener('submit', revSubmit);
+  document.getElementById('revCancelEdit').addEventListener('click', () => { REV_STATE.editingRow = null; revResetForm(); });
+  await revLoadEntries();
+}
+async function revLoadEntries(){
+  const listBox = document.getElementById('revListBox'); if (!listBox) return;
+  if (!REV_STATE.project) { listBox.innerHTML = '<div class="empty">مفيش مشاريع</div>'; return; }
+  listBox.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  try {
+    const res = await apiGet('listProjectRevenueEntries', { name: REV_STATE.project });
+    REV_STATE.entries = res.entries || []; REV_STATE.loggedTotal = res.loggedTotal || 0; REV_STATE.total = res.total || 0;
+    document.getElementById('revLoggedTotal').textContent = fmt(REV_STATE.loggedTotal) + ' ج';
+    document.getElementById('revGrandTotal').textContent = fmt(REV_STATE.total) + ' ج';
+    revRenderList();
+  } catch(err){ listBox.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message||err}</div>`; }
+}
+function revRenderList(){
+  const listBox = document.getElementById('revListBox'); if (!listBox) return;
+  if (!REV_STATE.entries.length){ listBox.innerHTML = '<div class="empty">مفيش إيرادات مسجلة للمشروع ده لسه</div>'; return; }
+  listBox.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>الوصف</th><th>المبلغ</th><th></th></tr></thead>
+    <tbody>${REV_STATE.entries.map(e => `<tr><td>${qEsc(e.date)}</td><td>${qEsc(e.desc)}</td><td><b>${fmt(e.amount)} ج</b></td>
+      <td>
+        <button class="btn btn-sm btn-outline" onclick="revStartEdit(${e.row})">تعديل</button>
+        <button class="btn btn-sm btn-danger" onclick="revDeleteEntry(${e.row})">حذف</button>
+      </td></tr>`).join('')}</tbody></table></div>`;
+}
+function revResetForm(){
+  document.getElementById('revFormTitle').textContent = 'إيراد جديد';
+  document.getElementById('rev_date').value = todayStr();
+  document.getElementById('rev_desc').value = '';
+  document.getElementById('rev_amount').value = '';
+  document.getElementById('revBtn').textContent = 'حفظ الإيراد';
+  document.getElementById('revCancelEdit').style.display = 'none';
+}
+function revStartEdit(row){
+  const e = REV_STATE.entries.find(x => x.row === row); if (!e) return;
+  REV_STATE.editingRow = row;
+  document.getElementById('revFormTitle').textContent = 'تعديل إيراد';
+  document.getElementById('rev_date').value = e.date;
+  document.getElementById('rev_desc').value = e.desc;
+  document.getElementById('rev_amount').value = e.amount;
+  document.getElementById('revBtn').textContent = 'حفظ التعديل';
+  document.getElementById('revCancelEdit').style.display = '';
+}
+async function revSubmit(e){
+  e.preventDefault();
+  const msg = document.getElementById('revMsg'); const btn = document.getElementById('revBtn');
+  const payload = {
+    project: REV_STATE.project,
+    date: document.getElementById('rev_date').value || todayStr(),
+    desc: document.getElementById('rev_desc').value.trim(),
+    amount: Number(document.getElementById('rev_amount').value) || 0
+  };
+  msg.className='msg'; msg.textContent=''; btn.disabled = true;
+  try {
+    if (REV_STATE.editingRow) {
+      await apiPost('updateProjectRevenueEntry', Object.assign({row: REV_STATE.editingRow}, payload));
+    } else {
+      await apiPost('addProjectRevenueEntry', payload);
+    }
+    REV_STATE.editingRow = null;
+    revResetForm();
+    msg.className='msg ok'; msg.textContent = '✅ تم الحفظ';
+    await revLoadEntries();
+  } catch(err){ msg.className='msg err'; msg.textContent = 'خطأ: '+(err.message||err); }
+  finally { btn.disabled = false; }
+}
+async function revDeleteEntry(row){
+  if (!(await openGenConfirm('متأكد إنك عاوز تمسح الإيراد ده؟', 'حذف إيراد'))) return;
+  try { await apiPost('deleteProjectRevenueEntry', { project: REV_STATE.project, row }); await revLoadEntries(); }
+  catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 
 /* ================= Debts (ديون) ================= */
