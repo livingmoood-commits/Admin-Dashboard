@@ -4420,7 +4420,11 @@ function renderCostDynRows(){
   document.getElementById('costLaborBox').innerHTML = costLaborRows.map((l,i) => `
     <div class="dyn-row labor">
       <select onchange="costLaborRows[${i}].employee=this.value; updateCostTotal();"><option value="">اختار الموظف</option>${(window._costEmpOptionsHtml||'').replace(`value="${l.employee}"`, `value="${l.employee}" selected`)}</select>
-      <input autocomplete="off" type="number" placeholder="ساعات (افتراضي 9)" value="${l.hours}" oninput="costLaborRows[${i}].hours=this.value; updateCostTotal();">
+      <input autocomplete="off" type="number" id="costLaborHours-${i}" placeholder="ساعات (افتراضي 9)" value="${l.hours}" oninput="costLaborRows[${i}].hours=this.value; updateCostTotal();">
+      <!-- ⚠️ إضافة 2026-08-11: بدل ما تحسب الساعات يدوي (يوم = 9 ساعات)، تقدر
+           تكتب هنا عدد الأيام وهي بتملى خانة الساعات لوحدها تلقائي (أيام × 9).
+           لسه تقدر تعدّل الساعات مباشرة بعد كده لو عايز رقم مختلف (نص يوم مثلًا). -->
+      <input autocomplete="off" type="number" step="0.5" min="0" placeholder="أو أيام (يوم=9س)" value="${l.days||''}" oninput="costLaborRows[${i}].days=this.value; costLaborRows[${i}].hours=String((Number(this.value)||0)*9); updateCostTotal(); document.getElementById('costLaborHours-${i}').value=costLaborRows[${i}].hours;">
       <span class="dyn-row-cost" id="costLaborCost-${i}">—</span>
       <button type="button" class="btn btn-sm btn-outline" onclick="costLaborRows[${i}].showEvening=!costLaborRows[${i}].showEvening; renderCostDynRows();">${l.showEvening ? '− سهرة' : '+ سهرة'}</button>
       <button type="button" class="btn btn-sm btn-danger" onclick="costLaborRows.splice(${i},1); renderCostDynRows();">✕</button>
@@ -4474,6 +4478,18 @@ async function renderCostProjectSummary(project){
     `;
   } catch(err){ box.innerHTML = `<div class="msg err" style="display:block;">تعذر تحميل ملخص المشروع: ${err.message||err}</div>`; }
 }
+// ⚠️ إضافة 2026-08-11: بيعرض الساعات مع عدد الأيام المقابل ليها (يوم = 9 ساعات)
+// عشان تبقى قادر تقرا "27 س — 3 أيام" بسرعة من غير ما تحسب في دماغك.
+function fmtHoursDays(hours){
+  hours = Number(hours) || 0;
+  if (!hours) return '0 س';
+  const days = hours / 9;
+  let daysTxt;
+  if (Math.abs(days - 1) < 0.01) daysTxt = 'يوم واحد';
+  else if (Math.abs(days - 2) < 0.01) daysTxt = 'يومين';
+  else daysTxt = (Number.isInteger(days) ? days : days.toFixed(1)) + ' أيام';
+  return fmt(hours) + ' س — ' + daysTxt;
+}
 // بتجمع التكاليف باليوم (تاريخ)، وبتعرض تحت كل يوم جدول بعواميد واضحة: العملية، المشروع،
 // البنود، تفصيل العمالة (كل عامل وكام ساعة اشتغل)، الإجمالي — عشان يبقى واضح مين عمل إيه امتى.
 function renderCostsList(costs){
@@ -4490,7 +4506,7 @@ function renderCostsList(costs){
       <div class="cost-day-head"><b>${qEsc(d)}</b><span class="sub">${rows.length} عملية — إجمالي اليوم: ${fmt(dayTotal)} ج</span></div>
       <div class="tbl-wrap"><table><thead><tr><th>العملية</th><th>المشروع</th><th>البنود</th><th>العمالة (مين وكام ساعة)</th><th>الإجمالي</th><th></th></tr></thead>
         <tbody>${rows.map(p=>{
-          const laborTxt = (p.labor||[]).filter(l=>l.employee).map(l=>`${qEsc(l.employee)} (${fmt(l.hours)} س${l.eveningAmount?' + سهرة '+fmt(l.eveningAmount)+'ج':''})`).join('، ') || '—';
+          const laborTxt = (p.labor||[]).filter(l=>l.employee).map(l=>`${qEsc(l.employee)} (${fmtHoursDays(l.hours)}${l.eveningAmount?' + سهرة '+fmt(l.eveningAmount)+'ج':''})`).join('، ') || '—';
           const itemsTxt = (p.items||[]).map(m=>qEsc(m.name)+(m.qty?' × '+m.qty:'')).join('، ') || '—';
           return `<tr><td>${qEsc(p.name)}</td><td>${qEsc(p.project)}</td><td>${itemsTxt}</td><td>${laborTxt}</td><td><b>${fmt(p.totalCost)} ج</b></td>
           <td><button class="btn btn-sm btn-danger" onclick="deleteCostConfirm('${qEscJs(p.project)}','${qEscJs(p.id)}')">حذف</button></td></tr>`;
