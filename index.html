@@ -21,7 +21,14 @@
   .mono{ font-family:'IBM Plex Mono', monospace; direction:ltr; }
 
   .sidebar{ width:235px; background:var(--dark); color:#f0e6d8; flex-shrink:0; display:flex; flex-direction:column; padding:22px 0;
-    position:fixed; top:0; right:0; bottom:0; height:100vh; overflow:hidden; z-index:50;
+    /* ⚠️ إصلاح: كان فيه height:100vh زيادة عن top:0/bottom:0 — على موبايل، 100vh
+       بتتحسب على أساس أكبر مساحة ممكنة (لو شريط عنوان المتصفح مختفي)، فلو الشريط
+       ظاهر، القائمة الجانبية كانت بتبقى فعليًا أطول من المساحة الظاهرة على الشاشة.
+       overflow:hidden كان بيقص أي حاجة زايدة عن كده — يعني بيقص آخر حاجة في القائمة
+       (زرار "تسجيل خروج") من غير أي تنبيه. top:0 + bottom:0 لوحدهم كفاية تمامًا
+       لعمل عنصر position:fixed ياخد ارتفاع الشاشة الحقيقي الظاهر فعليًا، ومتظبط
+       تلقائي مع تغيّر شريط المتصفح، فمفيش داعي لـheight ثابتة بالمرة. */
+    position:fixed; top:0; right:0; bottom:0; overflow:hidden; z-index:50;
     transition:transform .35s var(--bounce), width .3s var(--bounce); }
 
   /* ===== Sidebar collapse (desktop) ===== */
@@ -717,7 +724,10 @@
   .p-incomplete-msg{ font-size:12px; color:var(--muted); font-weight:600; }
 
   /* ===== Login menu (logout / change password) ===== */
-  .user-menu{ padding:0 14px; padding-top:14px; flex-shrink:0; border-top:1px solid #3a3129; }
+  /* ⚠️ إضافة: padding-bottom بمساحة أمان لأي notch/شريط سفلي على الموبايل (زي
+     الآيفون) — عشان "تسجيل خروج" ميفضلش ملزوق في آخر حتة من الشاشة تحت أي عنصر
+     تاني بيظهر جوه المتصفح نفسه. */
+  .user-menu{ padding:0 14px; padding-top:14px; padding-bottom:calc(10px + env(safe-area-inset-bottom, 0px)); flex-shrink:0; border-top:1px solid #3a3129; }
   .user-menu-btn{ all:unset; cursor:pointer; width:100%; display:flex; align-items:center; gap:9px; padding:10px 12px; border-radius:8px; font-size:12.5px; color:#cbbfae; font-family:inherit; box-sizing:border-box; }
   .user-menu-btn:hover{ background:var(--dark2); color:#fff; }
   #changePassModal{ display:none; position:fixed; inset:0; background:rgba(30,26,21,.65); z-index:960; justify-content:center; align-items:center; }
@@ -4691,6 +4701,7 @@ async function saveDebtEdit(id){
 // أكتر من بند (مثال: "عم خالد برعي" ظاهر في 3 بنود منفصلة)، الجدول ده بيجمعهم
 // في صف واحد بس بإجمالي/مسدد/باقي مجموعين، عشان تبان الصورة الحقيقية لكل جهة
 // من غير ما تلغي البنود التفصيلية اللي لسه موجودة في الجدول اللي تحت.
+let _debtsGroupsCache = [];
 function renderDebtsGrouped(debts){
   const box = document.getElementById('debtsGroupedBox');
   if (!box) return;
@@ -4705,11 +4716,12 @@ function renderDebtsGrouped(debts){
     map[key].remaining += d.remaining;
   });
   const groups = Object.values(map).sort((a,b) => b.remaining - a.remaining || b.total - a.total);
+  _debtsGroupsCache = groups; // مستخدمة في openDebtGroupDetail لما تدوس على أي صف
   const totalAll = groups.reduce((s,g)=>s+g.total, 0);
   const paidAll = groups.reduce((s,g)=>s+g.paid, 0);
   const remainingAll = groups.reduce((s,g)=>s+g.remaining, 0);
   box.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>الجهة</th><th>عدد البنود</th><th>الإجمالي</th><th>المسدد</th><th>الباقي</th></tr></thead>
-    <tbody>${groups.map(g => `<tr>
+    <tbody>${groups.map((g,i) => `<tr class="clickable-row" style="cursor:pointer;" onclick="openDebtGroupDetail(${i})" title="دوس لعرض تفاصيل البنود">
       <td>${qEsc(g.creditor)}</td>
       <td style="text-align:center;">${g.count}</td>
       <td>${fmt(g.total)} ج</td>
@@ -4724,6 +4736,26 @@ function renderDebtsGrouped(debts){
       <td>${fmt(remainingAll)} ج</td>
     </tr></tfoot>
     </table></div>`;
+}
+// دوس على أي جهة في جدول "توحيد الجهات" → Pop فيه كل البنود التفصيلية بتاعة الجهة دي،
+// ودوس على أي بند فيها يفتحلك تعديله على طول (نفس زرار "تعديل" في الجدول اللي تحت)
+function openDebtGroupDetail(i){
+  const g = _debtsGroupsCache[i]; if (!g) return;
+  const items = (_debtsCache||[]).filter(d => (String(d.creditor || 'بدون جهة').trim() || 'بدون جهة') === g.creditor);
+  const rows = items.length ? items.map(d => `
+    <div class="cd-list-row" style="cursor:pointer;" onclick="closeCardModal(); editDebtStart('${d.id}')">
+      <span class="n">${qEsc(d.desc || 'بدون وصف')}${d.settled ? ' <span class=\"pill dep\">مسدد</span>' : ''}</span>
+      <span class="p">${fmt(d.total)} ج${d.paid>0.01 ? ` — مسدد ${fmt(d.paid)} ج` : ''}</span>
+    </div>`).join('') : '<div class="empty">مفيش بنود</div>';
+  openCardModal(`
+    <div class="cd-head"><h3>${qEsc(g.creditor)} (${items.length} بند)</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:12px;display:flex;gap:16px;flex-wrap:wrap;">
+      <span>الإجمالي: <b style="color:var(--dark);">${fmt(g.total)} ج</b></span>
+      <span>المسدد: <b style="color:var(--green);">${fmt(g.paid)} ج</b></span>
+      <span>الباقي: <b style="color:${g.remaining>0.01?'var(--red)':'var(--green)'};">${fmt(g.remaining)} ج</b></span>
+    </div>
+    <div>${rows}</div>
+  `);
 }
 function renderDebtsList(debts){
   const box = document.getElementById('debtsListBox');
@@ -5588,6 +5620,21 @@ async function qSaveQuotation(){
 }
 
 /* ---- Preview / PDF / Print ---- */
+/* ⚠️ إضافة 2026-08-11: "المطلوب تنفيذه" كانت بتتكتب من المستخدم كسطر واحد طويل
+   مفصول بفواصل (,) من غير أسطر جديدة، فكانت بتطلع في الطباعة/PDF كتلة نص واحدة
+   طويلة صعبة القراءة. الدالة دي بتقسّم النص تلقائيًا على الفواصل (عربي "،" أو
+   إنجليزي ",") وعلى الأسطر الجديدة، وتعرض كل جزء في سطر لوحده بعلامة "•"
+   عشان يبقى منسّق زي نقاط بدل فقرة واحدة طويلة. */
+function qFormatDesc(text){
+  if (!text || !String(text).trim()) return '—';
+  const parts = String(text)
+    .split(/\r?\n/)
+    .flatMap(line => line.split(/[,،]/))
+    .map(s => s.trim())
+    .filter(Boolean);
+  if (parts.length <= 1) return qEsc(String(text).trim());
+  return parts.map(p => `<div style="margin-bottom:4px;">• ${qEsc(p)}</div>`).join('');
+}
 function qBuildPdfHtml(){
   const c = QSTATE.customer || {};
   const dlr = QSTATE.dollar || QCFG.defaultDollar;
@@ -5597,12 +5644,12 @@ function qBuildPdfHtml(){
   let tbody = '';
   QSTATE.rows.forEach((r,i) => {
     const tot = qTot(r); const bg = i % 2 === 0 ? '#ffffff' : '#faf8f5';
-    const desc = (r.description || '—').replace(/\n/g,'<br>'); const nt = (r.notes || '').replace(/\n/g,'<br>');
+    const desc = qFormatDesc(r.description); const nt = (r.notes || '').replace(/\n/g,'<br>');
     tbody += `<tr style="background:${bg};border-bottom:1px solid #D9D0C4;">
       <td style="padding:8px 7px;text-align:center;color:#6B5E4E;font-size:11px;">${i+1}</td>
-      <td style="padding:8px 7px;width:150px;"><span style="display:inline-block;padding:4px 8px;border-radius:4px;font-size:11px;font-weight:700;color:#fff;background:#2C5F3A;white-space:nowrap;">${qEsc(r.category)}</span></td>
-      <td style="padding:8px 7px;">${qEsc(r.unit)||'—'}</td>
-      <td style="padding:8px 7px;">${desc}</td>
+      <td style="padding:8px 7px;width:110px;"><span style="display:inline-block;padding:4px 8px;border-radius:4px;font-size:11px;font-weight:700;color:#fff;background:#2C5F3A;white-space:nowrap;">${qEsc(r.category)}</span></td>
+      <td style="padding:8px 7px;width:90px;">${qEsc(r.unit)||'—'}</td>
+      <td style="padding:8px 7px;width:34%;">${desc}</td>
       <td style="padding:8px 7px;text-align:center;direction:ltr;">${r.qty||0}</td>
       <td style="padding:6px 4px;direction:ltr;text-align:left;font-size:11px;">${fmt(r.price)}</td>
       <td style="padding:6px 4px;direction:ltr;text-align:left;font-weight:700;font-size:11px;">${fmt(tot)}</td>
@@ -5629,7 +5676,7 @@ function qBuildPdfHtml(){
       table.items thead th, table.items tbody td, table.items tfoot td{padding:4px 3px!important;} }
     table.items thead tr{background:#2C5F3A;color:#fff;} table.items thead th{padding:6px 4px;text-align:right;font-weight:600;white-space:nowrap;font-size:11px;}
     table.items tbody td{padding:6px 4px;vertical-align:top;word-wrap:break-word;overflow-wrap:break-word;font-size:11px;white-space:nowrap;}
-    table.items tbody td:nth-child(3){white-space:normal;word-break:break-word;} table.items tbody td:nth-child(4){white-space:normal;line-height:1.6;}
+    table.items tbody td:nth-child(3){white-space:normal;word-break:break-word;} table.items tbody td:nth-child(4){white-space:normal;line-height:1.45;}
     table.items tfoot tr{background:#1E1A15;color:#D4B483;} table.items tfoot td{padding:9px 7px;font-weight:700;font-size:13px;}
     table.items tfoot td.ltr{direction:ltr;text-align:left;} table.items thead th.ltr{direction:ltr;text-align:left;}
     .notes-box{background:#F3EFEA;border:1px solid #D9D0C4;border-radius:5px;padding:13px 16px;font-size:12px;color:#6B5E4E;line-height:2.1;margin-bottom:16px;text-align:right;}
