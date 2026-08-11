@@ -811,6 +811,13 @@
   td.gsel-on input, td.gsel-on textarea{ background:rgba(184,151,90,.14) !important; border-color:var(--gold) !important; }
   td.gsel-anchor{ outline:2px solid var(--gold); outline-offset:-2px; position:relative; z-index:1; }
 
+  /* ===== تابين "التكاليف / الإيرادات" جنب بعض في صفحة التكاليف ===== */
+  .tabs-row{ display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap; }
+  .tab-btn{ cursor:pointer; background:var(--white); border:1.5px solid var(--border); border-radius:11px;
+    padding:10px 22px; font-weight:800; font-size:13px; color:var(--dark); transition:border-color .2s, background .2s, transform .15s var(--bounce); }
+  .tab-btn:hover{ border-color:var(--gold); transform:translateY(-1px); }
+  .tab-btn.active{ border-color:var(--gold); background:var(--dark); color:#f0e6d8; }
+
   /* ═══════════════════ صفحة "بنود المشاريع" (تصميم كروت جديد) ═══════════════════ */
   .form-grid2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
   @media(max-width:640px){ .form-grid2{ grid-template-columns:1fr; gap:0; } }
@@ -1551,8 +1558,7 @@ const PAGES = {
   projectExpenses: { title:'متابعة صرف المشاريع', sub:'اختار مشروع وشوف مصاريفه أسبوع أسبوع، بنفس البيانات المسجلة في شيته', render: renderProjectExpenses },
   dailyExpenses:{ title:'مصاريف يومية', sub:'سجّل كل مصاريف اليوم سطر سطر — بتتسجل في شيت اليوم بتاعك مباشرة', render: renderDailyExpenses },
   projects:     { title:'المشاريع', sub:'تكلفة كل مشروع بالتفصيل', render: renderProjects },
-  costs:        { title:'التكاليف', sub:'خامات + تركيب + عمالة — كل تكلفة بتتسجل في صفحة مشروعها', render: renderCosts },
-  revenue:      { title:'إيرادات المشاريع', sub:'سجّل إيرادات كل مشروع لوحده — منفصلة تمامًا عن التكاليف', render: renderRevenuePage },
+  costs:        { title:'التكاليف', sub:'خامات + تركيب + عمالة + إيرادات — تابين جنب بعض لكل مشروع', render: renderCosts },
   fixedExp:     { title:'المصاريف الثابتة', sub:'إيجار / كهرباء / إلخ — وطريقة توزيعها على المشاريع', render: renderFixedExp },
   quotation:    { title:'Quotations', sub:'قائمة العملاء وعروض الأسعار', render: renderQuotation },
   debtors:      { title:'Payment Statements', sub:'متابعة تحصيل الدفعات من العملاء — كل حاجة عن المستحق والمتبقي', render: renderDebtors },
@@ -4307,23 +4313,28 @@ async function renderCosts(token) {
     const [{projects}, {employees}] = await Promise.all([apiGet('listProjects'), apiGet('listEmployees')]);
     if (isStaleNav(token)) return;
     window._costsProjects = projects; window._costsEmployees = employees;
-    document.getElementById('content').innerHTML = `<div id="costTabBody"></div>`;
-    await renderCostsEntriesTab();
+    if (!REV_STATE.project && projects.length) REV_STATE.project = projects[0];
+    document.getElementById('content').innerHTML = `
+      <div class="tabs-row" id="costTabsRow">
+        <button type="button" class="tab-btn ${COST_TAB==='entries'?'active':''}" data-tab="entries">التكاليف</button>
+        <button type="button" class="tab-btn ${COST_TAB==='revenue'?'active':''}" data-tab="revenue">الإيرادات</button>
+      </div>
+      <div id="costTabBody"></div>`;
+    document.getElementById('costTabsRow').addEventListener('click', (e) => {
+      const btn = e.target.closest('.tab-btn'); if (!btn) return;
+      switchCostTab(btn.dataset.tab);
+    });
+    await (COST_TAB === 'revenue' ? renderRevenueTab() : renderCostsEntriesTab());
   } catch(err){ showError(err); }
 }
-/* ⚠️ إصلاح 2026-08-11: الإيرادات كانت تاب جوه صفحة "التكاليف" (زرار "الإيرادات
-   (منفصلة)")، وده كان مربك — صفحة اسمها تكاليف وفيها إيرادات جوها. دلوقتي
-   الإيرادات بقت صفحة منفصلة تمامًا في القائمة الجانبية ("إيرادات المشاريع")،
-   وصفحة التكاليف بقت للتكاليف بس. */
-async function renderRevenuePage(token) {
-  try {
-    const { projects } = await apiGet('listProjects');
-    if (isStaleNav(token)) return;
-    window._costsProjects = projects;
-    if (!REV_STATE.project && projects.length) REV_STATE.project = projects[0];
-    document.getElementById('content').innerHTML = `<div id="costTabBody"></div>`;
-    await renderRevenueTab();
-  } catch(err){ showError(err); }
+/* ⚠️ إصلاح 2026-08-11: الإيرادات والتكاليف بقوا تابين جنب بعض داخل نفس صفحة
+   "التكاليف" (بدل صفحة منفصلة في القائمة الجانبية) — عشان تبقى قادر تنقل
+   بينهم بضغطة واحدة وهما شايفين بعض في نفس المكان. */
+function switchCostTab(tab){
+  if (tab !== 'entries' && tab !== 'revenue') return;
+  COST_TAB = tab;
+  document.querySelectorAll('#costTabsRow .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  if (tab === 'revenue') renderRevenueTab(); else renderCostsEntriesTab();
 }
 
 /* ===== تاب التكاليف: نفس الفورم زي الأول + حقل تاريخ + عرض السجل مجمّع باليوم في عواميد
