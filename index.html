@@ -978,6 +978,7 @@
     <div class="sep"></div>
     <button data-page="projects"><span class="icon">&#128188;</span><span class="label">المشاريع</span></button>
     <button data-page="costs"><span class="icon">&#128176;</span><span class="label">التكاليف</span></button>
+    <button data-page="revenue"><span class="icon">&#128184;</span><span class="label">إيرادات المشاريع</span></button>
     <div class="sep"></div>
     <button data-page="treasury"><span class="icon">&#128176;</span><span class="label">الخزنة (Cash Flow)</span></button>
     <button data-page="projectExpenses"><span class="icon">&#128202;</span><span class="label">متابعة صرف المشاريع</span></button>
@@ -1552,6 +1553,7 @@ const PAGES = {
   dailyExpenses:{ title:'مصاريف يومية', sub:'سجّل كل مصاريف اليوم سطر سطر — بتتسجل في شيت اليوم بتاعك مباشرة', render: renderDailyExpenses },
   projects:     { title:'المشاريع', sub:'تكلفة كل مشروع بالتفصيل', render: renderProjects },
   costs:        { title:'التكاليف', sub:'خامات + تركيب + عمالة — كل تكلفة بتتسجل في صفحة مشروعها', render: renderCosts },
+  revenue:      { title:'إيرادات المشاريع', sub:'سجّل إيرادات كل مشروع لوحده — منفصلة تمامًا عن التكاليف', render: renderRevenuePage },
   fixedExp:     { title:'المصاريف الثابتة', sub:'إيجار / كهرباء / إلخ — وطريقة توزيعها على المشاريع', render: renderFixedExp },
   quotation:    { title:'Quotations', sub:'قائمة العملاء وعروض الأسعار', render: renderQuotation },
   debtors:      { title:'Payment Statements', sub:'متابعة تحصيل الدفعات من العملاء — كل حاجة عن المستحق والمتبقي', render: renderDebtors },
@@ -4306,21 +4308,22 @@ async function renderCosts(token) {
     const [{projects}, {employees}] = await Promise.all([apiGet('listProjects'), apiGet('listEmployees')]);
     if (isStaleNav(token)) return;
     window._costsProjects = projects; window._costsEmployees = employees;
+    document.getElementById('content').innerHTML = `<div id="costTabBody"></div>`;
+    await renderCostsEntriesTab();
+  } catch(err){ showError(err); }
+}
+/* ⚠️ إصلاح 2026-08-11: الإيرادات كانت تاب جوه صفحة "التكاليف" (زرار "الإيرادات
+   (منفصلة)")، وده كان مربك — صفحة اسمها تكاليف وفيها إيرادات جوها. دلوقتي
+   الإيرادات بقت صفحة منفصلة تمامًا في القائمة الجانبية ("إيرادات المشاريع")،
+   وصفحة التكاليف بقت للتكاليف بس. */
+async function renderRevenuePage(token) {
+  try {
+    const { projects } = await apiGet('listProjects');
+    if (isStaleNav(token)) return;
+    window._costsProjects = projects;
     if (!REV_STATE.project && projects.length) REV_STATE.project = projects[0];
-    document.getElementById('content').innerHTML = `
-      <div class="to-tabs" id="costTabs">
-        <button data-ct="entries" class="${COST_TAB==='entries'?'active':''}">التكاليف</button>
-        <button data-ct="revenue" class="${COST_TAB==='revenue'?'active':''}">الإيرادات (منفصلة)</button>
-      </div>
-      <div id="costTabBody"></div>
-    `;
-    document.getElementById('costTabs').addEventListener('click', e => {
-      const btn = e.target.closest('button'); if (!btn) return;
-      COST_TAB = btn.dataset.ct;
-      document.querySelectorAll('#costTabs button').forEach(b => b.classList.toggle('active', b===btn));
-      if (COST_TAB === 'entries') renderCostsEntriesTab(); else renderRevenueTab();
-    });
-    if (COST_TAB === 'entries') await renderCostsEntriesTab(); else await renderRevenueTab();
+    document.getElementById('content').innerHTML = `<div id="costTabBody"></div>`;
+    await renderRevenueTab();
   } catch(err){ showError(err); }
 }
 
@@ -4331,7 +4334,7 @@ async function renderCostsEntriesTab() {
   costItemRows = [{name:'',qty:'',unit:'',unitPrice:''}]; costLaborRows=[{employee:'',hours:'9',eveningHours:'',eveningAmount:'',showEvening:false}];
   const box = document.getElementById('costTabBody'); if (!box) return;
   box.innerHTML = `
-      <div class="grid2">
+      <div class="stack-v">
         <div class="panel">
           <h3>تكلفة جديدة</h3>
           <form id="costForm">
