@@ -23,7 +23,8 @@
      والصفحة اللي تحت القائمة تنزل من غيرها. .no-scroll بتقفل سكرول الصفحة
      تمامًا من غير ما تفقد مكانك (top سالب بقيمة السكرول الحالي، وبيترجع تاني
      لمكانه الطبيعي لما تقفل القائمة عن طريق JS في openSidebar/closeSidebar). */
-  body.no-scroll{ position:fixed; left:0; right:0; overflow:hidden; }
+  body.no-scroll{ position:fixed; left:0; right:0; overflow:hidden; overscroll-behavior:none; }
+  html.no-scroll{ overflow:hidden; overscroll-behavior:none; }
   .mono{ font-family:'IBM Plex Mono', monospace; direction:ltr; }
 
   .sidebar{ width:235px; background:var(--dark); color:#f0e6d8; flex-shrink:0; display:flex; flex-direction:column; padding:22px 0;
@@ -63,7 +64,12 @@
      سكرول أصلاً (حتى لو نظريًا شغال). دلوقتي .nav هي بس اللي بتسكرول لوحدها
      (min-height:0 عشان تقدر تنكمش جوه flex column)، و.user-menu (تسجيل الخروج/
      تغيير كلمة السر) ثابت تحت تحت خالص دايمًا ظاهر من غير أي سكرول خالص. */
-  .nav{ flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; display:flex; flex-direction:column; gap:2px; padding:0 10px; }
+  /* ⚠️ إصلاح إضافي 2026-08-11: كان ناقص overscroll-behavior على .nav — من غيره،
+     لما تسكرول جوه القائمة (.nav) وتوصل لآخر عنصر، المتصفح (خصوصًا آيفون)
+     بيكمل حركة السكرول دي على الصفحة اللي تحت القائمة (scroll chaining)، فبتحس
+     إن الصفحة "بتنزل" وتوصل لمكان فاضي من غير داتا. contain بتوقف الحركة عند
+     حدود القائمة نفسها ومتسيبهاش تنط للعنصر اللي وراها. */
+  .nav{ flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; display:flex; flex-direction:column; gap:2px; padding:0 10px; }
   .nav button{ all:unset; box-sizing:border-box; width:100%; min-width:0; cursor:pointer; padding:11px 14px; border-radius:8px; font-size:13.5px; color:#cbbfae; display:flex; align-items:center; gap:9px; transition:background .2s, color .2s, transform .25s var(--bounce); font-family:inherit; }
   .nav button .label{ min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .nav button:hover{ background:var(--dark2); color:#fff; transform:translateX(-5px); }
@@ -1568,12 +1574,14 @@ function openSidebar(){
   _sidebarScrollY = window.scrollY || document.documentElement.scrollTop || 0;
   document.body.style.top = (-_sidebarScrollY) + 'px';
   document.body.classList.add('no-scroll');
+  document.documentElement.classList.add('no-scroll');
 }
 function closeSidebar(){
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('sidebarOverlay').classList.remove('open');
   document.getElementById('hamburgerBtn').classList.remove('open');
   document.body.classList.remove('no-scroll');
+  document.documentElement.classList.remove('no-scroll');
   document.body.style.top = '';
   window.scrollTo(0, _sidebarScrollY);
 }
