@@ -4362,6 +4362,12 @@ async function renderCostsEntriesTab() {
         <div class="panel">
           <h3>التكاليف المسجلة <span class="sub">مجمّعة باليوم — كل يوم لوحده وواضح فيه مين اشتغل وكام ساعة</span></h3>
           <div class="filters"><select id="costFilterProject"><option value="">كل المشاريع</option>${projects.map(pr=>`<option value="${pr}">${pr}</option>`).join('')}</select></div>
+          <!-- ⚠️ إضافة 2026-08-11: لما تفلتر على مشروع معيّن، بيظهر هنا ملخص سريع
+               (تكلفة/إيرادات/صافي ربح) لنفس المشروع — نفس البيانات اللي في شيته
+               وفي صفحة "المشاريع"، عشان تشوف الصورة كاملة من غير ما تسيب صفحة
+               التكاليف. لو مختار "كل المشاريع" الملخص ده بيتخفي (مفيش معنى ليه
+               وقتها لأنه مش خاص بمشروع واحد). -->
+          <div id="costProjectSummary"></div>
           <div id="costsListBox"></div>
         </div>
       </div>
@@ -4377,6 +4383,7 @@ async function renderCostsEntriesTab() {
   document.getElementById('addCostLaborBtn').addEventListener('click', () => { costLaborRows.push({employee:'',hours:'9',eveningHours:'',eveningAmount:'',showEvening:false}); renderCostDynRows(); });
   document.getElementById('costFilterProject').addEventListener('change', async (e) => {
     const list = await apiGet('listCosts', { filters:{project:e.target.value} }); renderCostsList(list.costs);
+    renderCostProjectSummary(e.target.value);
   });
   document.getElementById('costForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -4449,6 +4456,23 @@ function updateCostTotal(){
   const totItems = document.getElementById('costTotItems'); if (totItems) totItems.textContent = fmt(itemsTotal) + ' ج';
   const totLabor = document.getElementById('costTotLabor'); if (totLabor) totLabor.textContent = fmt(laborTotal) + ' ج';
   const totGrand = document.getElementById('costTotGrand'); if (totGrand) totGrand.textContent = fmt(grand) + ' ج';
+}
+// ملخص سريع (تكلفة/إيرادات/صافي ربح) لمشروع واحد لما يتفلتر عليه في صفحة
+// التكاليف — نفس بيانات صفحة "المشاريع"، بس هنا من غير ما تسيب صفحة التكاليف.
+async function renderCostProjectSummary(project){
+  const box = document.getElementById('costProjectSummary'); if (!box) return;
+  if (!project) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="loading-row">جاري تحميل ملخص المشروع...</div>';
+  try {
+    const d = await apiGet('getProjectFullSummary', { name: project });
+    box.innerHTML = `
+      <div class="cards" style="margin-bottom:16px;">
+        <div class="card"><div class="label">إجمالي تكلفة ${qEsc(project)}</div><div class="value gold">${fmt(d.totalCost)} ج</div></div>
+        ${d.financials ? `<div class="card"><div class="label">إجمالي الإيرادات</div><div class="value green">${fmt(d.financials.revenue)} ج</div></div>` : `<div class="card"><div class="label">إجمالي الإيرادات</div><div class="value" style="color:var(--muted);font-size:13px;">لسه مفيش إيرادات مسجلة</div></div>`}
+        ${d.netProfit!==null ? `<div class="card"><div class="label">صافي الربح</div><div class="value ${d.netProfit>=0?'green':'red'}">${fmt(d.netProfit)} ج</div></div>` : `<div class="card"><div class="label">صافي الربح</div><div class="value" style="color:var(--muted);font-size:13px;">—</div></div>`}
+      </div>
+    `;
+  } catch(err){ box.innerHTML = `<div class="msg err" style="display:block;">تعذر تحميل ملخص المشروع: ${err.message||err}</div>`; }
 }
 // بتجمع التكاليف باليوم (تاريخ)، وبتعرض تحت كل يوم جدول بعواميد واضحة: العملية، المشروع،
 // البنود، تفصيل العمالة (كل عامل وكام ساعة اشتغل)، الإجمالي — عشان يبقى واضح مين عمل إيه امتى.
