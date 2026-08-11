@@ -18,6 +18,12 @@
   }
   *{box-sizing:border-box; margin:0; padding:0;}
   body{ font-family:'Cairo',sans-serif; background:var(--cream); color:var(--dark); display:flex; min-height:100vh; overflow-x:hidden; }
+  /* ⚠️ إضافة 2026-08-11: لما القائمة الجانبية (off-canvas) بتفتح على الموبايل،
+     الصفحة اللي وراها كانت لسه قابلة للسكرول عادي — يعني تقدر تسحب بإصبعك
+     والصفحة اللي تحت القائمة تنزل من غيرها. .no-scroll بتقفل سكرول الصفحة
+     تمامًا من غير ما تفقد مكانك (top سالب بقيمة السكرول الحالي، وبيترجع تاني
+     لمكانه الطبيعي لما تقفل القائمة عن طريق JS في openSidebar/closeSidebar). */
+  body.no-scroll{ position:fixed; left:0; right:0; overflow:hidden; }
   .mono{ font-family:'IBM Plex Mono', monospace; direction:ltr; }
 
   .sidebar{ width:235px; background:var(--dark); color:#f0e6d8; flex-shrink:0; display:flex; flex-direction:column; padding:22px 0;
@@ -1551,17 +1557,25 @@ const PAGES = {
 };
 
 /* ================= Sidebar (mobile off-canvas + desktop collapse) ================= */
+let _sidebarScrollY = 0;
 function openSidebar(){
   const sb = document.getElementById('sidebar');
   sb.classList.add('open');
   sb.scrollTop = 0; // يفتح دايمًا من أول عنصر، مش من مكان آخر سكرول وصله قبل كده
   document.getElementById('sidebarOverlay').classList.add('open');
   document.getElementById('hamburgerBtn').classList.add('open');
+  // يقفل سكرول الصفحة اللي وراء القائمة (شوف تعليق .no-scroll فوق في الـ CSS)
+  _sidebarScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+  document.body.style.top = (-_sidebarScrollY) + 'px';
+  document.body.classList.add('no-scroll');
 }
 function closeSidebar(){
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('sidebarOverlay').classList.remove('open');
   document.getElementById('hamburgerBtn').classList.remove('open');
+  document.body.classList.remove('no-scroll');
+  document.body.style.top = '';
+  window.scrollTo(0, _sidebarScrollY);
 }
 function toggleSidebar(){
   const sb = document.getElementById('sidebar');
