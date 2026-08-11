@@ -978,7 +978,6 @@
     <div class="sep"></div>
     <button data-page="projects"><span class="icon">&#128188;</span><span class="label">المشاريع</span></button>
     <button data-page="costs"><span class="icon">&#128176;</span><span class="label">التكاليف</span></button>
-    <button data-page="revenue"><span class="icon">&#128184;</span><span class="label">إيرادات المشاريع</span></button>
     <div class="sep"></div>
     <button data-page="treasury"><span class="icon">&#128176;</span><span class="label">الخزنة (Cash Flow)</span></button>
     <button data-page="projectExpenses"><span class="icon">&#128202;</span><span class="label">متابعة صرف المشاريع</span></button>
@@ -4463,20 +4462,65 @@ function updateCostTotal(){
 }
 // ملخص سريع (تكلفة/إيرادات/صافي ربح) لمشروع واحد لما يتفلتر عليه في صفحة
 // التكاليف — نفس بيانات صفحة "المشاريع"، بس هنا من غير ما تسيب صفحة التكاليف.
+/* ⚠️ إصلاح 2026-08-11: الإيرادات كانت خالص مش ظاهرة في صفحة التكاليف — بس كارت
+   "إجمالي الإيرادات" للقراءة فقط. دلوقتي لما تفلتر على مشروع، هنا كمان بتقدر
+   تشوف كل سطور إيراداته وتضيف إيراد جديد له مباشرة، من غير ما تسيب صفحة
+   التكاليف خالص. (لسه فيه صفحة "إيرادات المشاريع" منفصلة في القائمة الجانبية
+   لو عايز تشتغل بمشاريع متعددة إيرادات وراء بعض من غير ما تفلتر كل مرة). */
 async function renderCostProjectSummary(project){
   const box = document.getElementById('costProjectSummary'); if (!box) return;
   if (!project) { box.innerHTML = ''; return; }
   box.innerHTML = '<div class="loading-row">جاري تحميل ملخص المشروع...</div>';
   try {
-    const d = await apiGet('getProjectFullSummary', { name: project });
+    const [d, rev] = await Promise.all([
+      apiGet('getProjectFullSummary', { name: project }),
+      apiGet('listProjectRevenueEntries', { name: project })
+    ]);
+    const entries = rev.entries || [];
+    const revenueTotal = d.financials ? d.financials.revenue : (rev.total || 0);
     box.innerHTML = `
       <div class="cards" style="margin-bottom:16px;">
         <div class="card"><div class="label">إجمالي تكلفة ${qEsc(project)}</div><div class="value gold">${fmt(d.totalCost)} ج</div></div>
-        ${d.financials ? `<div class="card"><div class="label">إجمالي الإيرادات</div><div class="value green">${fmt(d.financials.revenue)} ج</div></div>` : `<div class="card"><div class="label">إجمالي الإيرادات</div><div class="value" style="color:var(--muted);font-size:13px;">لسه مفيش إيرادات مسجلة</div></div>`}
+        <div class="card"><div class="label">إجمالي الإيرادات</div><div class="value green">${fmt(revenueTotal)} ج</div></div>
         ${d.netProfit!==null ? `<div class="card"><div class="label">صافي الربح</div><div class="value ${d.netProfit>=0?'green':'red'}">${fmt(d.netProfit)} ج</div></div>` : `<div class="card"><div class="label">صافي الربح</div><div class="value" style="color:var(--muted);font-size:13px;">—</div></div>`}
       </div>
+      <div class="panel" style="background:var(--cream);border:1.5px dashed var(--border);margin-bottom:16px;">
+        <h3 style="margin-bottom:10px;">إيرادات ${qEsc(project)}</h3>
+        <form id="costRevForm" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
+          <div class="field" style="margin:0;min-width:140px;"><label>التاريخ</label><input type="date" id="costRevDate" value="${todayStr()}"></div>
+          <div class="field" style="margin:0;flex:1;min-width:180px;"><label>الوصف</label><input autocomplete="off" id="costRevDesc" placeholder="مثال: دفعة مقدمة من العميل"></div>
+          <div class="field" style="margin:0;min-width:120px;"><label>المبلغ</label><input autocomplete="off" type="number" id="costRevAmount" placeholder="0"></div>
+          <button type="submit" class="btn btn-primary btn-sm">+ إضافة إيراد</button>
+        </form>
+        <div class="msg" id="costRevMsg"></div>
+        ${entries.length ? `<div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>الوصف</th><th>المبلغ</th><th></th></tr></thead>
+        <tbody>${entries.map(e=>`<tr><td>${qEsc(e.date)}</td><td>${qEsc(e.desc)}</td><td><b>${fmt(e.amount)} ج</b></td>
+          <td><button class="btn btn-sm btn-danger" onclick="costRevDelete('${qEscJs(project)}',${e.row})">حذف</button></td></tr>`).join('')}</tbody></table></div>`
+        : `<div class="empty">مفيش إيرادات مسجلة للمشروع ده لسه</div>`}
+      </div>
     `;
+    document.getElementById('costRevForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('costRevMsg');
+      msg.className='msg'; msg.textContent='';
+      const payload = {
+        project,
+        date: document.getElementById('costRevDate').value || todayStr(),
+        desc: document.getElementById('costRevDesc').value.trim(),
+        amount: Number(document.getElementById('costRevAmount').value) || 0
+      };
+      try {
+        await apiPost('addProjectRevenueEntry', payload);
+        msg.className='msg ok'; msg.textContent='✅ تم الحفظ';
+        renderCostProjectSummary(project);
+      } catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); }
+    });
   } catch(err){ box.innerHTML = `<div class="msg err" style="display:block;">تعذر تحميل ملخص المشروع: ${err.message||err}</div>`; }
+}
+async function costRevDelete(project, row){
+  if (!(await openGenConfirm('متأكد إنك عاوز تمسح الإيراد ده؟', 'حذف إيراد'))) return;
+  try { await apiPost('deleteProjectRevenueEntry', { project, row }); renderCostProjectSummary(project); }
+  catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 // ⚠️ إضافة 2026-08-11: بيعرض الساعات مع عدد الأيام المقابل ليها (يوم = 9 ساعات)
 // عشان تبقى قادر تقرا "27 س — 3 أيام" بسرعة من غير ما تحسب في دماغك.
