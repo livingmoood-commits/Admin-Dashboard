@@ -1749,30 +1749,277 @@ function openPaymentsMasterDetail(kind, source){
   `);
 }
 
+/* ⚠️ إعادة تصميم 2026-08-11: صفحة "نظرة عامة" بقت تجمع في نفس الشاشة:
+ * جدولين جنب بعض بالجهات ("اللي لينا" = مستحقاتنا برا من العملاء، و"اللي علينا" =
+ * ديون_النظام للموردين/الجهات)، الخزنة بالرصيد الحالي + تفاصيل عند الدوس عليها،
+ * كروت التكاليف والمشاريع، وجدول المشاريع بالتكلفة والربح (الأهم في الصفحة)،
+ * كل ده مع زرار طباعة PDF واحد للصفحة دي ومحتوياتها بس (شوف printDashboardOverview). */
+let _dashProjectsCache = [];
+let _dashPrintSnapshot = null; // آخر نسخة بيانات اتحمّلت — الطباعة بتستخدمها من غير تحميل تاني من السيرفر
+
 async function renderDashboard(token) {
   try {
-    const [d, { customers }] = await Promise.all([apiGet('getDashboardData'), apiGet('payListCustomers')]);
+    const [d, { customers }, { debts }, projSummary] = await Promise.all([
+      apiGet('getDashboardData'), apiGet('payListCustomers'), apiGet('listDebts'), apiGet('listProjectsSummary')
+    ]);
     if (isStaleNav(token)) return;
+    const projects = projSummary.projects || [];
     _pmDashCustomers = customers;
+    _debtsCache = debts; // نفس متغيّر صفحة "ديون" — عشان تفاصيل/تعديل الدين تشتغل من هنا برضه
+    _dashProjectsCache = projects;
+    _dashPrintSnapshot = { d, customers, debts, projects };
+
+    const totalReceivable = customers.reduce((s,c)=>s+((Number(c.total)||0)-(Number(c.received)||0)), 0);
+    const totalPayable = debts.reduce((s,dbt)=>s+dbt.remaining, 0);
+    const totalOtherCosts = d.totalProductsCost + d.totalInstallCost + d.totalCostsNew;
+    const totalAllCosts = d.totalLaborCost + totalOtherCosts;
+
     document.getElementById('content').innerHTML = `
+      <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
+        <button class="btn btn-outline" onclick="printDashboardOverview()">🖨 طباعة PDF للصفحة</button>
+      </div>
+
       <div class="cards">
         <div class="card clickable" onclick="openEmployeesCard()"><div class="label">عدد الموظفين</div><div class="value">${d.employeesCount}</div></div>
         <div class="card clickable" onclick="goTo('projects')"><div class="label">عدد المشاريع المسجلة</div><div class="value">${d.projectsCount}</div></div>
-        <div class="card clickable" onclick="goTo('treasury')"><div class="label">رصيد الخزنة</div><div class="value green">${fmt(d.treasuryBalance)} ج</div></div>
-        <div class="card"><div class="label">إجمالي تكلفة العمالة</div><div class="value gold">${fmt(d.totalLaborCost)} ج</div></div>
-        <div class="card"><div class="label">إجمالي ساعات الشغل</div><div class="value">${fmt(d.totalLaborHours)} س</div></div>
-        <div class="card clickable" onclick="goTo('costs')"><div class="label">التكاليف (خامات + تركيب)</div><div class="value gold">${fmt(d.totalCostsNew)} ج</div></div>
+        <div class="card clickable" onclick="openTreasuryDashCard()"><div class="label">رصيد الخزنة</div><div class="value green">${fmt(d.treasuryBalance)} ج</div></div>
+        <div class="card clickable" onclick="openPaymentsMasterDetail('incomplete','dash')"><div class="label">الباقي لينا برا (عملاء)</div><div class="value" style="color:${totalReceivable>0.01?'var(--green)':'var(--muted)'};">${fmt(totalReceivable)} ج</div></div>
+        <div class="card clickable" onclick="goTo('debts')"><div class="label">الباقي علينا (ديون)</div><div class="value" style="color:${totalPayable>0.01?'var(--red)':'var(--green)'};">${fmt(totalPayable)} ج</div></div>
+        <div class="card"><div class="label">إجمالي كل التكاليف</div><div class="value gold">${fmt(totalAllCosts)} ج</div></div>
       </div>
-      <div class="panel">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-          <h3 style="margin:0;">Summary Payment Statements — مستحقاتنا برا</h3>
-          <button class="btn btn-sm btn-outline" onclick="goTo('debtors')">فتح الصفحة الكاملة ←</button>
+
+      <div class="grid2">
+        <div class="panel">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+            <h3 style="margin:0;">اللي لينا — مستحقاتنا برا (عملاء)</h3>
+            <button class="btn btn-sm btn-outline" onclick="goTo('debtors')">الصفحة الكاملة ←</button>
+          </div>
+          ${receivablesTableHTML(customers)}
         </div>
-        ${paymentsMasterTableHTML(customers, 'dash')}
+        <div class="panel">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+            <h3 style="margin:0;">اللي علينا — ديون (موردين/جهات)</h3>
+            <button class="btn btn-sm btn-outline" onclick="goTo('debts')">الصفحة الكاملة ←</button>
+          </div>
+          ${debts.length ? debtsGroupedHTML(debts) : '<div class="empty">مفيش ديون مسجلة</div>'}
+        </div>
       </div>
-      <!-- TODO: هنا كان قسم "أعلى 5 مشاريع" و"آخر سجلات الساعات" — اتشال بناءً على طلب، وهنحط حاجة تانية مكانه لسه هنحددها -->
+
+      <div class="panel">
+        <h3 style="margin-bottom:12px;">التكاليف — تفصيل حسب المصدر</h3>
+        <div class="cards" style="margin-bottom:0;">
+          <div class="card clickable" onclick="goTo('costs')"><div class="label">تكلفة العمالة (ساعات وسهرات)</div><div class="value gold">${fmt(d.totalLaborCost)} ج</div></div>
+          <div class="card"><div class="label">إجمالي ساعات الشغل</div><div class="value">${fmt(d.totalLaborHours)} س</div></div>
+          <div class="card clickable" onclick="goTo('costs')"><div class="label">تكلفة الخامات (أرشيف)</div><div class="value gold">${fmt(d.totalProductsCost)} ج</div></div>
+          <div class="card clickable" onclick="goTo('costs')"><div class="label">تكلفة التركيب (أرشيف)</div><div class="value gold">${fmt(d.totalInstallCost)} ج</div></div>
+          <div class="card clickable" onclick="goTo('costs')"><div class="label">التكاليف (النظام الموحّد)</div><div class="value gold">${fmt(d.totalCostsNew)} ج</div></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+          <h3 style="margin:0;">المشاريع بالتكلفة والربح</h3>
+          <button class="btn btn-sm btn-outline" onclick="goTo('projects')">الصفحة الكاملة ←</button>
+        </div>
+        ${dashProjectsTableHTML(projects)}
+      </div>
     `;
   } catch(err){ showError(err); }
+}
+
+// جدول "اللي لينا" — كل عميل/جهة وحاله المستحق/المستلم/الباقي، الأكبر باقي فوق. دوس على أي صف
+// → معاينة سريعة (openPaymentPreviewModal الموجودة بالفعل)
+function receivablesTableHTML(customers){
+  if (!customers.length) return '<div class="empty">مفيش سجلات دفعات لسه — من صفحة Payment Statements تقدر تبدأ سجل جديد</div>';
+  const list = customers.map(c => ({ ...c, remaining: (Number(c.total)||0) - (Number(c.received)||0) })).sort((a,b)=>b.remaining-a.remaining);
+  const totalAgreed = list.reduce((s,c)=>s+(Number(c.total)||0), 0);
+  const totalReceived = list.reduce((s,c)=>s+(Number(c.received)||0), 0);
+  const totalRemaining = totalAgreed - totalReceived;
+  return `<div class="tbl-wrap"><table><thead><tr><th>الجهة</th><th>الإجمالي</th><th>المستلم</th><th>الباقي لينا</th></tr></thead>
+    <tbody>${list.map(c => `<tr class="clickable-row" style="cursor:pointer;" onclick='openPaymentPreviewModal(${JSON.stringify(c).replace(/'/g,"&#39;")})' title="دوس لعرض التفاصيل">
+      <td>${qEsc(c.engineer || c.name)}${c.address ? ' — '+qEsc(c.address) : ''}</td>
+      <td>${fmt(c.total)} ج</td>
+      <td>${fmt(c.received)} ج</td>
+      <td style="color:${c.remaining>0.01?'var(--red)':'var(--green)'};font-weight:700;">${fmt(c.remaining)} ج</td>
+    </tr>`).join('')}</tbody>
+    <tfoot><tr class="tbl-totals-row">
+      <td>الإجمالي (${list.length} جهة)</td>
+      <td>${fmt(totalAgreed)} ج</td>
+      <td>${fmt(totalReceived)} ج</td>
+      <td>${fmt(totalRemaining)} ج</td>
+    </tr></tfoot>
+    </table></div>`;
+}
+
+// كارت "رصيد الخزنة" في نظرة عامة → Pop فيه الرصيد الحالي/رأس المال/إجمالي الإيداعات
+// والمصاريف + آخر الحركات، وزرار لفتح صفحة الخزنة الكاملة
+async function openTreasuryDashCard(){
+  openCardModal('<div class="loading-row">جاري التحميل...</div>');
+  try {
+    const [t, { moves }] = await Promise.all([apiGet('getTreasurySummary'), apiGet('getTreasuryMoves', { limit: 12 })]);
+    openCardModal(`
+      <div class="cd-head"><h3>الخزنة</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+      <div class="cd-subcards">
+        <div class="cd-subcard"><div class="label">الرصيد الحالي</div><div class="value" style="color:var(--green);">${fmt(t.balance)} ج</div></div>
+        <div class="cd-subcard"><div class="label">رأس المال</div><div class="value">${fmt(t.capital)} ج</div></div>
+        <div class="cd-subcard"><div class="label">إجمالي الإيداعات</div><div class="value" style="color:var(--green);">${fmt(t.totalDeposits)} ج</div></div>
+        <div class="cd-subcard"><div class="label">إجمالي المصاريف</div><div class="value" style="color:var(--red);">${fmt(t.totalExpenses)} ج</div></div>
+      </div>
+      <h4 style="margin:16px 0 8px;font-size:14px;">آخر الحركات</h4>
+      <div>${moves.length ? moves.map(m => `<div class="cd-list-row">
+        <span class="n">${qEsc(m.desc)}${m.project ? ' — '+qEsc(m.project) : ''}</span>
+        <span class="p" style="color:${m.type==='إيداع'?'var(--green)':'var(--red)'};">${m.type==='إيداع'?'+':'-'}${fmt(m.amount)} ج</span>
+      </div>`).join('') : '<div class="empty">مفيش حركات لسه</div>'}</div>
+      <button class="cd-back" style="margin-top:14px;" onclick='closeCardModal(); goTo("treasury");'>فتح صفحة الخزنة بالكامل ←</button>
+    `);
+  } catch(err){
+    openCardModal(`<div class="cd-head"><h3>الخزنة</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="msg err" style="display:block;">حصل خطأ: ${err.message||err}</div>`);
+  }
+}
+
+// جدول المشاريع بالتكلفة والربح — أهم جدول في الصفحة، مرتب الأعلى تكلفة فوق.
+// دوس على أي صف → openDashProjectDetail بتفصيل مصادر التكلفة + صافي الربح
+function dashProjectsTableHTML(projects){
+  if (!projects.length) return '<div class="empty">مفيش مشاريع مسجلة لسه</div>';
+  const list = projects.slice().sort((a,b)=>b.totalCost-a.totalCost);
+  const totalCostAll = list.reduce((s,p)=>s+p.totalCost, 0);
+  const totalRevenueAll = list.reduce((s,p)=>s+(p.financials ? p.financials.revenue : 0), 0);
+  const totalNetAll = list.reduce((s,p)=>s+(p.netProfit||0), 0);
+  return `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>ساعات العمل</th><th>التكلفة الإجمالية</th><th>الإيراد المسجل</th><th>صافي الربح</th></tr></thead>
+    <tbody>${list.map(p => `<tr class="clickable-row" style="cursor:pointer;" onclick="openDashProjectDetail('${qEscJs(p.project)}')" title="دوس لعرض تفاصيل المشروع">
+      <td>${qEsc(p.project)}</td>
+      <td>${fmt(p.laborHours)} س</td>
+      <td class="gold" style="font-weight:700;">${fmt(p.totalCost)} ج</td>
+      <td>${p.financials ? fmt(p.financials.revenue)+' ج' : '—'}</td>
+      <td style="color:${p.netProfit==null?'var(--muted)':(p.netProfit>=0?'var(--green)':'var(--red)')};font-weight:800;">${p.netProfit==null?'—':fmt(p.netProfit)+' ج'}</td>
+    </tr>`).join('')}</tbody>
+    <tfoot><tr class="tbl-totals-row">
+      <td>الإجمالي (${list.length} مشروع)</td>
+      <td></td>
+      <td>${fmt(totalCostAll)} ج</td>
+      <td>${fmt(totalRevenueAll)} ج</td>
+      <td>${fmt(totalNetAll)} ج</td>
+    </tr></tfoot>
+    </table></div>`;
+}
+
+async function openDashProjectDetail(name){
+  openCardModal('<div class="loading-row">جاري التحميل...</div>');
+  try {
+    const p = await apiGet('getProjectFullSummary', { name });
+    openCardModal(`
+      <div class="cd-head"><h3>${qEsc(name)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+      <div class="cd-subcards">
+        <div class="cd-subcard"><div class="label">تكلفة العمالة</div><div class="value">${fmt(p.laborCost)} ج</div></div>
+        <div class="cd-subcard"><div class="label">تكلفة الخامات</div><div class="value">${fmt(p.materialsCost + p.productsLaborCost)} ج</div></div>
+        <div class="cd-subcard"><div class="label">تكلفة التركيب</div><div class="value">${fmt(p.installCost)} ج</div></div>
+        <div class="cd-subcard"><div class="label">التكاليف (الموحّد)</div><div class="value">${fmt(p.costsTotal)} ج</div></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:800;margin:14px 0;padding:10px 14px;background:var(--cream);border-radius:10px;">
+        <span>الإجمالي</span><span class="gold">${fmt(p.totalCost)} ج</span>
+      </div>
+      ${p.financials ? `<div style="display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:800;margin-bottom:14px;padding:10px 14px;border-radius:10px;background:var(--cream);">
+        <span>الإيراد المسجل</span><span>${fmt(p.financials.revenue)} ج</span>
+      </div>` : ''}
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:15px;font-weight:800;padding:10px 14px;border-radius:10px;background:${p.netProfit==null?'var(--cream)':(p.netProfit>=0?'#e8f3ea':'#fbe2e2')};">
+        <span>صافي الربح</span><span style="color:${p.netProfit==null?'var(--muted)':(p.netProfit>=0?'var(--green)':'var(--red)')};">${p.netProfit==null?'لسه مفيش إيراد مسجل':fmt(p.netProfit)+' ج'}</span>
+      </div>
+      <button class="cd-back" style="margin-top:14px;" onclick='closeCardModal(); goTo("costs");'>فتح صفحة التكاليف ←</button>
+    `);
+  } catch(err){
+    openCardModal(`<div class="cd-head"><h3>${qEsc(name)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="msg err" style="display:block;">حصل خطأ: ${err.message||err}</div>`);
+  }
+}
+
+/* ================= طباعة PDF لصفحة "نظرة عامة" ================= */
+// بتاخد آخر نسخة بيانات اتحمّلت (_dashPrintSnapshot) وتبني منها مستند طباعة منفصل
+// تمامًا (زي qBuildPdfHtml)، من غير أي منيو أو شريط جانبي — نفس أسلوب _openPrintDoc
+// المستخدم في الكوتيشن وPayment Statement بالظبط.
+function printDashboardOverview(){
+  if (!_dashPrintSnapshot){ showToast('البيانات لسه بتتحمل، جرب تاني بعد لحظة', 'error'); return; }
+  _openPrintDoc(buildDashboardPrintHTML(_dashPrintSnapshot));
+}
+
+function buildDashboardPrintHTML(snap){
+  const { d, customers, debts, projects } = snap;
+  const date = new Date().toLocaleDateString('en-GB');
+
+  const receivables = customers.map(c => ({ ...c, remaining: (Number(c.total)||0)-(Number(c.received)||0) })).sort((a,b)=>b.remaining-a.remaining);
+  const totalAgreed = receivables.reduce((s,c)=>s+(Number(c.total)||0), 0);
+  const totalReceived = receivables.reduce((s,c)=>s+(Number(c.received)||0), 0);
+  const totalReceivable = totalAgreed - totalReceived;
+
+  const debtMap = {};
+  debts.forEach(dbt => {
+    const key = String(dbt.creditor || 'بدون جهة').trim() || 'بدون جهة';
+    if (!debtMap[key]) debtMap[key] = { creditor: key, count: 0, total: 0, paid: 0, remaining: 0 };
+    debtMap[key].count++; debtMap[key].total += dbt.total; debtMap[key].paid += dbt.paid; debtMap[key].remaining += dbt.remaining;
+  });
+  const debtGroups = Object.values(debtMap).sort((a,b)=>b.remaining-a.remaining);
+  const totalPayable = debtGroups.reduce((s,g)=>s+g.remaining, 0);
+  const totalDebtAll = debtGroups.reduce((s,g)=>s+g.total, 0);
+  const totalDebtPaidAll = debtGroups.reduce((s,g)=>s+g.paid, 0);
+
+  const projList = projects.slice().sort((a,b)=>b.totalCost-a.totalCost);
+  const totalCostAll = projList.reduce((s,p)=>s+p.totalCost, 0);
+
+  return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"/>
+  <title>نظرة عامة — Living Mood — ${date}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;} body{font-family:'Cairo','Arial',sans-serif;direction:rtl;color:#1E1A15;background:#fff;}
+    @page{size:A4;margin:14mm 12mm;} @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+    .brand-block{text-align:center;padding-bottom:14px;border-bottom:2px solid #B8975A;margin-bottom:16px;}
+    .brand-title{font-family:'Playfair Display',Georgia,serif;font-size:32px;letter-spacing:5px;color:#1E1A15;direction:ltr;}
+    .brand-title span{color:#B8975A;} .brand-sub{font-size:9px;letter-spacing:3px;color:#6B5E4E;text-transform:uppercase;margin-top:4px;direction:ltr;}
+    .date-row{font-size:12px;color:#6B5E4E;direction:ltr;text-align:left;margin-bottom:16px;}
+    h2.sec{font-size:14.5px;margin:22px 0 8px;padding-right:8px;border-right:4px solid #B8975A;}
+    .cards-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:6px;}
+    .pcard{background:#F3EFEA;border:1px solid #D9D0C4;border-radius:8px;padding:10px 12px;text-align:center;}
+    .pcard .l{font-size:10.5px;color:#6B5E4E;margin-bottom:4px;} .pcard .v{font-size:15px;font-weight:800;}
+    table{width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:6px;}
+    thead tr{background:#2C5F3A;color:#fff;} thead th{padding:6px 5px;text-align:right;font-weight:600;font-size:10.5px;}
+    tbody td{padding:5px;border-bottom:1px solid #e7e0d4;} tfoot tr{background:#1E1A15;color:#D4B483;} tfoot td{padding:7px 5px;font-weight:700;}
+    .num{direction:ltr;text-align:left;}
+    .footer{text-align:center;font-size:11px;color:#B8975A;font-family:'Playfair Display',Georgia,serif;letter-spacing:1px;direction:ltr;margin-top:20px;}
+    @media print{ table{page-break-inside:auto;} tr{page-break-inside:avoid;} }
+  </style></head>
+  <body><div style="padding:22px 26px;">
+    <div class="brand-block"><div class="brand-title">Living <span>Mood</span></div><div class="brand-sub">نظرة عامة — Overview Report</div></div>
+    <div class="date-row"><strong>التاريخ:</strong> ${date}</div>
+
+    <div class="cards-row">
+      <div class="pcard"><div class="l">رصيد الخزنة</div><div class="v">${fmt(d.treasuryBalance)} ج</div></div>
+      <div class="pcard"><div class="l">الباقي لينا برا (عملاء)</div><div class="v">${fmt(totalReceivable)} ج</div></div>
+      <div class="pcard"><div class="l">الباقي علينا (ديون)</div><div class="v">${fmt(totalPayable)} ج</div></div>
+    </div>
+    <div class="cards-row">
+      <div class="pcard"><div class="l">إجمالي تكلفة العمالة</div><div class="v">${fmt(d.totalLaborCost)} ج</div></div>
+      <div class="pcard"><div class="l">تكاليف تانية (خامات+تركيب+نظام موحّد)</div><div class="v">${fmt(d.totalProductsCost + d.totalInstallCost + d.totalCostsNew)} ج</div></div>
+      <div class="pcard"><div class="l">عدد المشاريع</div><div class="v">${d.projectsCount}</div></div>
+    </div>
+
+    <h2 class="sec">اللي لينا — مستحقاتنا برا (عملاء)</h2>
+    <table><thead><tr><th>الجهة</th><th>الإجمالي</th><th>المستلم</th><th>الباقي لينا</th></tr></thead>
+    <tbody>${receivables.map(c=>`<tr><td>${qEsc(c.engineer||c.name)}${c.address?' — '+qEsc(c.address):''}</td><td class="num">${fmt(c.total)}</td><td class="num">${fmt(c.received)}</td><td class="num">${fmt(c.remaining)}</td></tr>`).join('')}</tbody>
+    <tfoot><tr><td>الإجمالي (${receivables.length})</td><td class="num">${fmt(totalAgreed)}</td><td class="num">${fmt(totalReceived)}</td><td class="num">${fmt(totalReceivable)}</td></tr></tfoot>
+    </table>
+
+    <h2 class="sec">اللي علينا — ديون (موردين/جهات)</h2>
+    <table><thead><tr><th>الجهة</th><th>عدد البنود</th><th>الإجمالي</th><th>المسدد</th><th>الباقي</th></tr></thead>
+    <tbody>${debtGroups.map(g=>`<tr><td>${qEsc(g.creditor)}</td><td class="num">${g.count}</td><td class="num">${fmt(g.total)}</td><td class="num">${fmt(g.paid)}</td><td class="num">${fmt(g.remaining)}</td></tr>`).join('')}</tbody>
+    <tfoot><tr><td>الإجمالي (${debtGroups.length})</td><td class="num">${debts.length}</td><td class="num">${fmt(totalDebtAll)}</td><td class="num">${fmt(totalDebtPaidAll)}</td><td class="num">${fmt(totalPayable)}</td></tr></tfoot>
+    </table>
+
+    <h2 class="sec">المشاريع بالتكلفة والربح</h2>
+    <table><thead><tr><th>المشروع</th><th>ساعات العمل</th><th>التكلفة</th><th>الإيراد</th><th>صافي الربح</th></tr></thead>
+    <tbody>${projList.map(p=>`<tr><td>${qEsc(p.project)}</td><td class="num">${fmt(p.laborHours)}</td><td class="num">${fmt(p.totalCost)}</td><td class="num">${p.financials?fmt(p.financials.revenue):'—'}</td><td class="num">${p.netProfit==null?'—':fmt(p.netProfit)}</td></tr>`).join('')}</tbody>
+    <tfoot><tr><td>الإجمالي (${projList.length})</td><td></td><td class="num">${fmt(totalCostAll)}</td><td></td><td></td></tr></tfoot>
+    </table>
+
+    <div class="footer">Living Mood — تقرير نظرة عامة</div>
+  </div></body></html>`;
 }
 
 // دوس على أي عميل في "مستحقاتنا برا" → Pop معاينة سريعة بأنيميشن، مع زرار لفتح السجل كامل
@@ -4852,10 +5099,10 @@ async function saveDebtEdit(id){
 // في صف واحد بس بإجمالي/مسدد/باقي مجموعين، عشان تبان الصورة الحقيقية لكل جهة
 // من غير ما تلغي البنود التفصيلية اللي لسه موجودة في الجدول اللي تحت.
 let _debtsGroupsCache = [];
-function renderDebtsGrouped(debts){
-  const box = document.getElementById('debtsGroupedBox');
-  if (!box) return;
-  if (!debts.length){ box.innerHTML = '<div class="empty">مفيش ديون مسجلة</div>'; return; }
+// ⚠️ 2026-08-11: اتفصلت من renderDebtsGrouped عشان صفحة "نظرة عامة" تقدر تستخدم
+// نفس الجدول/نفس منطق التجميع بالظبط (وبالتالي نفس openDebtGroupDetail عند الدوس)
+// من غير ما تكرر الكود — بترجع الـ HTML بس، والصفحة اللي بتناديها هي اللي تحطه فين ما تحب.
+function debtsGroupedHTML(debts){
   const map = {};
   debts.forEach(d => {
     const key = String(d.creditor || 'بدون جهة').trim() || 'بدون جهة';
@@ -4870,7 +5117,7 @@ function renderDebtsGrouped(debts){
   const totalAll = groups.reduce((s,g)=>s+g.total, 0);
   const paidAll = groups.reduce((s,g)=>s+g.paid, 0);
   const remainingAll = groups.reduce((s,g)=>s+g.remaining, 0);
-  box.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>الجهة</th><th>عدد البنود</th><th>الإجمالي</th><th>المسدد</th><th>الباقي</th></tr></thead>
+  return `<div class="tbl-wrap"><table><thead><tr><th>الجهة</th><th>عدد البنود</th><th>الإجمالي</th><th>المسدد</th><th>الباقي</th></tr></thead>
     <tbody>${groups.map((g,i) => `<tr class="clickable-row" style="cursor:pointer;" onclick="openDebtGroupDetail(${i})" title="دوس لعرض تفاصيل البنود">
       <td>${qEsc(g.creditor)}</td>
       <td style="text-align:center;">${g.count}</td>
@@ -4886,6 +5133,11 @@ function renderDebtsGrouped(debts){
       <td>${fmt(remainingAll)} ج</td>
     </tr></tfoot>
     </table></div>`;
+}
+function renderDebtsGrouped(debts){
+  const box = document.getElementById('debtsGroupedBox');
+  if (!box) return;
+  box.innerHTML = debts.length ? debtsGroupedHTML(debts) : '<div class="empty">مفيش ديون مسجلة</div>';
 }
 // دوس على أي جهة في جدول "توحيد الجهات" → Pop فيه كل البنود التفصيلية بتاعة الجهة دي،
 // ودوس على أي بند فيها يفتحلك تعديله على طول (نفس زرار "تعديل" في الجدول اللي تحت)
