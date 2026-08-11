@@ -624,6 +624,13 @@
   .p-filter-tabs .step:hover{ background:#f0ebe3; }
   .p-filter-tabs .step:active{ transform:scale(.96); }
   .p-filter-tabs .step.active{ color:var(--gold); border-color:var(--gold); background:#fbf7ef; animation:navPop .4s var(--bounce); }
+  /* ===== تابي التكاليف/الإيرادات — نفس أسلوب q-steps بس بألوان مميزة (زي pill.dep/exp
+     المستخدمة في باقي الموقع): التكاليف أحمر باهت، الإيرادات أخضر باهت ===== */
+  .cost-tabs .step{ cursor:pointer; transition:background .2s, color .2s, border-color .3s, transform .18s var(--bounce); }
+  .cost-tabs .step:hover{ background:#f0ebe3; }
+  .cost-tabs .step:active{ transform:scale(.96); }
+  .cost-tabs .step.tab-costs.active{ color:var(--red); border-color:var(--red); background:#fbe2e2; animation:navPop .4s var(--bounce); }
+  .cost-tabs .step.tab-revenue.active{ color:var(--green); border-color:var(--green); background:#e6f4ea; animation:navPop .4s var(--bounce); }
 
   .q-banner{ display:flex; flex-wrap:wrap; gap:20px; align-items:center; justify-content:space-between; }
   .q-info-box{ background:var(--cream); border-right:4px solid var(--gold); padding:11px 16px; border-radius:5px; display:flex; flex-direction:column; gap:8px; flex:1; min-width:260px; }
@@ -3880,11 +3887,10 @@ async function renderProjects(token) {
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
           <h3 style="margin:0;">ملخص تكلفة المشاريع (${projects.length})</h3>
         </div>
-        ${projects.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>ساعات العمالة</th><th>تكلفة العمالة</th><th>تكلفة الخامات</th><th>إجمالي التكلفة</th><th>الإيرادات</th><th>صافي الربح</th><th></th></tr></thead>
-        <tbody>${projects.map(p => `<tr><td>${p.project}</td><td>${fmt(p.laborHours)}</td><td>${fmt(p.laborCost)} ج</td><td>${fmt(p.materialsCost)} ج</td><td><b>${fmt(p.totalCost)} ج</b></td>
+        ${projects.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>ساعات العمالة</th><th>تكلفة العمالة</th><th>تكلفة الخامات</th><th>إجمالي التكلفة</th><th>الإيرادات</th><th>صافي الربح</th></tr></thead>
+        <tbody>${projects.map(p => `<tr class="row-clickable" onclick="showProjectDetail('${p.project.replace(/'/g,"\\'")}')"><td>${p.project}</td><td>${fmt(p.laborHours)}</td><td>${fmt(p.laborCost)} ج</td><td>${fmt(p.materialsCost)} ج</td><td><b>${fmt(p.totalCost)} ج</b></td>
           <td>${p.financials ? fmt(p.financials.revenue)+' ج' : '—'}</td>
-          <td>${p.netProfit===null ? '—' : `<b style="color:${p.netProfit>=0?'var(--green)':'var(--red)'}">${fmt(p.netProfit)} ج</b>`}</td>
-          <td><button class="btn btn-sm btn-outline" onclick="showProjectDetail('${p.project.replace(/'/g,"\\'")}')">تفاصيل</button></td></tr>`).join('')}</tbody></table></div>`
+          <td>${p.netProfit===null ? '—' : `<b style="color:${p.netProfit>=0?'var(--green)':'var(--red)'}">${fmt(p.netProfit)} ج</b>`}</td></tr>`).join('')}</tbody></table></div>`
         : `<div class="empty">مفيش مشاريع لسه — من صفحة "متابعة صرف المشاريع" دوس "+ مشروع جديد" عشان تضيف أول مشروع</div>`}
       </div>
       <div id="projectDetailBox"></div>
@@ -4315,13 +4321,13 @@ async function renderCosts(token) {
     window._costsProjects = projects; window._costsEmployees = employees;
     if (!REV_STATE.project && projects.length) REV_STATE.project = projects[0];
     document.getElementById('content').innerHTML = `
-      <div class="tabs-row" id="costTabsRow">
-        <button type="button" class="tab-btn ${COST_TAB==='entries'?'active':''}" data-tab="entries">التكاليف</button>
-        <button type="button" class="tab-btn ${COST_TAB==='revenue'?'active':''}" data-tab="revenue">الإيرادات</button>
+      <div class="q-steps cost-tabs" id="costTabsRow">
+        <div class="step tab-costs ${COST_TAB==='entries'?'active':''}" data-tab="entries">التكاليف</div>
+        <div class="step tab-revenue ${COST_TAB==='revenue'?'active':''}" data-tab="revenue">الإيرادات</div>
       </div>
       <div id="costTabBody"></div>`;
     document.getElementById('costTabsRow').addEventListener('click', (e) => {
-      const btn = e.target.closest('.tab-btn'); if (!btn) return;
+      const btn = e.target.closest('.step'); if (!btn) return;
       switchCostTab(btn.dataset.tab);
     });
     await (COST_TAB === 'revenue' ? renderRevenueTab() : renderCostsEntriesTab());
@@ -4333,7 +4339,7 @@ async function renderCosts(token) {
 function switchCostTab(tab){
   if (tab !== 'entries' && tab !== 'revenue') return;
   COST_TAB = tab;
-  document.querySelectorAll('#costTabsRow .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('#costTabsRow .step').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   if (tab === 'revenue') renderRevenueTab(); else renderCostsEntriesTab();
 }
 
@@ -4595,9 +4601,11 @@ async function renderRevenueTab() {
   const box = document.getElementById('costTabBody'); if (!box) return;
   const projects = window._costsProjects || [];
   box.innerHTML = `
-    <div class="panel">
-      <h3>الإيرادات — منفصلة عن التكاليف</h3>
-      <div class="filters"><select id="rev_project">${projects.map(pr=>`<option value="${qEsc(pr)}" ${pr===REV_STATE.project?'selected':''}>${qEsc(pr)}</option>`).join('')}</select></div>
+    <div class="cost-day-group" style="margin-bottom:16px;">
+      <div class="cost-day-head" id="revTabHead"><b>${qEsc(REV_STATE.project || '—')}</b><span class="sub">الإيرادات — جاري التحميل...</span></div>
+      <div class="panel" style="border-radius:0 0 10px 10px;margin:0;">
+        <div class="filters"><select id="rev_project">${projects.map(pr=>`<option value="${qEsc(pr)}" ${pr===REV_STATE.project?'selected':''}>${qEsc(pr)}</option>`).join('')}</select></div>
+      </div>
     </div>
     <div class="grid2">
       <div class="panel">
@@ -4625,17 +4633,25 @@ async function renderRevenueTab() {
   document.getElementById('revCancelEdit').addEventListener('click', () => { REV_STATE.editingId = null; revResetForm(); });
   await revLoadEntries();
 }
+function revUpdateHead(){
+  const head = document.getElementById('revTabHead'); if (!head) return;
+  const count = REV_STATE.entries.length;
+  head.innerHTML = `<b>${qEsc(REV_STATE.project || '—')}</b><span class="sub">${count} إيراد${count===1?'':''} — إجمالي المسجل: ${fmt(REV_STATE.loggedTotal)} ج — الإجمالي الكلي: ${fmt(REV_STATE.total)} ج</span>`;
+}
 async function revLoadEntries(){
   const listBox = document.getElementById('revListBox'); if (!listBox) return;
-  if (!REV_STATE.project) { listBox.innerHTML = '<div class="empty">مفيش مشاريع</div>'; return; }
+  const head = document.getElementById('revTabHead');
+  if (!REV_STATE.project) { listBox.innerHTML = '<div class="empty">مفيش مشاريع</div>'; if (head) head.innerHTML = '<b>—</b><span class="sub">مفيش مشاريع</span>'; return; }
   listBox.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  if (head) head.innerHTML = `<b>${qEsc(REV_STATE.project)}</b><span class="sub">جاري التحميل...</span>`;
   try {
     const res = await apiGet('listProjectRevenueEntries', { name: REV_STATE.project });
     REV_STATE.entries = res.entries || []; REV_STATE.loggedTotal = res.loggedTotal || 0; REV_STATE.total = res.total || 0;
     document.getElementById('revLoggedTotal').textContent = fmt(REV_STATE.loggedTotal) + ' ج';
     document.getElementById('revGrandTotal').textContent = fmt(REV_STATE.total) + ' ج';
+    revUpdateHead();
     revRenderList();
-  } catch(err){ listBox.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message||err}</div>`; }
+  } catch(err){ listBox.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message||err}</div>`; if (head) head.innerHTML = `<b>${qEsc(REV_STATE.project)}</b><span class="sub">تعذر التحميل</span>`; }
 }
 function revRenderList(){
   const listBox = document.getElementById('revListBox'); if (!listBox) return;
