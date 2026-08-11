@@ -1533,6 +1533,7 @@ async function apiPost(action, payload) {
 }
 function fmt(n){ return (Number(n)||0).toLocaleString('en-US', {maximumFractionDigits:0}); }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
+function monthStartStr(){ const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-01`; }
 function yesterdayStr(){ const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0,10); }
 // آخر يوم شغل فعلي (بيتخطى الجمعة — لو النهاردة السبت مثلاً، بيرجع الخميس مش الجمعة)
 function lastWorkingDayStr(){
@@ -1829,6 +1830,20 @@ async function renderDashboard(token) {
         <div class="card diff"><div class="label">الفرق (لينا − علينا)</div><div class="value" style="color:${netDiff>=0?'var(--green)':'var(--red)'};">${netDiff>=0?'':'-'}${fmt(Math.abs(netDiff))} ج</div></div>
       </div>
 
+      <div class="panel">
+        <h3 style="margin-bottom:12px;">مستحقات شركاء — حسب فترة معيّنة</h3>
+        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px;">
+          <div><label style="display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px;">من تاريخ</label>
+            <input type="date" id="pd-from" class="d-input" style="min-width:150px;" value="${monthStartStr()}"></div>
+          <div><label style="display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px;">لحد تاريخ</label>
+            <input type="date" id="pd-to" class="d-input" style="min-width:150px;" value="${todayStr()}"></div>
+          <button class="btn btn-primary btn-sm" onclick="dashPartnersDuesCompute()">احسب</button>
+          <button class="btn btn-sm btn-outline" onclick="document.getElementById('pd-from').value='';document.getElementById('pd-to').value='';dashPartnersDuesCompute();">كل الفترات</button>
+        </div>
+        <div id="pd-results"></div>
+        <div id="pd-meta" style="font-size:11.5px;color:var(--muted);margin-top:10px;"></div>
+      </div>
+
       <div class="grid2">
         <div class="panel">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
@@ -1868,7 +1883,38 @@ async function renderDashboard(token) {
         ${dashProjectsTableHTML(projects)}
       </div>
     `;
+    dashPartnersDuesCompute(); // أول حساب تلقائي بفترة الشهر الحالي (من أول الشهر لحد النهارده)
   } catch(err){ showError(err); }
+}
+
+// "مستحقات شركاء" — نفس فكرة الباقي لينا/الباقي علينا/الفرق، لكن محسوبة بس على السجلات
+// (عملاء + ديون) اللي تاريخها واقع جوه الفترة المختارة (من/لحد) — بيستخدم نفس نسخة
+// البيانات المحمّلة في _dashPrintSnapshot من غير أي نداء تاني للسيرفر.
+function dashPartnersDuesCompute(){
+  const box = document.getElementById('pd-results'); if (!box) return;
+  const snap = _dashPrintSnapshot;
+  if (!snap){ box.innerHTML = '<div class="empty">البيانات لسه بتتحمل...</div>'; return; }
+  const from = (document.getElementById('pd-from').value || '').trim();
+  const to = (document.getElementById('pd-to').value || '').trim();
+  const inRange = dateStr => {
+    if (!dateStr) return false;
+    if (from && dateStr < from) return false;
+    if (to && dateStr > to) return false;
+    return true;
+  };
+  const custs = snap.customers.filter(c => inRange(c.date));
+  const dbts = snap.debts.filter(d => inRange(d.date));
+  const totalReceivable = custs.reduce((s,c)=>s+((Number(c.total)||0)-(Number(c.received)||0)), 0);
+  const totalPayable = dbts.reduce((s,d)=>s+d.remaining, 0);
+  const diff = totalReceivable - totalPayable;
+  box.innerHTML = `
+    <div class="netgroup" style="margin-bottom:0;">
+      <div class="card"><div class="label">الباقي لينا برا (في الفترة)</div><div class="value" style="color:${totalReceivable>0.01?'var(--green)':'var(--muted)'};">${fmt(totalReceivable)} ج</div></div>
+      <div class="card"><div class="label">الباقي علينا (في الفترة)</div><div class="value" style="color:${totalPayable>0.01?'var(--red)':'var(--green)'};">${fmt(totalPayable)} ج</div></div>
+      <div class="card diff"><div class="label">الفرق (لينا − علينا)</div><div class="value" style="color:${diff>=0?'var(--green)':'var(--red)'};">${diff>=0?'':'-'}${fmt(Math.abs(diff))} ج</div></div>
+    </div>`;
+  const rangeTxt = (from || to) ? `من ${from||'البداية'} لحد ${to||'النهارده'}` : 'كل الفترات (كل السجلات اللي ليها تاريخ)';
+  document.getElementById('pd-meta').textContent = `${rangeTxt} — ${custs.length} سجل مستحقات + ${dbts.length} سجل دين. ملحوظة: السجلات اللي من غير تاريخ مسجّل مش بتدخل في الحساب ده.`;
 }
 
 // كارت مصدر تكلفة (عمالة/خامات/تركيب/نظام موحّد) في "نظرة عامة" → بدل ما يودّي
