@@ -1520,12 +1520,23 @@ async function apiGet(action, params) {
   _inFlight.set(key, promise);
   return promise;
 }
+// ⚠️ إضافة: معرّف عشوائي فريد لكل طلب حفظ — بيتستخدم عشان السيرفر يقدر يمنع
+// تكرار الحفظ لو حصلت إعادة محاولة تلقائية (retry) لنفس الطلب بالظبط.
+function _genRequestId(){
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return 'rid-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+}
 async function apiPost(action, payload) {
   const actor = sessionStorage.getItem('lm_userName') || '';
+  // ⚠️ requestId ثابت لنفس الطلب — نفس القيمة بتتبعت في كل محاولات الإعادة
+  // التلقائية جوه _apiFetch لأنها بتستخدم نفس الـ body، فلو الطلب كان فعلاً
+  // اتنفذ في السيرفر قبل كده، السيرفر هيرجع نفس النتيجة القديمة تاني من غير
+  // ما يكرر الكتابة في الشيت.
+  const requestId = _genRequestId();
   const data = await _apiFetch(API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // بيتفادى CORS preflight
-    body: JSON.stringify({ action, actor, ...payload })
+    body: JSON.stringify({ action, actor, requestId, ...payload })
   });
   apiCacheClear(); // أي POST معناه البيانات اتغيرت — امسح الكاش عشان القراءة الجاية تكون طازة
   return data;
