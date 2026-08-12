@@ -4924,18 +4924,56 @@ async function renderCostProjectSummary(project){
   if (!project) { box.innerHTML = ''; return; }
   box.innerHTML = '<div class="loading-row">جاري تحميل ملخص المشروع...</div>';
   try {
-    const [d, rev] = await Promise.all([
+    // ⚠️ إضافة: هنا كمان بنجيب سجلات "ساعات_وسهرات" (اللي بتتسجل تلقائي من صفحة
+    // مرتبات > إضافة سريعة) الخاصة بالمشروع ده — عشان تبان جنب باقي مصادر التكلفة
+    // في نفس الصفحة، كل مصدر في قسمه لوحده (مش مخلوطين في جدول واحد).
+    const [d, rev, hoursRes] = await Promise.all([
       apiGet('getProjectFullSummary', { name: project }),
-      apiGet('listProjectRevenueEntries', { name: project })
+      apiGet('listProjectRevenueEntries', { name: project }),
+      apiGet('listHoursEntries', { filters: { project } })
     ]);
     const entries = rev.entries || [];
+    const hoursEntries = hoursRes.entries || [];
     const revenueTotal = d.financials ? d.financials.revenue : (rev.total || 0);
+    const archiveCost = (d.materialsCost || 0) + (d.installCost || 0);
     box.innerHTML = `
       <div class="cards" style="margin-bottom:16px;">
         <div class="card"><div class="label">إجمالي تكلفة ${qEsc(project)}</div><div class="value gold">${fmt(d.totalCost)} ج</div></div>
         <div class="card"><div class="label">إجمالي الإيرادات</div><div class="value green">${fmt(revenueTotal)} ج</div></div>
         ${d.netProfit!==null ? `<div class="card"><div class="label">صافي الربح</div><div class="value ${d.netProfit>=0?'green':'red'}">${fmt(d.netProfit)} ج</div></div>` : `<div class="card"><div class="label">صافي الربح</div><div class="value" style="color:var(--muted);font-size:13px;">—</div></div>`}
       </div>
+
+      <!-- ⚠️ إضافة: تفصيل إجمالي التكلفة حسب المصدر — كل مصدر رقمه لوحده، عشان يبان
+           بوضوح مين مساهم بإيه في التكلفة الكلية فوق (عمالة الساعات/بنود التكاليف
+           الموحّدة/أرشيف قديم لو فيه). -->
+      <div class="panel" style="background:var(--cream);border:1.5px dashed var(--border);margin-bottom:16px;">
+        <h3 style="margin-bottom:10px;">تفصيل التكلفة حسب المصدر</h3>
+        <div class="cost-src-cards">
+          <div class="card"><div class="label">عمالة (ساعات وسهرات — من المرتبات)</div><div class="value gold">${fmt(d.laborCost)} ج</div></div>
+          <div class="card"><div class="label">التكاليف الموحّدة (بنود + عمالة مسجلة هنا)</div><div class="value gold">${fmt(d.costsTotal)} ج</div></div>
+          ${archiveCost > 0.01 ? `<div class="card"><div class="label">أرشيف قديم (خامات/تركيب)</div><div class="value gold">${fmt(archiveCost)} ج</div></div>` : ''}
+        </div>
+      </div>
+
+      <!-- ⚠️ إضافة: قسم مستقل لعمالة الساعات/السهرات بتاعة المشروع ده (من شيت
+           "ساعات_وسهرات" اللي بيتملى تلقائي من صفحة مرتبات) — قسم لوحده منفصل عن
+           جدول "التكاليف المسجلة" (النظام الموحّد) اللي تحت، عشان تبقى الصورة واضحة:
+           فين جاية كل تكلفة بالظبط. -->
+      <div class="panel" style="margin-bottom:16px;">
+        <h3 style="margin-bottom:4px;">عمالة ${qEsc(project)} — من المرتبات</h3>
+        <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">بتتسجل تلقائي أول ما تعمل "إضافة سريعة" (ساعات/سهرة) لموظف في صفحة مرتبات وتختار له المشروع ده — إجمالي ${fmt(d.laborHours)} ساعة عادية لحد دلوقتي.</p>
+        ${hoursEntries.length ? `<div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>الموظف</th><th>ساعات عادية</th><th>ساعات سهر</th><th>مبلغ السهرة</th><th>التكلفة</th></tr></thead>
+        <tbody>${hoursEntries.map(e=>`<tr>
+          <td>${qEsc(e.date)}</td><td>${qEsc(e.employee)}</td>
+          <td>${e.hours ? fmt(e.hours)+' س' : '—'}</td>
+          <td>${e.eveningHours ? fmt(e.eveningHours)+' س' : '—'}</td>
+          <td>${e.eveningAmount ? fmt(e.eveningAmount)+' ج' : '—'}</td>
+          <td><b>${fmt(e.cost)} ج</b></td>
+        </tr>`).join('')}</tbody>
+        <tfoot><tr class="tbl-totals-row"><td colspan="5">الإجمالي (${hoursEntries.length} سجل)</td><td>${fmt(d.laborCost)} ج</td></tr></tfoot>
+        </table></div>` : `<div class="empty">مفيش عمالة اتسجلت للمشروع ده من صفحة مرتبات لسه</div>`}
+      </div>
+
       <div class="panel" style="background:var(--cream);border:1.5px dashed var(--border);margin-bottom:16px;">
         <h3 style="margin-bottom:10px;">إيرادات ${qEsc(project)}</h3>
         <form id="costRevForm" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
