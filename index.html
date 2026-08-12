@@ -6636,11 +6636,58 @@ async function pRenderHome(token){
           <button class="btn btn-primary" onclick="pCreateRecord()">✦ إنشاء وبدء المتابعة</button>
         </div>
       </div>
+      <div class="panel" id="p-eng-master-panel"></div>
       <div class="panel" id="p-list-panel"></div>
     `;
     pRenderMasterPanel();
+    pRenderEngMasterPanel();
     pRenderClistPanel();
   } catch(err){ showError(err); }
+}
+
+// ⚠️ إضافة 2026-08-12: جدول "موجه إلى" الموحّد — زي ما اتطلب، تحت فورم الإنشاء
+// مباشرة. بيجمع كل الأسماء اللي استخدمت قبل كده (حتى لو مكتوبة بفروق بسيطة) في
+// صف واحد لكل اسم، وبيدّي زرار "استخدام" بيملا فورم الإنشاء فوق بنفس الاسم
+// بالظبط (نفس فكرة الـdatalist لكن ظاهر على طول من غير ما تحتاج تكتب حرف عشان
+// يظهر الاقتراح) — عشان توصله بسهولة ومتتكررش نفس الاسم بأكتر من شكل.
+function pEngKey_(s){ return String(s||'').trim().toLowerCase(); }
+function pRenderEngMasterPanel(){
+  const panel = document.getElementById('p-eng-master-panel'); if (!panel) return;
+  const customers = _pHomeCustomers || [];
+  const groups = {};
+  customers.forEach(c => {
+    const key = pEngKey_(c.engineer);
+    if (!key) return;
+    if (!groups[key]) groups[key] = { label: String(c.engineer).trim(), count: 0, addresses: [], total: 0 };
+    const g = groups[key];
+    g.count++;
+    g.total += Number(c.total) || 0;
+    if (c.address && !g.addresses.includes(c.address.trim())) g.addresses.push(c.address.trim());
+  });
+  const list = Object.values(groups).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'ar'));
+  const rowsHtml = list.length ? list.map(g => `
+    <tr>
+      <td>${qEsc(g.label)}</td>
+      <td style="text-align:center;">${g.count}</td>
+      <td>${qEsc(g.addresses.join('، ')) || '—'}</td>
+      <td class="num-cell">${fmt(g.total)}</td>
+      <td><button type="button" class="btn btn-sm btn-outline" onclick="pUseEngineer(${JSON.stringify(g.label)},${JSON.stringify(g.addresses[0]||'')})">استخدام ↩</button></td>
+    </tr>`).join('') : `<tr><td colspan="5" class="empty">لسه مفيش أسماء متسجلة</td></tr>`;
+  panel.innerHTML = `
+    <h3>قائمة "موجه إلى" الموحّدة</h3>
+    <p style="color:var(--muted);font-size:12.5px;margin-bottom:10px;">كل الأسماء اللي استُخدمت قبل كده في سطر واحد — دوس "استخدام" عشان تملا فورم الإنشاء فوق بنفس الاسم بالظبط، عشان توصله بسهولة ومتتكررش بأكتر من شكل.</p>
+    <div class="q-wrap">
+      <table class="q-tbl">
+        <thead><tr><th>موجه إلى</th><th style="width:70px;">عدد السجلات</th><th>العناوين المرتبطة</th><th style="width:120px;">إجمالي المستحق</th><th style="width:100px;"></th></tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>
+  `;
+}
+function pUseEngineer(name, address){
+  const engEl = document.getElementById('p_engineer'); const adrEl = document.getElementById('p_address');
+  if (engEl) { engEl.value = name; engEl.scrollIntoView({behavior:'smooth', block:'center'}); engEl.focus(); }
+  if (adrEl && address && !adrEl.value.trim()) adrEl.value = address;
 }
 
 // الماستر بانل فوق صفحة Payment Statements — كل حاجة تعرفها عن المتبقي والكامل
@@ -6747,6 +6794,13 @@ async function pOpenCustomer(c){
     if (_navToken !== navSnap || _pActionToken !== myTok) return; // المستخدم غيّر الصفحة/فتح حاجة تانية قبل ما الطلب يخلص
     PSTATE.rows = pStripSummaryRows(d.rows).map((r,i) => ({...r, name: pMigrateRowName(r.name, i), _id:Math.random()}));
     if (!PSTATE.rows.length) PSTATE.rows = [pNewRow(0)];
+    // ⚠️ FIX 2026-08-12 ("بيقرا غلط"): شيت المشروع نفسه هو مصدر الحقيقة، مش صف
+    // شيت الـ Index (اللي ممكن يبقى قديم لو حد عدّل الشيت يدويًا). لو الباك إند رجّع
+    // القيم دي (يعني لقى شيت المشروع فعلاً)، بنستبدل بيها أي قيمة قديمة كانت جاية
+    // من قائمة السجلات، حتى لو القيمة الحقيقية فاضية.
+    if (d.engineer !== undefined) PSTATE.customer.engineer = d.engineer;
+    if (d.address !== undefined) PSTATE.customer.address = d.address;
+    if (d.total !== undefined) PSTATE.customer.total = d.total;
     PSTATE.customer.completed = !!d.completed;
     PSTATE.subpage = 'editor';
     pSaveSession();
