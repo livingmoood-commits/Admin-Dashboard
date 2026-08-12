@@ -6645,43 +6645,82 @@ async function pRenderHome(token){
   } catch(err){ showError(err); }
 }
 
-// ⚠️ إضافة 2026-08-12: جدول "موجه إلى" الموحّد — زي ما اتطلب، تحت فورم الإنشاء
-// مباشرة. بيجمع كل الأسماء اللي استخدمت قبل كده (حتى لو مكتوبة بفروق بسيطة) في
-// صف واحد لكل اسم، وبيدّي زرار "استخدام" بيملا فورم الإنشاء فوق بنفس الاسم
-// بالظبط (نفس فكرة الـdatalist لكن ظاهر على طول من غير ما تحتاج تكتب حرف عشان
-// يظهر الاقتراح) — عشان توصله بسهولة ومتتكررش نفس الاسم بأكتر من شكل.
-function pEngKey_(s){ return String(s||'').trim().toLowerCase(); }
+// ⚠️ تحديث 2026-08-12: بدل الجدول المسطّح، دلوقتي نفس شكل/سلوك بالظبط "العملاء
+// وكوتيشناتهم" في صفحة الكوتيشنات (كارت أكورديون لكل اسم، بأفاتار وسهم فتح/قفل)
+// — لكن بتفاصيل مختلفة تناسب Payment Statements: تحت كل اسم بيتعرض كل سجلاته
+// (مش كوتيشنات) مع الإجمالي/المستلم/الباقي لكل سجل، وزراير "فتح"/"حذف" بيشتغلوا
+// على سجل الدفعات نفسه. بيستخدم نفس الفنكشنز المشتركة qInitials_/qEscJs
+// (متعرّفين فوق في كود الكوتيشنات) عشان الشكل يتطابق تمامًا من غير تكرار كود.
+let _pOpenClientKeys = new Set();
+
+function pGroupCustomers_(customers){
+  const groups = {}; const order = [];
+  customers.forEach(c => {
+    const key = (c.engineer && c.engineer.trim()) || (c.address && c.address.trim()) || 'بدون اسم';
+    if (!groups[key]) { groups[key] = []; order.push(key); }
+    groups[key].push(c);
+  });
+  order.sort((a,b) => {
+    if (a === 'بدون اسم') return 1;
+    if (b === 'بدون اسم') return -1;
+    return a.localeCompare(b, 'en', { sensitivity:'base' });
+  });
+  return order.map(key => ({ key, items: groups[key] }));
+}
+
+function pToggleClientRow_(key){
+  if (_pOpenClientKeys.has(key)) _pOpenClientKeys.delete(key); else _pOpenClientKeys.add(key);
+  pRenderEngMasterPanel();
+}
+
 function pRenderEngMasterPanel(){
   const panel = document.getElementById('p-eng-master-panel'); if (!panel) return;
   const customers = _pHomeCustomers || [];
-  const groups = {};
-  customers.forEach(c => {
-    const key = pEngKey_(c.engineer);
-    if (!key) return;
-    if (!groups[key]) groups[key] = { label: String(c.engineer).trim(), count: 0, addresses: [], total: 0 };
-    const g = groups[key];
-    g.count++;
-    g.total += Number(c.total) || 0;
-    if (c.address && !g.addresses.includes(c.address.trim())) g.addresses.push(c.address.trim());
-  });
-  const list = Object.values(groups).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'ar'));
-  const rowsHtml = list.length ? list.map(g => `
-    <tr>
-      <td>${qEsc(g.label)}</td>
-      <td style="text-align:center;">${g.count}</td>
-      <td>${qEsc(g.addresses.join('، ')) || '—'}</td>
-      <td class="num-cell">${fmt(g.total)}</td>
-      <td><button type="button" class="btn btn-sm btn-outline" onclick="pUseEngineer(${JSON.stringify(g.label)},${JSON.stringify(g.addresses[0]||'')})">استخدام ↩</button></td>
-    </tr>`).join('') : `<tr><td colspan="5" class="empty">لسه مفيش أسماء متسجلة</td></tr>`;
+  if (!customers.length) { panel.innerHTML = `<h3>العملاء وسجلات دفعاتهم</h3><div class="empty">لسه مفيش سجلات</div>`; return; }
+
+  const groups = pGroupCustomers_(customers);
+  const cardsHtml = groups.map(g => {
+    const isOpen = _pOpenClientKeys.has(g.key);
+    const items = g.items.slice().sort((a,b) => String(b.date||'').localeCompare(String(a.date||'')));
+    const groupTotal = g.items.reduce((s,c) => s + (Number(c.total)||0), 0);
+    const groupReceived = g.items.reduce((s,c) => s + (Number(c.received)||0), 0);
+    const groupRemaining = groupTotal - groupReceived;
+    return `
+    <div class="qc2-card${isOpen ? ' open' : ''}">
+      <div class="qc2-head" onclick="pToggleClientRow_('${qEscJs(g.key)}')">
+        <div class="qc2-avatar">${qEsc(qInitials_(g.key))}</div>
+        <div class="qc2-info">
+          <div class="qc2-name">${qEsc(g.key)}</div>
+          <div class="qc2-meta"><b>${g.items.length}</b> سجل${g.items.length > 1 ? 'ات' : ''} — الباقي: <b style="color:${Math.abs(groupRemaining)<=0.01?'var(--green)':'var(--red)'};">${fmt(groupRemaining)}</b></div>
+        </div>
+        <button type="button" class="ci-badge" style="flex-shrink:0;" onclick="event.stopPropagation(); pUseEngineer(${JSON.stringify(g.key)},${JSON.stringify(g.items[0].address||'')})">استخدام الاسم ↩</button>
+        <div class="qc2-chevron">▾</div>
+      </div>
+      <div class="qc2-body">
+        <div class="qc2-body-in">
+          ${items.map(c => {
+            const remaining = (Number(c.total)||0) - (Number(c.received)||0);
+            return `
+            <div class="qc2-item">
+              <div onclick='event.stopPropagation(); pOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})' style="cursor:pointer;flex:1;min-width:0;">
+                <div class="qc2-item-title">${qEsc(c.address || c.engineer || c.name)}${c.completed ? ' ✔' : ''}</div>
+                <div class="qc2-item-date">الإجمالي: ${fmt(c.total)} — المستلم: ${fmt(c.received)} — الباقي: <b style="color:${Math.abs(remaining)<=0.01?'var(--green)':'var(--red)'};">${fmt(remaining)}</b></div>
+              </div>
+              <div class="qc2-item-actions">
+                <button class="ci-badge" onclick='event.stopPropagation(); pOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>فتح ←</button>
+                <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); pDeleteCustomer('${c.name.replace(/'/g,"\\'")}')">🗑 حذف</button>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
   panel.innerHTML = `
-    <h3>قائمة "موجه إلى" الموحّدة</h3>
-    <p style="color:var(--muted);font-size:12.5px;margin-bottom:10px;">كل الأسماء اللي استُخدمت قبل كده في سطر واحد — دوس "استخدام" عشان تملا فورم الإنشاء فوق بنفس الاسم بالظبط، عشان توصله بسهولة ومتتكررش بأكتر من شكل.</p>
-    <div class="q-wrap">
-      <table class="q-tbl">
-        <thead><tr><th>موجه إلى</th><th style="width:70px;">عدد السجلات</th><th>العناوين المرتبطة</th><th style="width:120px;">إجمالي المستحق</th><th style="width:100px;"></th></tr></thead>
-        <tbody>${rowsHtml}</tbody>
-      </table>
-    </div>
+    <h3>العملاء وسجلات دفعاتهم</h3>
+    <p style="color:var(--muted);font-size:12.5px;margin-bottom:10px;">مجمّعين حسب "موجه إلى" — دوس على الاسم عشان تشوف كل سجلاته وتفتح/تحذف منها مباشرة، ودوس "استخدام الاسم" عشان تملا بيه فورم الإنشاء فوق بنفس الاسم بالظبط من غير ما تتكرر بأكتر من شكل.</p>
+    <div class="qc2-list">${cardsHtml}</div>
   `;
 }
 function pUseEngineer(name, address){
