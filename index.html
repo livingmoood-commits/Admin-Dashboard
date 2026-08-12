@@ -1911,25 +1911,30 @@ function dashPartnerWithdrawalsCompute(){
   };
   const partners = snap.partnerWithdrawals.partners.map(p => {
     const items = p.items.filter(it => inRange(it.date)).sort((a,b)=> b.date.localeCompare(a.date));
-    return { name: p.name, count: items.length, total: items.reduce((s,it)=>s+(Number(it.amount)||0), 0), items };
+    // البنود مرتّبة من الأحدث للأقدم، فآخر عنصر في المصفوفة هو أقدم بند اتسجل للشريك ده
+    const firstDate = items.length ? items[items.length - 1].date : null;
+    return { name: p.name, count: items.length, total: items.reduce((s,it)=>s+(Number(it.amount)||0), 0), items, firstDate };
   });
   _dashPWFiltered = partners;
   const grandTotal = partners.reduce((s,p)=>s+p.total, 0);
   const grandCount = partners.reduce((s,p)=>s+p.count, 0);
+  // أقدم تاريخ بند على مستوى الثلاثة كلهم — بيتستخدم لو "من تاريخ" فاضي، عشان يبان
+  // بوضوح إن الفترة فعليًا بادئة من امتى (بدل ما تفضل "من البداية" غامضة)
+  const overallFirstDate = partners.reduce((min, p) => (p.firstDate && (!min || p.firstDate < min)) ? p.firstDate : min, null);
   box.innerHTML = `
     <div class="netgroup" style="margin-bottom:10px;">
       ${partners.map(p => `
         <div class="card clickable" title="دوس لعرض تفاصيل البنود" onclick="dashPartnerWithdrawalDetail('${qEscJs(p.name)}')">
           <div class="label">${qEsc(p.name)}</div>
           <div class="value" style="color:var(--red);">${fmt(p.total)} ج</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px;">${p.count} بند</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;">${p.count} بند${p.firstDate ? ` — أقدم بند ${p.firstDate}` : ''}</div>
         </div>`).join('')}
     </div>
     <div class="cost-total-bar">
       <span class="l">إجمالي مسحوبات الشركاء الثلاثة (في الفترة)</span>
       <span class="v">${fmt(grandTotal)} ج</span>
     </div>`;
-  const rangeTxt = (from || to) ? `من ${from||'البداية'} لحد ${to||'النهارده'}` : 'كل الفترات (كل البنود اللي ليها تاريخ)';
+  const rangeTxt = (from || to) ? `من ${from || overallFirstDate || 'البداية'} لحد ${to||'النهارده'}` : (overallFirstDate ? `كل الفترات (من ${overallFirstDate} لحد النهارده)` : 'كل الفترات (كل البنود اللي ليها تاريخ)');
   document.getElementById('pd-meta').textContent = `${rangeTxt} — ${grandCount} بند مسحوبات. ملحوظة: البنود اللي من غير تاريخ مسجّل مش بتدخل في الحساب ده.`;
 }
 
