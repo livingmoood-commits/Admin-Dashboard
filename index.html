@@ -666,6 +666,7 @@
   .cost-tabs .step:active{ transform:scale(.96); }
   .cost-tabs .step.tab-costs.active{ color:var(--red); border-color:var(--red); background:#fbe2e2; animation:navPop .4s var(--bounce); }
   .cost-tabs .step.tab-revenue.active{ color:var(--green); border-color:var(--green); background:#e6f4ea; animation:navPop .4s var(--bounce); }
+  .cost-tabs .step.tab-projects.active{ color:var(--gold); border-color:var(--gold); background:#faf3e6; animation:navPop .4s var(--bounce); }
 
   .q-banner{ display:flex; flex-wrap:wrap; gap:20px; align-items:center; justify-content:space-between; }
   .q-info-box{ background:var(--cream); border-right:4px solid var(--gold); padding:11px 16px; border-radius:5px; display:flex; flex-direction:column; gap:8px; flex:1; min-width:260px; }
@@ -1025,7 +1026,6 @@
     <button data-page="dashboard" class="active"><span class="icon">&#9679;</span><span class="label">نظرة عامة</span></button>
     <button data-page="payroll"><span class="icon">&#128176;</span><span class="label">مرتبات</span></button>
     <div class="sep"></div>
-    <button data-page="projects"><span class="icon">&#128188;</span><span class="label">المشاريع</span></button>
     <button data-page="costs"><span class="icon">&#128176;</span><span class="label">التكاليف</span></button>
     <div class="sep"></div>
     <button data-page="treasury"><span class="icon">&#128176;</span><span class="label">الخزنة (Cash Flow)</span></button>
@@ -1053,7 +1053,7 @@
 <nav class="bottom-nav" id="bottomNav">
   <button data-page="dashboard"><span class="bn-icon">&#9679;</span><span class="bn-label">عامة</span></button>
   <button data-page="payroll"><span class="bn-icon">&#128176;</span><span class="bn-label">مرتبات</span></button>
-  <button data-page="projects"><span class="bn-icon">&#128188;</span><span class="bn-label">مشاريع</span></button>
+  <button data-page="costs"><span class="bn-icon">&#128176;</span><span class="bn-label">التكاليف</span></button>
   <button data-page="treasury"><span class="bn-icon">&#128180;</span><span class="bn-label">الخزنة</span></button>
   <button id="bottomNavMoreBtn" onclick="openSidebar()"><span class="bn-icon">&#9776;</span><span class="bn-label">المزيد</span></button>
 </nav>
@@ -1598,8 +1598,7 @@ const PAGES = {
   payroll:      { title:'مرتبات', sub:'كشف حضور الشهر بالظبط زي الشيت — عدّل أي خلية وهتتسجل في الشيت الحقيقي مباشرة', render: renderPayroll },
   treasury:     { title:'الخزنة — Cash Flow', sub:'الرصيد الحالي، الداخل والخارج، الإيداعات والمصاريف', render: renderTreasury },
   dailyExpenses:{ title:'مصاريف يومية', sub:'سجّل كل مصاريف اليوم سطر سطر — بتتسجل في شيت اليوم بتاعك مباشرة', render: renderDailyExpenses },
-  projects:     { title:'المشاريع', sub:'تكلفة كل مشروع بالتفصيل', render: renderProjects },
-  costs:        { title:'التكاليف', sub:'خامات + تركيب + عمالة + إيرادات — تابين جنب بعض لكل مشروع', render: renderCosts },
+  costs:        { title:'التكاليف', sub:'خامات + عمالة + إيرادات — تابين جنب بعض لكل مشروع', render: renderCosts },
   fixedExp:     { title:'المصاريف الثابتة', sub:'إيجار / كهرباء / إلخ — وطريقة توزيعها على المشاريع', render: renderFixedExp },
   quotation:    { title:'Quotations', sub:'قائمة العملاء وعروض الأسعار', render: renderQuotation },
   debtors:      { title:'Payment Statements', sub:'متابعة تحصيل الدفعات من العملاء — كل حاجة عن المستحق والمتبقي', render: renderDebtors },
@@ -1664,9 +1663,10 @@ let _navToken = 0;
 // صفحات Work Flow — المستخدمين اللي مش Role=Lead بيشوفوا دول بس (شوف applyRoleAccess تحت)
 const WORKFLOW_ONLY_PAGES = ['taskOrganize', 'workflowReport', 'missingItems'];
 function _isLeadRole(){ return sessionStorage.getItem('lm_userRole') === 'Lead'; }
-function goTo(page) {
+function goTo(page, costTab) {
   if (!PAGES[page]) page = 'dashboard';
   if (!_isLeadRole() && !WORKFLOW_ONLY_PAGES.includes(page)) page = WORKFLOW_ONLY_PAGES[0];
+  if (page === 'costs' && costTab) COST_TAB = costTab; // فتح تاب معيّن (تكاليف/إيرادات/مشاريع) مباشرة
   const token = ++_navToken;
   _currentPage = page;
   sessionStorage.setItem('lm_currentPage', page);
@@ -1816,7 +1816,7 @@ async function renderDashboard(token) {
 
       <div class="cards">
         <div class="card clickable" onclick="openEmployeesCard()"><div class="label">عدد الموظفين</div><div class="value">${d.employeesCount}</div></div>
-        <div class="card clickable" onclick="goTo('projects')"><div class="label">عدد المشاريع المسجلة</div><div class="value">${d.projectsCount}</div></div>
+        <div class="card clickable" onclick="goTo('costs','projects')"><div class="label">عدد المشاريع المسجلة</div><div class="value">${d.projectsCount}</div></div>
         <div class="card clickable" onclick="openTreasuryDashCard()"><div class="label">رصيد الخزنة</div><div class="value green">${fmt(d.treasuryBalance)} ج</div></div>
         <div class="card"><div class="label">إجمالي كل التكاليف</div><div class="value gold">${fmt(totalAllCosts)} ج</div></div>
       </div>
@@ -1879,7 +1879,7 @@ async function renderDashboard(token) {
       <div class="panel">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
           <h3 style="margin:0;">المشاريع بالتكلفة والربح</h3>
-          <button class="btn btn-sm btn-outline" onclick="goTo('projects')">الصفحة الكاملة ←</button>
+          <button class="btn btn-sm btn-outline" onclick="goTo('costs','projects')">الصفحة الكاملة ←</button>
         </div>
         ${dashProjectsTableHTML(projects)}
       </div>
@@ -4377,12 +4377,13 @@ async function dTodayDelete(rowNum){
   }
 }
 
-/* ================= Projects ================= */
-async function renderProjects(token) {
+/* ================= Projects (تاب جوه صفحة التكاليف) ================= */
+async function renderProjectsTab() {
+  const box = document.getElementById('costTabBody'); if (!box) return;
+  box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
     const { projects } = await apiGet('listProjectsSummary');
-    if (isStaleNav(token)) return;
-    document.getElementById('content').innerHTML = `
+    box.innerHTML = `
       <div class="panel">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
           <h3 style="margin:0;">ملخص تكلفة المشاريع (${projects.length})</h3>
@@ -4827,23 +4828,31 @@ async function renderCosts(token) {
       <div class="q-steps cost-tabs" id="costTabsRow">
         <div class="step tab-costs ${COST_TAB==='entries'?'active':''}" data-tab="entries">التكاليف</div>
         <div class="step tab-revenue ${COST_TAB==='revenue'?'active':''}" data-tab="revenue">الإيرادات</div>
+        <div class="step tab-projects ${COST_TAB==='projects'?'active':''}" data-tab="projects">المشاريع</div>
       </div>
       <div id="costTabBody"></div>`;
     document.getElementById('costTabsRow').addEventListener('click', (e) => {
       const btn = e.target.closest('.step'); if (!btn) return;
       switchCostTab(btn.dataset.tab);
     });
-    await (COST_TAB === 'revenue' ? renderRevenueTab() : renderCostsEntriesTab());
+    await switchCostTabRender(COST_TAB);
   } catch(err){ showError(err); }
 }
 /* ⚠️ إصلاح 2026-08-11: الإيرادات والتكاليف بقوا تابين جنب بعض داخل نفس صفحة
    "التكاليف" (بدل صفحة منفصلة في القائمة الجانبية) — عشان تبقى قادر تنقل
-   بينهم بضغطة واحدة وهما شايفين بعض في نفس المكان. */
+   بينهم بضغطة واحدة وهما شايفين بعض في نفس المكان.
+   ⚠️ تعديل: انضاف تاب تالت "المشاريع" (كان صفحة منفصلة في القائمة الجانبية) —
+   دلوقتي التكاليف + الإيرادات + المشاريع كلهم في صفحة واحدة بس، بلاش صفحتين. */
 function switchCostTab(tab){
-  if (tab !== 'entries' && tab !== 'revenue') return;
+  if (!['entries','revenue','projects'].includes(tab)) return;
   COST_TAB = tab;
   document.querySelectorAll('#costTabsRow .step').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-  if (tab === 'revenue') renderRevenueTab(); else renderCostsEntriesTab();
+  switchCostTabRender(tab);
+}
+function switchCostTabRender(tab){
+  if (tab === 'revenue') return renderRevenueTab();
+  if (tab === 'projects') return renderProjectsTab();
+  return renderCostsEntriesTab();
 }
 
 /* ===== تاب التكاليف: نفس الفورم زي الأول + حقل تاريخ + عرض السجل مجمّع باليوم في عواميد
