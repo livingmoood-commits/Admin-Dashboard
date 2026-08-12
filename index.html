@@ -1837,7 +1837,7 @@ async function renderDashboard(token) {
         </div>
         <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px;">
           <div><label style="display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px;">من تاريخ</label>
-            <input type="date" id="pd-from" class="d-input" style="min-width:150px;" value="${monthStartStr()}" onchange="dashPartnerWithdrawalsCompute()"></div>
+            <input type="date" id="pd-from" class="d-input" style="min-width:150px;" value="" onchange="dashPartnerWithdrawalsCompute()"></div>
           <div><label style="display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px;">لحد تاريخ</label>
             <input type="date" id="pd-to" class="d-input" style="min-width:150px;" value="${todayStr()}" onchange="dashPartnerWithdrawalsCompute()"></div>
           <button class="btn btn-primary btn-sm" onclick="dashPartnerWithdrawalsCompute()">احسب</button>
@@ -1886,7 +1886,7 @@ async function renderDashboard(token) {
         ${dashProjectsTableHTML(projects)}
       </div>
     `;
-    dashPartnerWithdrawalsCompute(); // أول حساب تلقائي بفترة الشهر الحالي (من أول الشهر لحد النهارده)
+    dashPartnerWithdrawalsCompute(); // أول حساب تلقائي — من أول ما اتسجل أي بند (من فاضية) لحد النهارده
   } catch(err){ showError(err); }
 }
 
@@ -1894,6 +1894,9 @@ async function renderDashboard(token) {
 // (عمر برعي / احمد خلف / محمود برعي) في فترة معيّنة (من/لحد)، محسوبة من نفس بيانات
 // listPartnerWithdrawals اللي اتحمّلت مع باقي الداشبورد (_dashPrintSnapshot) من غير
 // أي نداء تاني للسيرفر. بيتحسب تلقائي أول ما تغيّر أي تاريخ (onchange على pd-from/pd-to).
+// ⚠️ الافتراضي: "من تاريخ" فاضي (يعني من أول بند اتسجل أي وقت) و"لحد تاريخ" النهارده —
+// عشان الكارد يورّي دايمًا إجمالي كل مسحوبات كل شريك من الأول لحد اليوم.
+let _dashPWFiltered = null; // آخر نتيجة فلترة (بالبنود) — بيتخزن هنا عشان دوسة الكارد تفتح تفاصيله من غير نداء تاني للسيرفر
 function dashPartnerWithdrawalsCompute(){
   const box = document.getElementById('pd-results'); if (!box) return;
   const snap = _dashPrintSnapshot;
@@ -1907,15 +1910,16 @@ function dashPartnerWithdrawalsCompute(){
     return true;
   };
   const partners = snap.partnerWithdrawals.partners.map(p => {
-    const items = p.items.filter(it => inRange(it.date));
-    return { name: p.name, count: items.length, total: items.reduce((s,it)=>s+(Number(it.amount)||0), 0) };
+    const items = p.items.filter(it => inRange(it.date)).sort((a,b)=> b.date.localeCompare(a.date));
+    return { name: p.name, count: items.length, total: items.reduce((s,it)=>s+(Number(it.amount)||0), 0), items };
   });
+  _dashPWFiltered = partners;
   const grandTotal = partners.reduce((s,p)=>s+p.total, 0);
   const grandCount = partners.reduce((s,p)=>s+p.count, 0);
   box.innerHTML = `
     <div class="netgroup" style="margin-bottom:10px;">
       ${partners.map(p => `
-        <div class="card">
+        <div class="card clickable" title="دوس لعرض تفاصيل البنود" onclick="dashPartnerWithdrawalDetail('${qEscJs(p.name)}')">
           <div class="label">${qEsc(p.name)}</div>
           <div class="value" style="color:var(--red);">${fmt(p.total)} ج</div>
           <div style="font-size:11px;color:var(--muted);margin-top:2px;">${p.count} بند</div>
@@ -1927,6 +1931,24 @@ function dashPartnerWithdrawalsCompute(){
     </div>`;
   const rangeTxt = (from || to) ? `من ${from||'البداية'} لحد ${to||'النهارده'}` : 'كل الفترات (كل البنود اللي ليها تاريخ)';
   document.getElementById('pd-meta').textContent = `${rangeTxt} — ${grandCount} بند مسحوبات. ملحوظة: البنود اللي من غير تاريخ مسجّل مش بتدخل في الحساب ده.`;
+}
+
+// دوس على كارت أي شريك في "نظرة عامة" → Pop فيه كل بنوده (تاريخ/بند/مبلغ) في نفس
+// الفترة المحددة فوق، من غير أي نداء تاني للسيرفر (بيستخدم _dashPWFiltered المحسوبة بالفعل)
+function dashPartnerWithdrawalDetail(partnerName){
+  const p = (_dashPWFiltered || []).find(x => x.name === partnerName);
+  if (!p) return;
+  const rows = p.items.length ? p.items.map(it => `
+    <div class="cd-list-row">
+      <span class="n">${qEsc(it.date)} — ${qEsc(it.item || 'بدون بند')}</span>
+      <span class="p">${fmt(it.amount)} ج</span>
+    </div>`).join('') : '<div class="empty">مفيش بنود في الفترة دي</div>';
+  openCardModal(`
+    <div class="cd-head"><h3>${qEsc(partnerName)} — مسحوبات الفترة (${p.count})</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div>${rows}</div>
+    <div style="text-align:left;font-weight:800;margin-top:10px;">الإجمالي: ${fmt(p.total)} ج</div>
+    <button class="cd-back" style="margin-top:14px;" onclick='closeCardModal(); goTo("partnerWithdrawals");'>فتح صفحة مسحوبات الشركاء بالكامل ←</button>
+  `);
 }
 
 // كارت مصدر تكلفة (عمالة/خامات/تركيب/نظام موحّد) في "نظرة عامة" → بدل ما يودّي
@@ -2337,14 +2359,19 @@ function payCellRecolor(inputEl){
 
 async function renderPayroll(token){
   payRestoreSession();
-  // ⚠️ إضافة: قائمة المشاريع لازمة لاختيار "سهرة لمشروع" في فورم الإضافة السريعة —
-  // بتتحمّل مرة واحدة بس (مش بتتكرر مع كل تبديل شهر/تبويب).
-  if (!PAY_PROJECTS.length) {
-    try { const pr = await apiGet('listProjects'); PAY_PROJECTS = pr.projects || []; } catch(e) { /* مش حرج — لو فشلت الفورم هيشتغل عادي من غير قائمة مشاريع */ }
-  }
-  // ⚠️ إضافة: أسعار السهرة الافتراضية لكل موظف — لتعبئة مبلغ أكشن "سهرة" أوتوماتيك في الإضافة السريعة
-  if (!Object.keys(PAY_EVENING_RATES).length) {
-    try { const er = await apiGet('getEveningRates'); PAY_EVENING_RATES = er.rates || {}; } catch(e) { /* مش حرج */ }
+  // ⚠️ إضافة: قائمة المشاريع لازمة لاختيار "سهرة لمشروع" في فورم الإضافة السريعة،
+  // وأسعار السهرة الافتراضية لكل موظف لتعبئة مبلغ أكشن "سهرة" أوتوماتيك — الاتنين
+  // بيتحمّلوا مرة واحدة بس (مش بيتكرروا مع كل تبديل شهر/تبويب).
+  // ⚡ إصلاح بطء: كانوا بيتحمّلوا واحد ورا التاني (await منفصل لكل واحد) رغم إنهم
+  // مستقلين تمامًا عن بعض — دلوقتي بيتحمّلوا مع بعض بـ Promise.all فبياخدوا وقت
+  // أطول نداء منهم بس، مش مجموع الاتنين.
+  if (!PAY_PROJECTS.length || !Object.keys(PAY_EVENING_RATES).length) {
+    const [prRes, erRes] = await Promise.all([
+      PAY_PROJECTS.length ? Promise.resolve(null) : apiGet('listProjects').catch(() => null),
+      Object.keys(PAY_EVENING_RATES).length ? Promise.resolve(null) : apiGet('getEveningRates').catch(() => null)
+    ]);
+    if (prRes) PAY_PROJECTS = prRes.projects || [];
+    if (erRes) PAY_EVENING_RATES = erRes.rates || {};
   }
   // ⚠️ إصلاح باج: بعد الـ await فوق (أول مرة بس)، ممكن المستخدم يكون
   // خرج من صفحة "مرتبات" ودخل صفحة تانية (زي "الخزنة") قبل ما الطلب يرجع. من غير الفحص ده، كان الكود
@@ -5236,11 +5263,11 @@ function renderDebtsPage(debts){
         <div id="debtsGroupedBox"></div>
       </div>
       <div class="panel">
-        <h3>الديون المسجلة (${debts.length})</h3>
+        <h3 id="debtsListTitle">الديون المسجلة (${debts.length})</h3>
         <div class="item-filter" id="debtsListFilter">
           <button type="button" data-f="all" class="${_debtsListFilter==='all'?'active':''}">الكل</button>
           <button type="button" data-f="settled" class="${_debtsListFilter==='settled'?'active':''}">مسدد بالكامل</button>
-          <button type="button" data-f="unpaid" class="${_debtsListFilter==='unpaid'?'active':''}">غير مسدد</button>
+          <button type="button" data-f="unpaid" class="${_debtsListFilter==='unpaid'?'active':''}">غير مسدد بالكامل</button>
           <button type="button" data-f="partial" class="${_debtsListFilter==='partial'?'active':''}">مسدد جزء</button>
         </div>
         <div id="debtsListBox"></div>
@@ -5284,11 +5311,16 @@ function renderDebtsPage(debts){
     } catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); btn.disabled=false; btn.textContent='حفظ الدين'; }
   });
 }
-// فلترة "الديون المسجلة" حسب التبويب المختار (الكل/مسدد بالكامل/غير مسدد/مسدد جزء)
+// فلترة "الديون المسجلة" حسب التبويب المختار (الكل/مسدد بالكامل/غير مسدد بالكامل/مسدد جزء)
+// ⚠️ إصلاح: "غير مسدد" كانت بتعرض بس اللي 0 مسدد بالظبط (paid<=0.01)، وده كان بيدي
+// انطباع إن اللي مسدد جزء "مش بايظهر" في أي تبويب منطقي — بس فعليًا كان في تبويب "مسدد
+// جزء" منفصل. دلوقتي "غير مسدد" بقى معناها "غير مسدد بالكامل" — أي دين لسه ليه باقي
+// (سواء 0 مسدد أو مسدد جزء)، و"مسدد جزء" فضل موجود لوحده كمان لو عاوز تشوف بس اللي
+// اتسدد منه حاجة. التبويبين دلوقتي: مسدد بالكامل ∪ غير مسدد بالكامل = كل الديون.
 let _debtsListFilter = 'all';
 function _filterDebtsByTab_(debts){
   if (_debtsListFilter === 'settled') return debts.filter(d => d.settled);
-  if (_debtsListFilter === 'unpaid') return debts.filter(d => !d.settled && d.paid <= 0.01);
+  if (_debtsListFilter === 'unpaid') return debts.filter(d => !d.settled && d.remaining > 0.01);
   if (_debtsListFilter === 'partial') return debts.filter(d => !d.settled && d.paid > 0.01);
   return debts;
 }
@@ -5441,6 +5473,15 @@ function openDebtGroupDetail(i){
 function renderDebtsList(allDebts){
   const box = document.getElementById('debtsListBox');
   const debts = _filterDebtsByTab_(allDebts || []);
+  const titleEl = document.getElementById('debtsListTitle');
+  // ⚠️ إصلاح: العنوان كان دايمًا ثابت على إجمالي كل الديون حتى لو التبويب المختار
+  // مفلتر (مثلاً 4 بس)، فكان بيدي انطباع غلط إن الفلترة مش شغالة صح. دلوقتي العنوان
+  // بيوري عدد التبويب الحالي فعليًا (ومعاه إجمالي الكل لو الفلتر مش "الكل").
+  if (titleEl) {
+    titleEl.textContent = (_debtsListFilter === 'all')
+      ? `الديون المسجلة (${(allDebts||[]).length})`
+      : `الديون المسجلة (${debts.length} من ${(allDebts||[]).length})`;
+  }
   if (!debts.length){ box.innerHTML = '<div class="empty">مفيش ديون في القسم ده</div>'; return; }
   const totalAll = debts.reduce((s,d)=>s+d.total, 0);
   const paidAll = debts.reduce((s,d)=>s+d.paid, 0);
