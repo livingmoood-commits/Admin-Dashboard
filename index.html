@@ -1831,12 +1831,12 @@ async function renderDashboard(token) {
       </div>
 
       <div class="panel">
-        <h3 style="margin-bottom:12px;">مستحقات شركاء — حسب فترة معيّنة</h3>
+        <h3 style="margin-bottom:12px;">محسوبات الشركاء — حسب فترة معيّنة</h3>
         <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px;">
           <div><label style="display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px;">من تاريخ</label>
-            <input type="date" id="pd-from" class="d-input" style="min-width:150px;" value="${monthStartStr()}"></div>
+            <input type="date" id="pd-from" class="d-input" style="min-width:150px;" value="${monthStartStr()}" onchange="dashPartnersDuesCompute()"></div>
           <div><label style="display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px;">لحد تاريخ</label>
-            <input type="date" id="pd-to" class="d-input" style="min-width:150px;" value="${todayStr()}"></div>
+            <input type="date" id="pd-to" class="d-input" style="min-width:150px;" value="${todayStr()}" onchange="dashPartnersDuesCompute()"></div>
           <button class="btn btn-primary btn-sm" onclick="dashPartnersDuesCompute()">احسب</button>
           <button class="btn btn-sm btn-outline" onclick="document.getElementById('pd-from').value='';document.getElementById('pd-to').value='';dashPartnersDuesCompute();">كل الفترات</button>
         </div>
@@ -1887,9 +1887,11 @@ async function renderDashboard(token) {
   } catch(err){ showError(err); }
 }
 
-// "مستحقات شركاء" — نفس فكرة الباقي لينا/الباقي علينا/الفرق، لكن محسوبة بس على السجلات
-// (عملاء + ديون) اللي تاريخها واقع جوه الفترة المختارة (من/لحد) — بيستخدم نفس نسخة
-// البيانات المحمّلة في _dashPrintSnapshot من غير أي نداء تاني للسيرفر.
+// "محسوبات الشركاء" (كانت اسمها "مستحقات شركاء") — نفس فكرة الباقي لينا/الباقي علينا/الفرق،
+// لكن محسوبة بس على السجلات (عملاء + ديون) اللي تاريخها واقع جوه الفترة المختارة (من/لحد) —
+// بيستخدم نفس نسخة البيانات المحمّلة في _dashPrintSnapshot من غير أي نداء تاني للسيرفر.
+// ⚠️ إضافة: بقى بيتحسب تلقائي أول ما تغيّر أي تاريخ (onchange على pd-from/pd-to) — مش
+// لازم تدوس "احسب" كل مرة، تقدر تحدد التاريخ عادي ويتحدث لوحده.
 function dashPartnersDuesCompute(){
   const box = document.getElementById('pd-results'); if (!box) return;
   const snap = _dashPrintSnapshot;
@@ -5145,6 +5147,7 @@ async function renderDebts(token) {
   try {
     const { debts } = await apiGet('listDebts');
     if (isStaleNav(token)) return;
+    _debtsListFilter = 'all'; // فتح الصفحة من جديد (تنقّل) → رجّع التبويب لـ"الكل"؛ إعادة الرسم الداخلية بعد سداد/تعديل/حذف بتحافظ على التبويب المختار
     renderDebtsPage(debts);
   } catch(err){ showError(err); }
 }
@@ -5186,12 +5189,25 @@ function renderDebtsPage(debts){
       </div>
       <div class="panel">
         <h3>الديون المسجلة (${debts.length})</h3>
+        <div class="item-filter" id="debtsListFilter">
+          <button type="button" data-f="all" class="${_debtsListFilter==='all'?'active':''}">الكل</button>
+          <button type="button" data-f="settled" class="${_debtsListFilter==='settled'?'active':''}">مسدد بالكامل</button>
+          <button type="button" data-f="unpaid" class="${_debtsListFilter==='unpaid'?'active':''}">غير مسدد</button>
+          <button type="button" data-f="partial" class="${_debtsListFilter==='partial'?'active':''}">مسدد جزء</button>
+        </div>
         <div id="debtsListBox"></div>
       </div>
     </div>
   `;
+  // ⚠️ إضافة: 4 تبويبات (الكل/مسدد بالكامل/غير مسدد/مسدد جزء) — نفس تصميم تبويبات "بنود المشاريع"
   renderDebtsGrouped(debts);
   renderDebtsList(debts);
+  document.getElementById('debtsListFilter').addEventListener('click', e => {
+    const btn = e.target.closest('button'); if (!btn) return;
+    _debtsListFilter = btn.dataset.f;
+    document.querySelectorAll('#debtsListFilter button').forEach(b => b.classList.toggle('active', b === btn));
+    renderDebtsList(_debtsCache);
+  });
   document.getElementById('debtForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = document.getElementById('dbtBtn'); const msg = document.getElementById('dbtMsg');
@@ -5205,11 +5221,28 @@ function renderDebtsPage(debts){
     };
     if (!debt.creditor){ msg.className='msg err'; msg.textContent='اسم الجهة الدائنة مطلوب'; btn.disabled=false; btn.textContent='حفظ الدين'; return; }
     try {
-      await apiPost('addDebt', { debt });
-      msg.className='msg ok'; msg.textContent='تم حفظ الدين';
-      renderDebts();
+      // ⚠️ إصلاح بطء: بدل ما نعمل apiGet('listDebts') تاني من السيرفر بعد الحفظ (نداء
+      // زيادة)، بنبني بيانات الدين الجديد محليًا من رد السيرفر ونضيفها لأول القائمة
+      // (زي ما listDebts بترجعها: الأحدث فوق) ونعيد الرسم من الكاش على طول.
+      const res = await apiPost('addDebt', { debt });
+      const remaining = res.remaining != null ? res.remaining : (debt.total - debt.paid);
+      _debtsCache = [{
+        id: res.id, creditor: debt.creditor, desc: debt.desc, total: debt.total, paid: debt.paid,
+        remaining, date: todayStr(), lastPayment: debt.paid > 0 ? todayStr() : '',
+        settled: !!res.settled, notes: debt.notes, project: ''
+      }, ...(_debtsCache || [])];
+      renderDebtsPage(_debtsCache);
+      showToast('✔ اتحفظ الدين بنجاح', 'success');
     } catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); btn.disabled=false; btn.textContent='حفظ الدين'; }
   });
+}
+// فلترة "الديون المسجلة" حسب التبويب المختار (الكل/مسدد بالكامل/غير مسدد/مسدد جزء)
+let _debtsListFilter = 'all';
+function _filterDebtsByTab_(debts){
+  if (_debtsListFilter === 'settled') return debts.filter(d => d.settled);
+  if (_debtsListFilter === 'unpaid') return debts.filter(d => !d.settled && d.paid <= 0.01);
+  if (_debtsListFilter === 'partial') return debts.filter(d => !d.settled && d.paid > 0.01);
+  return debts;
 }
 // دوس على أي كارت في صفحة الديون (عدد/مسدد/إجمالي/مسدد/باقي) → Pop فيه قائمة الديون المطابقة،
 // ودوس على أي دين في القايمة يفتحلك تعديله على طول (نفس زرار "تعديل" في الجدول)
@@ -5268,12 +5301,29 @@ async function saveDebtEdit(id){
     paid: qNum(document.getElementById('ed_paid').value),
     notes: document.getElementById('ed_notes').value
   };
+  // ⚠️ إصلاح بطء "التعديل بيطول": الزرار مكنش بيتقفل وقت الحفظ (تقدر تدوس تاني وهو
+  // لسه شغال)، ومع كده كان بيعمل apiGet('listDebts') تاني من السيرفر بعد الحفظ (نداء
+  // زيادة خالص). دلوقتي: (1) الزرار بيتقفل ويبيّن Spinner وقت الحفظ، (2) بعد الحفظ
+  // بنحدّث الدين في الكاش المحلي (_debtsCache) على طول من غير نداء تاني للسيرفر —
+  // فبقى العملية كلها نداء واحد بس بدل 2، والزرار واضح إنه شغال.
+  const saveBtn = document.querySelector('.q-confirm-btns .btn-primary');
+  const oldLabel = saveBtn ? saveBtn.textContent : '';
+  if (saveBtn){ saveBtn.disabled = true; saveBtn.innerHTML = '<span class="spinner"></span>جاري الحفظ...'; }
   msg.className='msg'; msg.textContent='';
   try {
-    await apiPost('updateDebt', { debt });
+    const res = await apiPost('updateDebt', { debt });
+    const idx = (_debtsCache||[]).findIndex(x=>x.id===id);
+    if (idx > -1){
+      const remaining = res.remaining != null ? res.remaining : (debt.total - debt.paid);
+      _debtsCache[idx] = { ..._debtsCache[idx], ...debt, remaining, settled: !!res.settled };
+    }
     closeCardModal();
-    renderDebts();
-  } catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); }
+    renderDebtsPage(_debtsCache);
+    showToast('✔ اتحفظ التعديل بنجاح', 'success');
+  } catch(err){
+    msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err);
+    if (saveBtn){ saveBtn.disabled = false; saveBtn.textContent = oldLabel || 'حفظ التعديل'; }
+  }
 }
 // ⚠️ إضافة 2026-08-11: توحيد الديون حسب "الجهة الدائنة" — لو نفس الجهة ليها
 // أكتر من بند (مثال: "عم خالد برعي" ظاهر في 3 بنود منفصلة)، الجدول ده بيجمعهم
@@ -5340,9 +5390,10 @@ function openDebtGroupDetail(i){
     <div>${rows}</div>
   `);
 }
-function renderDebtsList(debts){
+function renderDebtsList(allDebts){
   const box = document.getElementById('debtsListBox');
-  if (!debts.length){ box.innerHTML = '<div class="empty">مفيش ديون مسجلة</div>'; return; }
+  const debts = _filterDebtsByTab_(allDebts || []);
+  if (!debts.length){ box.innerHTML = '<div class="empty">مفيش ديون في القسم ده</div>'; return; }
   const totalAll = debts.reduce((s,d)=>s+d.total, 0);
   const paidAll = debts.reduce((s,d)=>s+d.paid, 0);
   const remainingAll = debts.reduce((s,d)=>s+d.remaining, 0);
@@ -5371,17 +5422,35 @@ async function payDebtPrompt(id, remaining){
   if (val === null) return;
   const amount = qNum(val);
   if (!(amount > 0)) return showToast('اكتب مبلغ صحيح أكبر من صفر', 'error');
+  // ⚠️ إصلاح بطء "السداد بيتعلق": كانت 3 نداءات متتالية للسيرفر (listDebts للقراءة
+  // + updateDebt للحفظ + listDebts تاني جوه renderDebts) وكل نداء لـ Apps Script بياخد
+  // ثانية+ لوحده، فكان حاسس إنه "معلّق" لكذا ثانية من غير أي مؤشر إنه شغال. دلوقتي:
+  // (1) بنستخدم _debtsCache المحمّل بالفعل بدل نداء قراءة زيادة، (2) نداء واحد بس
+  // للحفظ (updateDebt)، (3) بعد الحفظ بنحدّث الكاش المحلي ونعيد الرسم من غيره نداء
+  // تاني، (4) توست فوري "جاري السداد..." عشان يبان إنه شغال مش واقف.
+  const d = (_debtsCache||[]).find(x => x.id === id); if (!d) return;
+  const newPaid = d.paid + amount;
+  showToast('⏳ جاري السداد...');
   try {
-    const { debts } = await apiGet('listDebts');
-    const d = debts.find(x => x.id === id); if (!d) return;
-    const newPaid = d.paid + amount;
-    await apiPost('updateDebt', { debt: { id, total: d.total, paid: newPaid } });
-    renderDebts();
+    const res = await apiPost('updateDebt', { debt: { id, total: d.total, paid: newPaid } });
+    d.paid = newPaid;
+    d.remaining = res.remaining != null ? res.remaining : (d.total - newPaid);
+    d.settled = !!res.settled;
+    d.lastPayment = todayStr();
+    renderDebtsPage(_debtsCache);
+    showToast('✔ اتسجل السداد بنجاح', 'success');
   } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 async function deleteDebtConfirm(id){
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح الدين ده؟', 'حذف الدين'))) return;
-  try { await apiPost('deleteDebt', { id }); renderDebts(); } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
+  try {
+    await apiPost('deleteDebt', { id });
+    // ⚠️ إصلاح بطء: بدل نداء apiGet('listDebts') زيادة بعد الحذف، بنشيل الدين من
+    // الكاش المحلي على طول ونعيد الرسم منه.
+    _debtsCache = (_debtsCache||[]).filter(x => x.id !== id);
+    renderDebtsPage(_debtsCache);
+    showToast('✔ اتمسح الدين', 'success');
+  } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 
 /* ================= Fixed Expenses ================= */
