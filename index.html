@@ -1029,7 +1029,6 @@
     <button data-page="costs"><span class="icon">&#128176;</span><span class="label">التكاليف</span></button>
     <div class="sep"></div>
     <button data-page="treasury"><span class="icon">&#128176;</span><span class="label">الخزنة (Cash Flow)</span></button>
-    <button data-page="projectExpenses"><span class="icon">&#128202;</span><span class="label">متابعة صرف المشاريع</span></button>
     <button data-page="dailyExpenses"><span class="icon">&#128221;</span><span class="label">مصاريف يومية</span></button>
     <button data-page="fixedExp"><span class="icon">&#128203;</span><span class="label">المصاريف الثابتة</span></button>
     <button data-page="debts"><span class="icon">&#128308;</span><span class="label">ديون</span></button>
@@ -1598,7 +1597,6 @@ const PAGES = {
   dashboard:    { title:'نظرة عامة', sub:'ملخص شامل لكل حاجة في المصنع', render: renderDashboard },
   payroll:      { title:'مرتبات', sub:'كشف حضور الشهر بالظبط زي الشيت — عدّل أي خلية وهتتسجل في الشيت الحقيقي مباشرة', render: renderPayroll },
   treasury:     { title:'الخزنة — Cash Flow', sub:'الرصيد الحالي، الداخل والخارج، الإيداعات والمصاريف', render: renderTreasury },
-  projectExpenses: { title:'متابعة صرف المشاريع', sub:'اختار مشروع وشوف مصاريفه أسبوع أسبوع، بنفس البيانات المسجلة في شيته', render: renderProjectExpenses },
   dailyExpenses:{ title:'مصاريف يومية', sub:'سجّل كل مصاريف اليوم سطر سطر — بتتسجل في شيت اليوم بتاعك مباشرة', render: renderDailyExpenses },
   projects:     { title:'المشاريع', sub:'تكلفة كل مشروع بالتفصيل', render: renderProjects },
   costs:        { title:'التكاليف', sub:'خامات + تركيب + عمالة + إيرادات — تابين جنب بعض لكل مشروع', render: renderCosts },
@@ -3405,6 +3403,11 @@ let _deposits = [];
 let _allProjectsForTreasury = [];
 let _editingMoveId = null;
 let _movesFilters = { date:'', type:'all', project:'', amountOp:'', amountVal:'', desc:'' };
+// ⚠️ دمج 2026-08-12: "متابعة صرف المشاريع" كانت صفحة مستقلة في القايمة الجانبية —
+// اتدمجت هنا كتاب جوه صفحة الخزنة نفسها (مش مستاهلة صفحة لوحدها)، فبقى فيه تاب
+// active واحد بس (_treasuryTab) بيتحكم في المحتوى المعروض تحت البار، من غير ما
+// نحمّل بيانات الخزنة والمصاريف مع بعض في نفس اللحظة — كل تاب بيتحمّل لما تفتحه بس.
+let _treasuryTab = 'moves';
 
 async function renderTreasury(token) {
   try {
@@ -3412,7 +3415,7 @@ async function renderTreasury(token) {
     if (isStaleNav(token)) return;
     _treasuryMoves = movesData.moves;
     _deposits = depositsData.moves || [];
-    _allProjectsForTreasury = projectsData.projects || []; // ⚠️ إضافة: أسماء المشاريع الحقيقية (تبويبات ملف "مصاريف المشاريع") — لعمل اقتراحات في حقل "المشروع" تحت
+    _allProjectsForTreasury = projectsData.projects || []; // ⚠️ إضافة: أسماء المشاريع الحقيقية (تبويبات ملف "مصاريف المشاريع") — لعمل اقتراحات في حقل "المشروع" تحت، ولتاب "متابعة صرف المشاريع"
     _editingMoveId = null;
     _movesFilters = { date:'', type:'all', project:'', amountOp:'', amountVal:'', desc:'' };
     document.getElementById('content').innerHTML = `
@@ -3422,6 +3425,32 @@ async function renderTreasury(token) {
         <div class="card"><div class="label">إجمالي الإيداعات</div><div class="value green">${fmt(summary.totalDeposits)} ج</div></div>
         <div class="card"><div class="label">إجمالي المصاريف</div><div class="value red">${fmt(summary.totalExpenses)} ج</div></div>
       </div>
+      <div class="q-steps p-filter-tabs" id="treasury-tabs">
+        <div class="step ${_treasuryTab==='moves'?'active':''}" onclick="treasurySwitchTab('moves')">الحركات والإيداعات</div>
+        <div class="step ${_treasuryTab==='expenses'?'active':''}" onclick="treasurySwitchTab('expenses')">متابعة صرف المشاريع</div>
+      </div>
+      <div id="treasury-tab-body"></div>
+    `;
+    renderTreasuryTabBody(token);
+  } catch(err){ showError(err); }
+}
+
+function treasurySwitchTab(tab){
+  if (_treasuryTab === tab) return;
+  _treasuryTab = tab;
+  const tabsBox = document.getElementById('treasury-tabs');
+  if (tabsBox) tabsBox.querySelectorAll('.step').forEach((el, i) => el.classList.toggle('active', (i===0) === (tab==='moves')));
+  renderTreasuryTabBody();
+}
+
+function renderTreasuryTabBody(token){
+  if (_treasuryTab === 'expenses') { renderTreasuryExpensesTab(token); return; }
+  renderTreasuryMovesTab();
+}
+
+function renderTreasuryMovesTab(){
+  const box = document.getElementById('treasury-tab-body'); if (!box) return;
+  box.innerHTML = `
       <div class="panel">
         <h3 id="moveFormTitle">حركة جديدة</h3>
         <form id="moveForm">
@@ -3497,48 +3526,47 @@ async function renderTreasury(token) {
         <div id="depositsBox"></div>
       </div>
     `;
-    populateMovesProjectFilter();
+  populateMovesProjectFilter();
+  renderMovesFiltered();
+  renderDepositsBox();
+  document.getElementById('af-date').addEventListener('change', e => { _movesFilters.date = e.target.value; renderMovesFiltered(); });
+  document.getElementById('af-type').addEventListener('change', e => { _movesFilters.type = e.target.value; renderMovesFiltered(); });
+  document.getElementById('af-project').addEventListener('change', e => { _movesFilters.project = e.target.value; renderMovesFiltered(); });
+  document.getElementById('af-amount-op').addEventListener('change', e => { _movesFilters.amountOp = e.target.value; renderMovesFiltered(); });
+  document.getElementById('af-amount-val').addEventListener('input', e => { _movesFilters.amountVal = e.target.value; renderMovesFiltered(); });
+  document.getElementById('af-desc').addEventListener('input', e => { _movesFilters.desc = e.target.value; renderMovesFiltered(); });
+  document.getElementById('af-reset').addEventListener('click', () => {
+    _movesFilters = { date:'', type:'all', project:'', amountOp:'', amountVal:'', desc:'' };
+    document.getElementById('af-date').value = '';
+    document.getElementById('af-type').value = 'all';
+    document.getElementById('af-project').value = '';
+    document.getElementById('af-amount-op').value = '';
+    document.getElementById('af-amount-val').value = '';
+    document.getElementById('af-desc').value = '';
     renderMovesFiltered();
-    renderDepositsBox();
-    document.getElementById('af-date').addEventListener('change', e => { _movesFilters.date = e.target.value; renderMovesFiltered(); });
-    document.getElementById('af-type').addEventListener('change', e => { _movesFilters.type = e.target.value; renderMovesFiltered(); });
-    document.getElementById('af-project').addEventListener('change', e => { _movesFilters.project = e.target.value; renderMovesFiltered(); });
-    document.getElementById('af-amount-op').addEventListener('change', e => { _movesFilters.amountOp = e.target.value; renderMovesFiltered(); });
-    document.getElementById('af-amount-val').addEventListener('input', e => { _movesFilters.amountVal = e.target.value; renderMovesFiltered(); });
-    document.getElementById('af-desc').addEventListener('input', e => { _movesFilters.desc = e.target.value; renderMovesFiltered(); });
-    document.getElementById('af-reset').addEventListener('click', () => {
-      _movesFilters = { date:'', type:'all', project:'', amountOp:'', amountVal:'', desc:'' };
-      document.getElementById('af-date').value = '';
-      document.getElementById('af-type').value = 'all';
-      document.getElementById('af-project').value = '';
-      document.getElementById('af-amount-op').value = '';
-      document.getElementById('af-amount-val').value = '';
-      document.getElementById('af-desc').value = '';
-      renderMovesFiltered();
-    });
-    document.getElementById('moveForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const btn = document.getElementById('moveBtn'); const msg = document.getElementById('moveMsg');
-      msg.className='msg'; msg.textContent=''; btn.disabled=true;
-      const move = { type: document.getElementById('m_type').value, amount: document.getElementById('m_amount').value, desc: document.getElementById('m_desc').value, project: document.getElementById('m_project').value, date: document.getElementById('m_date').value };
-      try {
-        if (_editingMoveId) {
-          btn.innerHTML='<span class="spinner"></span>جاري التحديث...';
-          await apiPost('updateTreasuryMove', { id: _editingMoveId, move });
-        } else {
-          btn.innerHTML='<span class="spinner"></span>جاري الحفظ...';
-          await apiPost('addTreasuryMove', { move });
-        }
-        renderTreasury();
-      } catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); btn.disabled=false; btn.textContent=_editingMoveId?'تحديث الحركة':'حفظ الحركة'; }
-    });
-    document.getElementById('cancelEditBtn').addEventListener('click', () => cancelMoveEdit());
-    document.getElementById('setCapitalBtn').addEventListener('click', async () => {
-      const amount = document.getElementById('capitalInput').value;
-      if (!amount) return;
-      try { await apiPost('setTreasuryCapital', { amount }); renderTreasury(); } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
-    });
-  } catch(err){ showError(err); }
+  });
+  document.getElementById('moveForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('moveBtn'); const msg = document.getElementById('moveMsg');
+    msg.className='msg'; msg.textContent=''; btn.disabled=true;
+    const move = { type: document.getElementById('m_type').value, amount: document.getElementById('m_amount').value, desc: document.getElementById('m_desc').value, project: document.getElementById('m_project').value, date: document.getElementById('m_date').value };
+    try {
+      if (_editingMoveId) {
+        btn.innerHTML='<span class="spinner"></span>جاري التحديث...';
+        await apiPost('updateTreasuryMove', { id: _editingMoveId, move });
+      } else {
+        btn.innerHTML='<span class="spinner"></span>جاري الحفظ...';
+        await apiPost('addTreasuryMove', { move });
+      }
+      renderTreasury();
+    } catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); btn.disabled=false; btn.textContent=_editingMoveId?'تحديث الحركة':'حفظ الحركة'; }
+  });
+  document.getElementById('cancelEditBtn').addEventListener('click', () => cancelMoveEdit());
+  document.getElementById('setCapitalBtn').addEventListener('click', async () => {
+    const amount = document.getElementById('capitalInput').value;
+    if (!amount) return;
+    try { await apiPost('setTreasuryCapital', { amount }); renderTreasury(); } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
+  });
 }
 // بيملى اختيارات "المشروع" في بار الفلتر من المشاريع الفعلية الموجودة في الحركات
 function populateMovesProjectFilter(){
@@ -4400,8 +4428,9 @@ async function pjSubmitCreate(){
   try {
     await apiPost('createProject', { name });
     closeCardModal();
-    sessionStorage.setItem('lm_peProject', name); // المشروع الجديد يتفتح تلقائي في "متابعة صرف المشاريع"
-    await renderProjectExpenses(_navToken);
+    sessionStorage.setItem('lm_peProject', name); // المشروع الجديد يتفتح تلقائي في تاب "متابعة صرف المشاريع"
+    _allProjectsForTreasury = Array.from(new Set([...(_allProjectsForTreasury||[]), name]));
+    await renderTreasuryExpensesTab(_navToken);
   } catch(err){
     msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err);
   } finally { btn.disabled = false; }
@@ -4446,18 +4475,20 @@ function showProjectMaterialsModal(d){
   openCardModal(`<h3 style="margin-bottom:14px;">خامات مشروع: ${d.project}</h3>${body}`);
 }
 
-/* ================= متابعة صرف المشاريع (2026-08-08) =================
+/* ================= متابعة صرف المشاريع (2026-08-08، دُمجت 2026-08-12 كتاب
+ * جوه صفحة الخزنة/Cash Flow بدل ما تبقى صفحة مستقلة في القايمة الجانبية) =====
  * دروب داون يختار مشروع، وتحته: صف ملخص كلي (إيرادات/مصاريف/صافي/نسبة)
  * + كل اسبوع في بلوك قابل للفتح/القفل (details/summary زي المستخدم في
  * مكان تاني بالفعل)، وجوه كل اسبوع جدول بنفس أسطر المصروفات المسجلة
  * في شيت المشروع بالظبط — كله جاي من getProjectExpensesDetail لايف. */
-async function renderProjectExpenses(token) {
+async function renderTreasuryExpensesTab(token) {
+  const box = document.getElementById('treasury-tab-body'); if (!box) return;
+  token = token || _navToken;
   try {
-    const { projects } = await apiGet('listProjects');
-    if (isStaleNav(token)) return;
+    const projects = _allProjectsForTreasury;
     const saved = sessionStorage.getItem('lm_peProject');
     const initial = (saved && projects.includes(saved)) ? saved : (projects[0] || '');
-    document.getElementById('content').innerHTML = `
+    box.innerHTML = `
       <div class="panel">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
           <h3 style="margin:0;">متابعة صرف المشاريع</h3>
@@ -6693,7 +6724,6 @@ function pRenderEngMasterPanel(){
           <div class="qc2-name">${qEsc(g.key)}</div>
           <div class="qc2-meta"><b>${g.items.length}</b> سجل${g.items.length > 1 ? 'ات' : ''} — الباقي: <b style="color:${Math.abs(groupRemaining)<=0.01?'var(--green)':'var(--red)'};">${fmt(groupRemaining)}</b></div>
         </div>
-        <button type="button" class="ci-badge" style="flex-shrink:0;" onclick="event.stopPropagation(); pUseEngineer(${JSON.stringify(g.key)},${JSON.stringify(g.items[0].address||'')})">استخدام الاسم ↩</button>
         <div class="qc2-chevron">▾</div>
       </div>
       <div class="qc2-body">
@@ -6719,15 +6749,11 @@ function pRenderEngMasterPanel(){
 
   panel.innerHTML = `
     <h3>العملاء وسجلات دفعاتهم</h3>
-    <p style="color:var(--muted);font-size:12.5px;margin-bottom:10px;">مجمّعين حسب "موجه إلى" — دوس على الاسم عشان تشوف كل سجلاته وتفتح/تحذف منها مباشرة، ودوس "استخدام الاسم" عشان تملا بيه فورم الإنشاء فوق بنفس الاسم بالظبط من غير ما تتكرر بأكتر من شكل.</p>
+    <p style="color:var(--muted);font-size:12.5px;margin-bottom:10px;">مجمّعين حسب "موجه إلى" — دوس على الاسم عشان تشوف كل سجلاته، ودوس "فتح ←" عشان تفتح أي سجل منها مباشرة.</p>
     <div class="qc2-list">${cardsHtml}</div>
   `;
 }
-function pUseEngineer(name, address){
-  const engEl = document.getElementById('p_engineer'); const adrEl = document.getElementById('p_address');
-  if (engEl) { engEl.value = name; engEl.scrollIntoView({behavior:'smooth', block:'center'}); engEl.focus(); }
-  if (adrEl && address && !adrEl.value.trim()) adrEl.value = address;
-}
+
 
 // الماستر بانل فوق صفحة Payment Statements — كل حاجة تعرفها عن المتبقي والكامل
 // في نظرة واحدة، بنفس أسلوب كروت "نظرة عامة" بالظبط
