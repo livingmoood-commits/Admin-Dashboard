@@ -2738,7 +2738,10 @@ function payrollRenderWeeklyTable_(box, data){
 
   box.innerHTML = `
     <div class="panel">
-      <h3 style="margin-bottom:10px;">${qEsc(data.sheetName)} (${data.rows.length} موظف)</h3>
+      <h3 style="margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span>${qEsc(data.sheetName)} (${data.rows.length} موظف)</span>
+        <button type="button" class="btn btn-outline btn-sm" id="payWeeklyReportBtn" style="margin-inline-start:auto;">📄 تقرير اسبوعي</button>
+      </h3>
       <div class="tbl-wrap tbl-wrap-scroll" style="max-height:70vh;">
         <table style="width:auto;border-collapse:separate;border-spacing:0;">
           <thead>${row1}${row2}</thead>
@@ -2749,6 +2752,145 @@ function payrollRenderWeeklyTable_(box, data){
     </div>
     ${payrollQuickAddPanelHtml_(data)}`;
   payrollQaHighlight_();
+  const wrBtn = document.getElementById('payWeeklyReportBtn');
+  if (wrBtn) wrBtn.addEventListener('click', () => payrollOpenWeeklyReportModal(data));
+}
+
+/* ═══════════════════ زرار "تقرير اسبوعي" — الموظفين الاسبوعيين ═══════════════════
+ * ⚠️ إضافة 2026-08-15: اختار أسبوع من الشهر المفتوح، وهيطلعلك تقرير لكل موظف
+ * اسبوعي: كل سهرة اشتغلها وفين (من شيت "ساعات_وسهرات")، مسحوبات كل يوم في
+ * الأسبوع (متسحّبة من كود "م" في خلايا الحضور)، وأي ملاحظة مكتوبة على خلية يوم.
+ * زرار "تحميل PDF" بيفتح نافذة طباعة منفصلة بنفس أسلوب الكوتيشن (_openPrintDoc). */
+let _wrLastReport = null;
+
+function payrollOpenWeeklyReportModal(data){
+  const weeks = (data && data.weekHeaderBlocks) || [];
+  if (!weeks.length){ showToast('مفيش أسابيع في الشهر ده', 'error'); return; }
+  openCardModal(`
+    <div class="cd-head"><h3>📄 تقرير اسبوعي</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">اختار الأسبوع، وهيطلعلك تقرير بكل واحد سهر إيه وفين، والمسحوبات، وأي ملاحظة.</p>
+    <div class="field" style="margin-bottom:14px;">
+      <label>الأسبوع</label>
+      <select class="d-input" id="wrWeekSelect">
+        ${weeks.map((w,i) => `<option value="${i}">الأسبوع ${qEsc(w.label)}</option>`).join('')}
+      </select>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn btn-outline btn-sm" onclick="closeCardModal()">إلغاء</button>
+      <button class="btn btn-primary btn-sm" id="wrShowBtn">عرض التقرير</button>
+    </div>
+  `);
+  document.getElementById('wrShowBtn').addEventListener('click', () => {
+    const wi = parseInt(document.getElementById('wrWeekSelect').value, 10);
+    payrollShowWeeklyReport(wi);
+  });
+}
+
+async function payrollShowWeeklyReport(weekIndex){
+  openCardModal(`<div class="cd-head"><h3>📄 تقرير اسبوعي</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="loading-row">جاري التحميل...</div>`);
+  try {
+    const res = await apiGet('getWeeklyReport', { year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex, weekIndex });
+    if (!res || !res.exists) {
+      openCardModal(`<div class="cd-head"><h3>📄 تقرير اسبوعي</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="msg err" style="display:block;">${qEsc((res && res.error) || 'حصل خطأ')}</div>`);
+      return;
+    }
+    _wrLastReport = res;
+    renderWeeklyReportModal_(res);
+  } catch(err) {
+    openCardModal(`<div class="cd-head"><h3>📄 تقرير اسبوعي</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="msg err" style="display:block;">حصل خطأ: ${qEsc(err.message||err)}</div>`);
+  }
+}
+
+function renderWeeklyReportModal_(data){
+  const withActivity = data.employees.filter(e => (e.evenings && e.evenings.length) || e.withdrawTotal > 0 || (e.days || []).some(d => d.note));
+  const empHtml = withActivity.length ? withActivity.map(e => {
+    const eveningsHtml = (e.evenings && e.evenings.length)
+      ? e.evenings.map(ev => `
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:baseline;padding:5px 0;border-bottom:1px dashed var(--border);">
+          <span style="font-size:11.5px;color:var(--muted);min-width:70px;">${qEsc(ev.date)}</span>
+          <span style="font-weight:700;">${qEsc(ev.project || '—')}</span>
+          <span style="font-size:12px;color:var(--muted);">${ev.hours ? fmt(ev.hours) + ' ساعة' : ''}${(ev.hours && ev.amount) ? ' — ' : ''}${ev.amount ? fmt(ev.amount) + ' ج' : ''}</span>
+          ${ev.notes ? `<div style="width:100%;font-size:11.5px;color:var(--muted);">📝 ${qEsc(ev.notes)}</div>` : ''}
+        </div>`).join('')
+      : '<div class="empty" style="padding:6px 0;font-size:12.5px;">مفيش سهر مسجل الأسبوع ده</div>';
+    const drawDays = (e.days || []).filter(d => d.withdraw > 0);
+    const drawsHtml = drawDays.length
+      ? drawDays.map(d => `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--border);"><span style="font-size:12px;color:var(--muted);">${qEsc(d.label || d.date)}</span><span style="font-weight:700;color:#8a6408;">${fmt(d.withdraw)} ج</span></div>`).join('')
+      : '<div class="empty" style="padding:6px 0;font-size:12.5px;">مفيش مسحوبات الأسبوع ده</div>';
+    const noteDays = (e.days || []).filter(d => d.note);
+    return `<div class="panel" style="margin-bottom:12px;">
+      <h4 style="margin-bottom:8px;">${qEsc(e.name)}${e.withdrawTotal ? ` <span style="font-size:12px;font-weight:400;color:var(--muted);">— إجمالي مسحوبات: ${fmt(e.withdrawTotal)} ج</span>` : ''}</h4>
+      <div style="margin-bottom:8px;"><b style="font-size:12.5px;">🌙 سهر إيه وفين:</b>${eveningsHtml}</div>
+      <div style="margin-bottom:8px;"><b style="font-size:12.5px;">💰 مسحوبات:</b>${drawsHtml}</div>
+      ${noteDays.length ? `<div><b style="font-size:12.5px;">📝 ملاحظات:</b>${noteDays.map(d => `<div style="font-size:11.5px;color:var(--muted);padding:3px 0;">${qEsc(d.label || d.date)}: ${qEsc(d.note)}</div>`).join('')}</div>` : ''}
+    </div>`;
+  }).join('') : '<div class="empty">مفيش سهر ولا مسحوبات ولا ملاحظات مسجلة للموظفين الاسبوعيين في الأسبوع ده</div>';
+
+  openCardModal(`
+    <div class="cd-head"><h3>تقرير الأسبوع ${qEsc(data.weekLabel)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+      <button class="btn btn-outline btn-sm" onclick="payrollOpenWeeklyReportModal(PAYSTATE.data)">← اسبوع تاني</button>
+      <button class="btn btn-primary btn-sm" onclick="payrollPrintWeeklyReport()">⬇ تحميل PDF</button>
+    </div>
+    <div id="wrEmpList">${empHtml}</div>
+  `);
+}
+
+function payrollPrintWeeklyReport(){
+  if (!_wrLastReport) return;
+  _openPrintDoc(payrollBuildWeeklyReportPdfHtml_(_wrLastReport));
+}
+
+// نفس أسلوب qBuildPdfHtml بالظبط (براند Living Mood + طباعة A4) بس لمحتوى التقرير الاسبوعي
+function payrollBuildWeeklyReportPdfHtml_(data){
+  const withActivity = data.employees.filter(e => (e.evenings && e.evenings.length) || e.withdrawTotal > 0 || (e.days || []).some(d => d.note));
+  const sections = withActivity.length ? withActivity.map(e => {
+    const eveningsRows = (e.evenings && e.evenings.length)
+      ? e.evenings.map(ev => `<tr><td style="padding:5px 6px;">${qEsc(ev.date)}</td><td style="padding:5px 6px;">${qEsc(ev.project||'—')}</td><td style="padding:5px 6px;">${ev.hours?fmt(ev.hours)+' س':''}</td><td style="padding:5px 6px;">${ev.amount?fmt(ev.amount)+' ج':''}</td><td style="padding:5px 6px;">${qEsc(ev.notes||'')}</td></tr>`).join('')
+      : `<tr><td colspan="5" style="padding:6px;color:#6B5E4E;">مفيش سهر مسجل</td></tr>`;
+    const drawDays = (e.days || []).filter(d => d.withdraw > 0);
+    const drawRows = drawDays.length
+      ? drawDays.map(d => `<tr><td style="padding:5px 6px;">${qEsc(d.label||d.date)}</td><td style="padding:5px 6px;font-weight:700;">${fmt(d.withdraw)} ج</td></tr>`).join('')
+      : `<tr><td colspan="2" style="padding:6px;color:#6B5E4E;">مفيش مسحوبات</td></tr>`;
+    const noteDays = (e.days || []).filter(d => d.note);
+    return `
+      <div style="margin-bottom:16px;page-break-inside:avoid;">
+        <div style="background:#1E1A15;color:#D4B483;padding:8px 12px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0;">${qEsc(e.name)}${e.withdrawTotal?` — إجمالي مسحوبات: ${fmt(e.withdrawTotal)} ج`:''}</div>
+        <div style="border:1px solid #D9D0C4;border-top:none;padding:10px 12px;">
+          <div style="font-size:11.5px;font-weight:700;color:#2C5F3A;margin-bottom:4px;">🌙 سهر إيه وفين</div>
+          <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:10px;">
+            <thead><tr style="background:#F3EFEA;"><th style="padding:5px 6px;text-align:right;">التاريخ</th><th style="padding:5px 6px;text-align:right;">المشروع</th><th style="padding:5px 6px;text-align:right;">ساعات</th><th style="padding:5px 6px;text-align:right;">مبلغ السهرة</th><th style="padding:5px 6px;text-align:right;">ملاحظة</th></tr></thead>
+            <tbody>${eveningsRows}</tbody>
+          </table>
+          <div style="font-size:11.5px;font-weight:700;color:#8a6408;margin-bottom:4px;">💰 مسحوبات</div>
+          <table style="width:100%;border-collapse:collapse;font-size:11px;${noteDays.length?'margin-bottom:10px;':''}">
+            <thead><tr style="background:#F3EFEA;"><th style="padding:5px 6px;text-align:right;">اليوم</th><th style="padding:5px 6px;text-align:right;">المبلغ</th></tr></thead>
+            <tbody>${drawRows}</tbody>
+          </table>
+          ${noteDays.length ? `<div style="font-size:11.5px;font-weight:700;color:#6B5E4E;margin-bottom:4px;">📝 ملاحظات</div>${noteDays.map(d=>`<div style="font-size:11px;color:#6B5E4E;padding:2px 0;">${qEsc(d.label||d.date)}: ${qEsc(d.note)}</div>`).join('')}` : ''}
+        </div>
+      </div>`;
+  }).join('') : '<p style="text-align:center;color:#6B5E4E;padding:20px;">مفيش سهر ولا مسحوبات ولا ملاحظات مسجلة للموظفين الاسبوعيين في الأسبوع ده</p>';
+
+  return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"/>
+  <title>${qEsc(pdfFileTitle('تقرير اسبوعي', data.weekLabel))}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;} body{font-family:'Cairo','Arial',sans-serif;direction:rtl;color:#1E1A15;background:#fff;}
+    @page{size:A4;margin:14mm 12mm;} @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+    .brand-block{text-align:center;padding-bottom:14px;border-bottom:2px solid #B8975A;margin-bottom:16px;}
+    .brand-title{font-family:'Playfair Display',Georgia,serif;font-size:38px;letter-spacing:5px;color:#1E1A15;direction:ltr;}
+    .brand-title span{color:#B8975A;} .brand-sub{font-size:9px;letter-spacing:3px;color:#6B5E4E;text-transform:uppercase;margin-top:4px;direction:ltr;}
+    .footer{text-align:center;font-size:13px;color:#B8975A;font-family:'Playfair Display',Georgia,serif;letter-spacing:1px;direction:ltr;margin-top:10px;}
+  </style></head>
+  <body><div style="padding:24px 28px;">
+    <div class="brand-block"><div class="brand-title">Living <span>Mood</span></div><div class="brand-sub">Interior Design &amp; Furniture</div></div>
+    <h2 style="text-align:center;margin-bottom:4px;">تقرير اسبوعي — الموظفين الاسبوعيين</h2>
+    <p style="text-align:center;color:#6B5E4E;font-size:12.5px;margin-bottom:18px;">الأسبوع ${qEsc(data.weekLabel)} &nbsp;(${qEsc(data.from)} → ${qEsc(data.to)})</p>
+    ${sections}
+    <div class="footer">Living Mood</div>
+  </div></body></html>`;
 }
 
 /* شيت "حضور شهر" — بلوك واحد متصل من أيام الشهر + صف إجمالي متلوّن */
