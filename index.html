@@ -69,7 +69,15 @@
      بيكمل حركة السكرول دي على الصفحة اللي تحت القائمة (scroll chaining)، فبتحس
      إن الصفحة "بتنزل" وتوصل لمكان فاضي من غير داتا. contain بتوقف الحركة عند
      حدود القائمة نفسها ومتسيبهاش تنط للعنصر اللي وراها. */
-  .nav{ flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; display:flex; flex-direction:column; gap:2px; padding:0 10px; }
+  .nav{ flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; display:flex; flex-direction:column; gap:2px; padding:0 10px; scrollbar-width:thin; scrollbar-color:var(--gold-dim) transparent; }
+  /* ⚠️ إصلاح 2026-08-15: .nav مكانتش متعمّل لها تنسيق سكرول بار خالص، فكان بيظهر
+     سكرول بار المتصفح الافتراضي (الرمادي التقيل بسهمين فوق وتحت) فوق القايمة
+     الداكنة أثناء السكرول — شكله غريب وواضح إنه مش جزء من التصميم. دلوقتي بقى
+     رفيع بلون دهبي شفاف زي باقي أماكن السكرول في الموقع (.d-pop-items). */
+  .nav::-webkit-scrollbar{ width:6px; }
+  .nav::-webkit-scrollbar-track{ background:transparent; }
+  .nav::-webkit-scrollbar-thumb{ background:var(--gold-dim); border-radius:6px; }
+  .nav::-webkit-scrollbar-thumb:hover{ background:var(--gold); }
   .nav button{ all:unset; box-sizing:border-box; width:100%; min-width:0; cursor:pointer; padding:11px 14px; border-radius:8px; font-size:13.5px; color:#cbbfae; display:flex; align-items:center; gap:9px; transition:background .2s, color .2s, transform .25s var(--bounce); font-family:inherit; }
   .nav button .label{ min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .nav button:hover{ background:var(--dark2); color:#fff; transform:translateX(-5px); }
