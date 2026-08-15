@@ -2380,13 +2380,15 @@ async function renderPayroll(token){
   // ⚡ إصلاح بطء: كانوا بيتحمّلوا واحد ورا التاني (await منفصل لكل واحد) رغم إنهم
   // مستقلين تمامًا عن بعض — دلوقتي بيتحمّلوا مع بعض بـ Promise.all فبياخدوا وقت
   // أطول نداء منهم بس، مش مجموع الاتنين.
-  if (!PAY_PROJECTS.length || !Object.keys(PAY_EVENING_RATES).length) {
-    const [prRes, erRes] = await Promise.all([
+  if (!PAY_PROJECTS.length || !Object.keys(PAY_EVENING_RATES).length || !Object.keys(PAY_DAILY_RATES).length) {
+    const [prRes, erRes, drRes] = await Promise.all([
       PAY_PROJECTS.length ? Promise.resolve(null) : apiGet('listProjects').catch(() => null),
-      Object.keys(PAY_EVENING_RATES).length ? Promise.resolve(null) : apiGet('getEveningRates').catch(() => null)
+      Object.keys(PAY_EVENING_RATES).length ? Promise.resolve(null) : apiGet('getEveningRates').catch(() => null),
+      Object.keys(PAY_DAILY_RATES).length ? Promise.resolve(null) : apiGet('getDailyRates').catch(() => null)
     ]);
     if (prRes) PAY_PROJECTS = prRes.projects || [];
     if (erRes) PAY_EVENING_RATES = erRes.rates || {};
+    if (drRes) PAY_DAILY_RATES = drRes.rates || {};
   }
   // ⚠️ إصلاح باج: بعد الـ await فوق (أول مرة بس)، ممكن المستخدم يكون
   // خرج من صفحة "مرتبات" ودخل صفحة تانية (زي "الخزنة") قبل ما الطلب يرجع. من غير الفحص ده، كان الكود
@@ -2766,14 +2768,39 @@ let _wrLastReport = null;
 function payrollOpenWeeklyReportModal(data){
   const weeks = (data && data.weekHeaderBlocks) || [];
   if (!weeks.length){ showToast('مفيش أسابيع في الشهر ده', 'error'); return; }
+  // ⚠️ إضافة 2026-08-15: قائمة تشيك بوكس بأسامي الموظفين الاسبوعيين الظاهرين في
+  // الشهر المفتوح (data.rows) — عشان تختار مين يدخل التقرير بدل ما يطلع بالكل
+  // دايمًا. كل اسم بيظهر فوقه يوميته (من PAY_DAILY_RATES، محمّلة مسبقًا في renderPayroll).
+  const empNames = (data.rows || []).map(r => r.name).filter(Boolean);
+  const empChecklistHtml = empNames.length ? empNames.map(name => `
+    <label style="display:flex;align-items:center;gap:9px;padding:6px 4px;border-bottom:1px dashed var(--border);cursor:pointer;">
+      <input type="checkbox" class="wr-emp-check" value="${qEsc(name)}" checked>
+      <span>
+        <div style="font-size:11px;color:var(--muted);">اليومية: <b style="color:var(--dark);">${fmt(PAY_DAILY_RATES[name]||0)} ج</b></div>
+        <div style="font-weight:700;font-size:13.5px;">${qEsc(name)}</div>
+      </span>
+    </label>`).join('') : '<div class="empty" style="padding:6px 0;font-size:12.5px;">مفيش موظفين اسبوعيين مسجلين</div>';
+
   openCardModal(`
     <div class="cd-head"><h3>📄 تقرير اسبوعي</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
-    <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">اختار الأسبوع، وهيطلعلك تقرير بكل واحد سهر إيه وفين، والمسحوبات، وأي ملاحظة.</p>
+    <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">اختار الأسبوع، وحدد الموظفين اللي عايز تقريرهم، وهيطلعلك تقرير بكل واحد سهر إيه وفين، والمسحوبات، وأي ملاحظة.</p>
     <div class="field" style="margin-bottom:14px;">
       <label>الأسبوع</label>
       <select class="d-input" id="wrWeekSelect">
         ${weeks.map((w,i) => `<option value="${i}">الأسبوع ${qEsc(w.label)}</option>`).join('')}
       </select>
+    </div>
+    <div class="field" style="margin-bottom:14px;">
+      <label style="display:flex;align-items:center;justify-content:space-between;">
+        <span>الموظفين</span>
+        <span style="display:flex;gap:6px;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="wrToggleAllEmps_(true)">تحديد الكل</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="wrToggleAllEmps_(false)">إلغاء الكل</button>
+        </span>
+      </label>
+      <div id="wrEmpChecklist" style="display:flex;flex-direction:column;max-height:230px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:4px 8px;margin-top:6px;">
+        ${empChecklistHtml}
+      </div>
     </div>
     <div style="display:flex;gap:8px;justify-content:flex-end;">
       <button class="btn btn-outline btn-sm" onclick="closeCardModal()">إلغاء</button>
@@ -2782,14 +2809,23 @@ function payrollOpenWeeklyReportModal(data){
   `);
   document.getElementById('wrShowBtn').addEventListener('click', () => {
     const wi = parseInt(document.getElementById('wrWeekSelect').value, 10);
-    payrollShowWeeklyReport(wi);
+    const selected = Array.from(document.querySelectorAll('.wr-emp-check:checked')).map(cb => cb.value);
+    if (!selected.length){ showToast('اختار موظف واحد على الأقل', 'error'); return; }
+    payrollShowWeeklyReport(wi, selected);
   });
 }
 
-async function payrollShowWeeklyReport(weekIndex){
+// ⚠️ إضافة 2026-08-15: زراير "تحديد الكل"/"إلغاء الكل" فوق قائمة التشيك بوكس
+function wrToggleAllEmps_(checked){
+  document.querySelectorAll('.wr-emp-check').forEach(cb => { cb.checked = checked; });
+}
+
+async function payrollShowWeeklyReport(weekIndex, employeeNames){
   openCardModal(`<div class="cd-head"><h3>📄 تقرير اسبوعي</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="loading-row">جاري التحميل...</div>`);
   try {
-    const res = await apiGet('getWeeklyReport', { year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex, weekIndex });
+    // ⚠️ إضافة 2026-08-15: employeeNames (مصفوفة من التشيك بوكس) بتتبعت زي ما هي
+    // للسيرفر — apiGet بيحولها JSON.stringify أوتوماتيك جوه الـ query string.
+    const res = await apiGet('getWeeklyReport', { year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex, weekIndex, employees: employeeNames || [] });
     if (!res || !res.exists) {
       openCardModal(`<div class="cd-head"><h3>📄 تقرير اسبوعي</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="msg err" style="display:block;">${qEsc((res && res.error) || 'حصل خطأ')}</div>`);
       return;
@@ -2848,6 +2884,7 @@ function renderWeeklyReportModal_(data){
         </div>` : '';
 
     return `<div class="panel" style="margin-bottom:12px;">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">اليومية: <b style="color:var(--dark);">${fmt(e.dailyRate||0)} ج</b></div>
       <h4 style="margin-bottom:8px;">${qEsc(e.name)}</h4>
       ${weekSummaryHtml}
       <div style="margin-bottom:8px;"><b style="font-size:12.5px;">📋 تفاصيل الأيام:</b>${daysHtml}${totalsLine}</div>
@@ -2898,6 +2935,7 @@ function payrollBuildWeeklyReportPdfHtml_(data){
 
     return `
       <div style="margin-bottom:16px;page-break-inside:avoid;">
+        <div style="font-size:10px;color:#6B5E4E;margin-bottom:2px;">اليومية: ${fmt(e.dailyRate||0)} ج</div>
         <div style="background:#1E1A15;color:#D4B483;padding:8px 12px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0;">${qEsc(e.name)}</div>
         <div style="border:1px solid #D9D0C4;border-top:none;padding:10px 12px;">
           ${weekSummaryTxt ? `<div style="background:#F3EFEA;border-radius:5px;padding:6px 10px;font-size:11px;margin-bottom:10px;">${weekSummaryTxt}</div>` : ''}
@@ -3008,6 +3046,9 @@ let payrollQaLabels_ = {};
 let PAY_QA_DAYLIST = []; // [{label, iso}] — نفس قائمة الأيام الظاهرة، بتتحسب مرة واحدة لكل شهر/أسبوع مفتوح ومتاحة لكل موظف
 let PAY_PROJECTS = []; // بتتحمّل مرة واحدة في renderPayroll — مستخدمة في اختيار مشروع "سهرة"/"ساعات مشروع"
 let PAY_EVENING_RATES = {}; // اسم الموظف => سعر السهرة الافتراضي — بيتحمّل مرة واحدة برضو، لتعبئة مبلغ "سهرة" أوتوماتيك لكل موظف برقمه هو
+// ⚠️ إضافة 2026-08-15: اسم الموظف => اليومية — بيتحمّل مرة واحدة زي PAY_EVENING_RATES بالظبط،
+// مستخدمة في مودال "تقرير اسبوعي" عشان تتعرض فوق كل اسم موظف جنب التشيك بوكس بتاعه.
+let PAY_DAILY_RATES = {};
 
 function payrollQuickAddPanelHtml_(data){
   const empNames = data.rows.map(r => r.name);
