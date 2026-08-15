@@ -912,6 +912,22 @@
   .item-check{ flex-shrink:0; margin-top:2px; }
   .item-check input{ width:22px; height:22px; cursor:pointer; accent-color:var(--green); }
   .item-main{ flex:1; min-width:0; }
+
+  /* ⚠️ إضافة 2026-08-15: قائمة موظفين مودال "تقرير اسبوعي" كانت labels عادية
+     بخط متقطع تحت كل واحد وتشيك بوكس أزرق افتراضي — مش نفس شكل باقي كروت
+     الموقع. wr-emp-row بتاخد شكل .item-card (كارت كريمي بحواف مدورة) وتشيك
+     بوكس أخضر بنفس accent-color اللي في .item-check، وكمان الكارت نفسه بيتلون
+     (برواز + خلفية فاتحة خضرا) لما يتحدد مش بس التشيك بوكس. */
+  .wr-emp-list{ display:flex; flex-direction:column; gap:8px; }
+  .wr-emp-row{ display:flex; align-items:center; gap:10px; background:var(--cream); border:1.5px solid var(--border);
+    border-radius:10px; padding:10px 12px; cursor:pointer; transition:border-color .2s, background .2s; }
+  .wr-emp-row:hover{ border-color:var(--gold); }
+  .wr-emp-row.checked{ border-color:var(--green); background:#e9f5ec; }
+  .wr-emp-row input[type="checkbox"]{ width:21px; height:21px; flex-shrink:0; cursor:pointer; accent-color:var(--green); }
+  .wr-emp-info{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .wr-emp-name{ font-weight:800; font-size:13.5px; color:var(--dark); }
+  .wr-emp-rate{ font-size:11px; color:var(--muted); }
+  .wr-emp-rate b{ color:var(--dark); font-weight:700; }
   .item-title-row{ display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap; }
   .item-name{ font-weight:800; font-size:14.5px; }
   .item-card.done .item-name{ text-decoration:line-through; text-decoration-color:rgba(44,95,58,.5); color:var(--green); }
@@ -2773,11 +2789,11 @@ function payrollOpenWeeklyReportModal(data){
   // دايمًا. كل اسم بيظهر فوقه يوميته (من PAY_DAILY_RATES، محمّلة مسبقًا في renderPayroll).
   const empNames = (data.rows || []).map(r => r.name).filter(Boolean);
   const empChecklistHtml = empNames.length ? empNames.map(name => `
-    <label style="display:flex;align-items:center;gap:9px;padding:6px 4px;border-bottom:1px dashed var(--border);cursor:pointer;">
+    <label class="wr-emp-row checked" onchange="this.classList.toggle('checked', this.querySelector('input').checked)">
       <input type="checkbox" class="wr-emp-check" value="${qEsc(name)}" checked>
-      <span>
-        <div style="font-size:11px;color:var(--muted);">اليومية: <b style="color:var(--dark);">${fmt(PAY_DAILY_RATES[name]||0)} ج</b></div>
-        <div style="font-weight:700;font-size:13.5px;">${qEsc(name)}</div>
+      <span class="wr-emp-info">
+        <span class="wr-emp-name">${qEsc(name)}</span>
+        <span class="wr-emp-rate">اليومية: <b>${fmt(PAY_DAILY_RATES[name]||0)} ج</b></span>
       </span>
     </label>`).join('') : '<div class="empty" style="padding:6px 0;font-size:12.5px;">مفيش موظفين اسبوعيين مسجلين</div>';
 
@@ -2798,7 +2814,7 @@ function payrollOpenWeeklyReportModal(data){
           <button type="button" class="btn btn-outline btn-sm" onclick="wrToggleAllEmps_(false)">إلغاء الكل</button>
         </span>
       </label>
-      <div id="wrEmpChecklist" style="display:flex;flex-direction:column;max-height:230px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:4px 8px;margin-top:6px;">
+      <div id="wrEmpChecklist" class="wr-emp-list" style="max-height:250px;overflow:auto;padding:2px 2px 4px;margin-top:6px;">
         ${empChecklistHtml}
       </div>
     </div>
@@ -2816,8 +2832,13 @@ function payrollOpenWeeklyReportModal(data){
 }
 
 // ⚠️ إضافة 2026-08-15: زراير "تحديد الكل"/"إلغاء الكل" فوق قائمة التشيك بوكس
+// (بتحدّث كمان كلاس .checked على كل صف عشان التلوين الأخضر يفضل متزامن مع
+// حالة التشيك بوكس الفعلية، مش بس وقت الضغط اليدوي على كل صف لوحده)
 function wrToggleAllEmps_(checked){
-  document.querySelectorAll('.wr-emp-check').forEach(cb => { cb.checked = checked; });
+  document.querySelectorAll('.wr-emp-check').forEach(cb => {
+    cb.checked = checked;
+    cb.closest('.wr-emp-row').classList.toggle('checked', checked);
+  });
 }
 
 async function payrollShowWeeklyReport(weekIndex, employeeNames){
@@ -2839,6 +2860,14 @@ async function payrollShowWeeklyReport(weekIndex, employeeNames){
 
 function renderWeeklyReportModal_(data){
   const employees = data.employees || [];
+  // ⚠️ إضافة 2026-08-15: النوت بقت ممكن تبقى فيها أكتر من سطر (كل سطر بيخص
+  // حاجة مختلفة — مثلاً سطر عن مسحوبات السبت وسطر تاني عن شغل الجمعة، بعد
+  // تعديل الفصل في الباك إند). qEsc() لوحدها بتـescape النص بس مبتحولش أسطر
+  // النص الجديدة (\n) لـ<br> أو عناصر منفصلة، فكانت كل الأسطر بتطلع ملزّقة في
+  // سطر واحد. الدالة دي بتقسّم النوت على الأسطر وتعرض كل سطر في div لوحده
+  // تحت التاني، وكل سطر بعلامة "📝" قدامه.
+  const wrNoteLinesHtml_ = note => String(note || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+    .map(l => `<div>📝 ${qEsc(l)}</div>`).join('');
   const empHtml = employees.length ? employees.map(e => {
     // ⚠️ إضافة: تفصيل كل يوم فيه أي كود (إضافة/خصم/غياب/مسحوبات) أو ملاحظة — مش بس المسحوبات
     const days = e.days || [];
@@ -2855,7 +2884,7 @@ function renderWeeklyReportModal_(data){
             ${dayCodeChip_('غياب', d.absent, '#5e2f80')}
             ${dayCodeChip_('مسحوبات', d.withdraw, '#8a6408')}
           </div>
-          ${d.note ? `<div style="font-size:11.5px;color:var(--muted);margin-top:3px;">📝 ${qEsc(d.note)}</div>` : ''}
+          ${d.note ? `<div style="font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.7;">${wrNoteLinesHtml_(d.note)}</div>` : ''}
         </div>`).join('')
       : '<div class="empty" style="padding:6px 0;font-size:12.5px;">مفيش أي حركة مسجلة على أيام الأسبوع ده</div>';
 
@@ -2913,7 +2942,11 @@ function payrollBuildWeeklyReportPdfHtml_(data){
             d.absent ? `غياب ${fmt(d.absent)}ج` : '',
             d.withdraw ? `مسحوبات ${fmt(d.withdraw)}ج` : '',
           ].filter(Boolean).join(' — ');
-          return `<tr><td style="padding:5px 6px;">${qEsc(d.label||d.date)}</td><td style="padding:5px 6px;">${qEsc(codeTxt||'—')}</td><td style="padding:5px 6px;">${qEsc(d.note||'')}</td></tr>`;
+          // ⚠️ إضافة 2026-08-15: زي المودال بالظبط — النوت ممكن يبقى فيها أكتر
+          // من سطر، فبنقسّمها ونحط <br> بين كل سطر عشان تظهر تحت بعض في الـ
+          // PDF/الطباعة مش ملزّقة في سطر واحد.
+          const noteHtml = String(d.note || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => qEsc(l)).join('<br>');
+          return `<tr><td style="padding:5px 6px;">${qEsc(d.label||d.date)}</td><td style="padding:5px 6px;">${qEsc(codeTxt||'—')}</td><td style="padding:5px 6px;">${noteHtml}</td></tr>`;
         }).join('')
       : `<tr><td colspan="3" style="padding:6px;color:#6B5E4E;">مفيش أي حركة مسجلة</td></tr>`;
 
