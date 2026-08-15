@@ -1702,7 +1702,7 @@ function toggleSidebarCollapse(){
 })();
 
 document.getElementById('nav').addEventListener('click', e => {
-  const btn = e.target.closest('button'); if (!btn) return; goTo(btn.dataset.page);
+  const btn = e.target.closest('button[data-page]'); if (!btn) return; goTo(btn.dataset.page);
   closeSidebar(); // يقفل القايمة تلقائي بعد الاختيار في وضع الموبايل
 });
 document.getElementById('bottomNav').addEventListener('click', e => {
@@ -1736,9 +1736,10 @@ function goTo(page, costTab) {
   const token = ++_navToken;
   _currentPage = page;
   sessionStorage.setItem('lm_currentPage', page);
+  document.querySelectorAll('.nav button.active, .bottom-nav button.active').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.nav button, .bottom-nav button[data-page]').forEach(b => {
     const isMatch = b.dataset.page === page || (b.dataset.qpGroup && QP_GROUP_PAGES.includes(page));
-    b.classList.toggle('active', isMatch);
+    if (isMatch) b.classList.add('active');
   });
   document.getElementById('pageTitle').textContent = PAGES[page].title;
   document.getElementById('pageSub').textContent = PAGES[page].sub;
