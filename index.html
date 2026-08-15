@@ -36,7 +36,13 @@
        لعمل عنصر position:fixed ياخد ارتفاع الشاشة الحقيقي الظاهر فعليًا، ومتظبط
        تلقائي مع تغيّر شريط المتصفح، فمفيش داعي لـheight ثابتة بالمرة. */
     position:fixed; top:0; right:0; bottom:0; overflow:hidden; z-index:50;
-    transition:transform .35s var(--bounce), width .3s var(--bounce); }
+    transition:transform .35s var(--bounce), width .3s var(--bounce);
+    /* ⚠️ إصلاح: من غير السطر ده، بعض متصفحات الموبايل بترندر الأزرار جوه القائمة
+       غلط (كلها دهبي) في نفس لحظة حركة الفتح/السحب (transform)، وبترجع لشكلها
+       الصح لوحدها لما الحركة تخلص — عيب معروف اسمه compositing glitch. الحل إننا
+       نجبر المتصفح يجهّز طبقة تسريع (GPU layer) مستقلة للقائمة *قبل* ما تتحرك،
+       عشان يرندر كل حاجة جواها صح من أول فريم في الحركة، مش بعدها. */
+    will-change:transform; transform:translateZ(0); backface-visibility:hidden; }
 
   /* ===== Sidebar collapse (desktop) ===== */
   .sidebar-toggle{ position:absolute; top:14px; left:10px; width:28px; height:28px; border-radius:50%; background:var(--gold); color:var(--dark); border:2px solid var(--dark); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:14px; font-weight:800; line-height:1; z-index:5; transition:transform .3s var(--bounce), background .2s, color .2s; }
@@ -80,7 +86,7 @@
   .nav::-webkit-scrollbar-thumb:hover{ background:var(--gold); }
   .nav button{ all:unset; box-sizing:border-box; width:100%; min-width:0; cursor:pointer; padding:11px 14px; border-radius:8px; font-size:13.5px; color:#cbbfae; display:flex; align-items:center; gap:9px; transition:background .2s, border-color .2s, color .2s, transform .25s var(--bounce); font-family:inherit;
     /* لون تاني غير الدهبي — كارت خفيف داكن لكل زرار في حالته العادية، عشان الدهبي يفضل مخصوص بس للصفحة المفتوحة */
-    background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.07); }
+    background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.07); transform:translateZ(0); }
   .nav button .label{ min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .nav button:hover{ background:rgba(255,255,255,.09); border-color:rgba(255,255,255,.12); color:#fff; transform:translateX(-5px); }
   .nav button.active{ background:var(--gold); border-color:var(--gold); color:var(--dark); font-weight:700; animation:navPop .4s var(--bounce); }
