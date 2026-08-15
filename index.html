@@ -2898,20 +2898,28 @@ function renderWeeklyReportModal_(data){
     // ⚠️ إضافة: تفصيل كل يوم فيه أي كود (إضافة/خصم/غياب/مسحوبات) أو ملاحظة — مش بس المسحوبات
     const days = e.days || [];
     const dayCodeChip_ = (label, amount, color) => amount > 0 ? `<span style="display:inline-block;background:${color}22;color:${color};border:1px solid ${color}55;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;margin-inline-end:5px;">${label}: ${fmt(amount)} ج</span>` : '';
+    // ⚠️ إضافة 2026-08-15: لو النوت بتاعت اليوم فيها ذكر "سهرة"، شريحة الإضافة
+    // بتتكتب "سهرة" بدل "إضافة" عامة، عشان يبان وقد ايه قيمة السهرة بالظبط
+    // (بدل ما تتلخبط جوه مبلغ تاني أو تنضم غلط ليوم تاني — شوف الباك إند).
     const daysHtml = days.length
-      ? days.map(d => `
+      ? days.map(d => {
+          const hasSehra = /سهر[ةه]/.test(d.note || '');
+          const noOtherCodes = !d.isFullAbsence && !d.add && !d.deduct && !d.absent && !d.withdraw;
+          return `
         <div style="padding:6px 0;border-bottom:1px dashed var(--border);">
           <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
             <span style="font-size:12px;color:var(--muted);min-width:70px;">${qEsc(d.label || d.date)}</span>
             ${d.isFullAbsence ? '<span style="display:inline-block;background:#f1e8f722;color:#5e2f80;border:1px solid #5e2f8055;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;">غياب يوم كامل</span>' : ''}
-            ${d.isFridayWork ? `<span style="display:inline-block;background:#2C5F3A22;color:#2C5F3A;border:1px solid #2C5F3A55;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;">يوم شغل: ${fmt(d.workAmount||0)} ج</span>` : ''}
-            ${dayCodeChip_('إضافة', d.add, '#2C5F3A')}
+            ${d.isFridayWork ? `<span style="display:inline-block;background:#2C5F3A22;color:#2C5F3A;border:1px solid #2C5F3A55;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;">${d.workAmount ? `يوم شغل: ${fmt(d.workAmount)} ج` : 'حضر (يوم شغل)'}</span>` : ''}
+            ${dayCodeChip_(hasSehra ? 'سهرة' : 'إضافة', d.add, '#2C5F3A')}
             ${dayCodeChip_('خصم', d.deduct, '#c0392b')}
             ${dayCodeChip_('غياب', d.absent, '#5e2f80')}
             ${dayCodeChip_('مسحوبات', d.withdraw, '#8a6408')}
+            ${(!d.isFridayWork && noOtherCodes) ? '<span style="display:inline-block;background:#8a640822;color:#6B5E4E;border:1px solid #8a640855;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;">حضر</span>' : ''}
           </div>
           ${d.note ? `<div style="font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.7;">${wrNoteLinesHtml_(d.note)}</div>` : ''}
-        </div>`).join('')
+        </div>`;
+        }).join('')
       : '<div class="empty" style="padding:6px 0;font-size:12.5px;">مفيش أي حركة مسجلة على أيام الأسبوع ده</div>';
 
     const t = e.totals || {};
@@ -2956,23 +2964,32 @@ function payrollPrintWeeklyReport(){
 // نفس أسلوب qBuildPdfHtml بالظبط (براند Living Mood + طباعة A4) بس لمحتوى التقرير الاسبوعي
 function payrollBuildWeeklyReportPdfHtml_(data){
   const employees = data.employees || [];
-  const sections = employees.length ? employees.map(e => {
+  // ⚠️ إضافة 2026-08-15: بيبني نص "التفاصيل" لكل يوم. لو اليوم مفيهوش أي كود
+  // خالص (حضور عادي من غير سحب/خصم/إضافة)، بيوضح إنه "حضر" بدل ما يفضل فاضي
+  // أو يختفي من التقرير خالص — يبقى واضح إن الغياب ده غياب فعلي مش نسيان تسجيل.
+  // كمان لو النوت بتاعت الإضافة فيها ذكر "سهرة"، بتتكتب "سهرة" بدل "إضافة"
+  // عامة عشان يبان وقد ايه قيمة السهرة بالظبط (بدل ما تتلخبط جوه رقم تاني).
+  const wrDayDetailTxt_ = d => {
+    const hasSehra = /سهر[ةه]/.test(d.note || '');
+    const codeTxt = [
+      d.isFullAbsence ? 'غياب يوم كامل' : '',
+      d.isFridayWork ? (d.workAmount ? `يوم شغل ${fmt(d.workAmount)}ج` : 'حضر (يوم شغل)') : '',
+      d.add ? `${hasSehra ? 'سهرة' : 'إضافة'} ${fmt(d.add)}ج` : '',
+      d.deduct ? `خصم ${fmt(d.deduct)}ج` : '',
+      d.absent ? `غياب ${fmt(d.absent)}ج` : '',
+      d.withdraw ? `مسحوبات ${fmt(d.withdraw)}ج` : '',
+    ].filter(Boolean).join(' — ');
+    return codeTxt || 'حضر';
+  };
+  const sections = employees.length ? employees.map((e, empIdx) => {
     const days = e.days || [];
     const dayRows = days.length
       ? days.map(d => {
-          const codeTxt = [
-            d.isFullAbsence ? 'غياب يوم كامل' : '',
-            d.isFridayWork ? `يوم شغل ${fmt(d.workAmount||0)}ج` : '',
-            d.add ? `إضافة ${fmt(d.add)}ج` : '',
-            d.deduct ? `خصم ${fmt(d.deduct)}ج` : '',
-            d.absent ? `غياب ${fmt(d.absent)}ج` : '',
-            d.withdraw ? `مسحوبات ${fmt(d.withdraw)}ج` : '',
-          ].filter(Boolean).join(' — ');
           // ⚠️ إضافة 2026-08-15: زي المودال بالظبط — النوت ممكن يبقى فيها أكتر
           // من سطر، فبنقسّمها ونحط <br> بين كل سطر عشان تظهر تحت بعض في الـ
           // PDF/الطباعة مش ملزّقة في سطر واحد.
           const noteHtml = String(d.note || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => qEsc(l)).join('<br>');
-          return `<tr><td style="padding:5px 6px;">${qEsc(d.label||d.date)}</td><td style="padding:5px 6px;">${qEsc(codeTxt||'—')}</td><td style="padding:5px 6px;">${noteHtml}</td></tr>`;
+          return `<tr><td style="padding:5px 6px;">${qEsc(d.label||d.date)}</td><td style="padding:5px 6px;">${qEsc(wrDayDetailTxt_(d))}</td><td style="padding:5px 6px;">${noteHtml}</td></tr>`;
         }).join('')
       : `<tr><td colspan="3" style="padding:6px;color:#6B5E4E;">مفيش أي حركة مسجلة</td></tr>`;
 
@@ -2980,14 +2997,22 @@ function payrollBuildWeeklyReportPdfHtml_(data){
     const totalsTxt = `إجمالي إضافة ${fmt(t.add||0)}ج — إجمالي خصم ${fmt(t.deduct||0)}ج — إجمالي غياب ${fmt(t.absent||0)}ج${t.fullAbsenceDays?` (${t.fullAbsenceDays} يوم كامل)`:''} — إجمالي مسحوبات ${fmt(t.withdraw||0)}ج${t.fridayWork?` — إجمالي شغل الجمعة ${fmt(t.fridayWork)}ج`:''}`;
     const weekSummaryTxt = (e.weekSummary && e.weekSummary.length) ? e.weekSummary.map(s => `${qEsc(s.label)}: ${qEsc(s.value)}`).join(' &nbsp;|&nbsp; ') : '';
 
+    // ⚠️ إصلاح 2026-08-15: كل موظف كان بياخد صفحة طباعة مستقلة (page-break-
+    // inside:avoid كان بيدفع الموظف كله لصفحة جديدة لو مش هيكمل في المساحة
+    // الفاضلة من الصفحة الحالية). دلوقتي الموظفين بيتسلسلوا ورا بعض عادي في
+    // نفس الصفحة، وبينهم بس خط فاصل واضح (فاصل مش قطع صفحة). الجدول والفوتر
+    // لسه بيتحموا من القطع في نص السطر (شوف CSS تحت: tr, .wf-sep, .footer).
+    const isFirst = empIdx === 0;
     return `
-      <div style="margin-bottom:16px;page-break-inside:avoid;">
-        <div style="font-size:10px;color:#6B5E4E;margin-bottom:2px;">اليومية: ${fmt(e.dailyRate||0)} ج</div>
-        <div style="background:#1E1A15;color:#D4B483;padding:8px 12px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0;">${qEsc(e.name)}</div>
+      <div class="wr-emp-block"${isFirst ? '' : ' style="border-top:2px dashed #D9D0C4;margin-top:18px;padding-top:18px;"'}>
+        <div class="wr-emp-head">
+          <div style="font-size:10px;color:#6B5E4E;margin-bottom:2px;">اليومية: ${fmt(e.dailyRate||0)} ج</div>
+          <div style="background:#1E1A15;color:#D4B483;padding:8px 12px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0;">${qEsc(e.name)}</div>
+        </div>
         <div style="border:1px solid #D9D0C4;border-top:none;padding:10px 12px;">
           ${weekSummaryTxt ? `<div style="background:#F3EFEA;border-radius:5px;padding:6px 10px;font-size:11px;margin-bottom:10px;">${weekSummaryTxt}</div>` : ''}
           <div style="font-size:11.5px;font-weight:700;color:#3a2f22;margin-bottom:4px;">📋 تفاصيل الأيام</div>
-          <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:6px;">
+          <table class="wr-days-table" style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:6px;">
             <thead><tr style="background:#F3EFEA;"><th style="padding:5px 6px;text-align:right;">اليوم</th><th style="padding:5px 6px;text-align:right;">التفاصيل</th><th style="padding:5px 6px;text-align:right;">ملاحظة</th></tr></thead>
             <tbody>${dayRows}</tbody>
           </table>
@@ -3003,6 +3028,12 @@ function payrollBuildWeeklyReportPdfHtml_(data){
   <style>
     *{box-sizing:border-box;margin:0;padding:0;} body{font-family:'Cairo','Arial',sans-serif;direction:rtl;color:#1E1A15;background:#fff;}
     @page{size:A4;margin:14mm 12mm;} @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+    /* الموظفين بيتسلسلوا ورا بعض في نفس الصفحة عادي (شوف تعليق .wr-emp-block
+       في الجافاسكريبت اللي بنى الـHTML ده) — بس صف اليوم الواحد وهيدر اسم
+       الموظف نفسه بيتحموا من إنهم يتقطعوا في نص السطر بين صفحتين. */
+    table.wr-days-table tr{page-break-inside:avoid;break-inside:avoid;}
+    .wr-emp-block{page-break-inside:auto;}
+    .wr-emp-head{page-break-after:avoid;break-after:avoid;}
     .brand-block{text-align:center;padding-bottom:14px;border-bottom:2px solid #B8975A;margin-bottom:16px;}
     .brand-title{font-family:'Playfair Display',Georgia,serif;font-size:38px;letter-spacing:5px;color:#1E1A15;direction:ltr;}
     .brand-title span{color:#B8975A;} .brand-sub{font-size:9px;letter-spacing:3px;color:#6B5E4E;text-transform:uppercase;margin-top:4px;direction:ltr;}
