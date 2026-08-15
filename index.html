@@ -1056,8 +1056,7 @@
     <button data-page="workflowReport"><span class="icon">&#128203;</span><span class="label">تقرير يومي بالصنايعية</span></button>
     <button data-page="missingItems"><span class="icon">&#128230;</span><span class="label">بنود المشاريع</span></button>
     <div class="sep"></div>
-    <button data-page="quotation"><span class="icon">&#128221;</span><span class="label">Quotations</span></button>
-    <button data-page="debtors"><span class="icon">&#128184;</span><span class="label">Payment Statements</span></button>
+    <button data-page="quotation" data-qp-group="1"><span class="icon">&#128221;</span><span class="label">Quotations &amp; Payments</span></button>
   </div>
   <div class="user-menu">
     <button class="user-menu-btn" onclick="openChangePassModal()"><span class="icon">&#128273;</span><span class="label">تغيير كلمة السر</span></button>
@@ -1087,6 +1086,10 @@
       <div class="user-badge" id="userBadge"></div>
       <div class="badge-live" id="liveBadge">متصل</div>
     </div>
+  </div>
+  <div class="q-steps p-filter-tabs" id="qpSwitchTabs" style="display:none;margin-bottom:16px;">
+    <div class="step" id="qp-tab-quotation" data-page="quotation"><span class="icon" style="margin-inline-end:6px;">&#128221;</span>Quotations</div>
+    <div class="step" id="qp-tab-debtors" data-page="debtors"><span class="icon" style="margin-inline-end:6px;">&#128184;</span>Payment Statements</div>
   </div>
   <div id="content"><div class="loading-row">جاري التحميل...</div></div>
 </div>
@@ -1621,6 +1624,11 @@ function checkApiConfigured(){
 }
 
 /* ================= Router ================= */
+// صفحتين "Quotations" و"Payment Statements" بقوا مجمّعين تحت زرار واحد في القائمة
+// الجانبية (data-qp-group). لسه صفحتين منفصلتين تمامًا في الراوتر وكل واحدة عندها
+// render خاص بيها زي ما كان — بس دلوقتي بيتفتحوا كـ"تابين" جوه نفس الصفحة (شوف
+// qpSyncTabsBar تحت) بدل ما يكونوا زرارين مستقلين في القائمة.
+const QP_GROUP_PAGES = ['quotation', 'debtors'];
 const PAGES = {
   dashboard:    { title:'نظرة عامة', sub:'ملخص شامل لكل حاجة في المصنع', render: renderDashboard },
   payroll:      { title:'مرتبات', sub:'كشف حضور الشهر بالظبط زي الشيت — عدّل أي خلية وهتتسجل في الشيت الحقيقي مباشرة', render: renderPayroll },
@@ -1684,6 +1692,20 @@ document.getElementById('nav').addEventListener('click', e => {
 document.getElementById('bottomNav').addEventListener('click', e => {
   const btn = e.target.closest('button[data-page]'); if (!btn) return; goTo(btn.dataset.page);
 });
+// تابات "Quotations" / "Payment Statements" فوق المحتوى — بيديو نفس شكل تابات
+// "الموظفين الشهريين/الاسبوعيين" في صفحة مرتبات بالظبط (q-steps p-filter-tabs)
+document.getElementById('qpSwitchTabs').addEventListener('click', e => {
+  const btn = e.target.closest('.step'); if (!btn) return; goTo(btn.dataset.page);
+});
+// بيظبط ظهور واختفاء شريط التابات ده، وأنهي تاب فيه active — بينده من جوه goTo()
+function qpSyncTabsBar(page){
+  const bar = document.getElementById('qpSwitchTabs');
+  const show = QP_GROUP_PAGES.includes(page);
+  bar.style.display = show ? '' : 'none';
+  if (!show) return;
+  document.getElementById('qp-tab-quotation').classList.toggle('active', page === 'quotation');
+  document.getElementById('qp-tab-debtors').classList.toggle('active', page === 'debtors');
+}
 // كل مرة ندخل صفحة، بيتزود التوكن ده. أي صفحة قديمة لسه بتحمّل (fetch) بتتاكد قبل
 // ما تكتب في الـ DOM إن التوكن بتاعها لسه هو الحالي — لو المستخدم دخل صفحة تانية
 // قبل ما تخلص، بتلاقي التوكن اتغير فبتلغي نفسها من غير ما تكتب حاجة فوق الصفحة الجديدة
@@ -1698,9 +1720,13 @@ function goTo(page, costTab) {
   const token = ++_navToken;
   _currentPage = page;
   sessionStorage.setItem('lm_currentPage', page);
-  document.querySelectorAll('.nav button, .bottom-nav button[data-page]').forEach(b => b.classList.toggle('active', b.dataset.page === page));
+  document.querySelectorAll('.nav button, .bottom-nav button[data-page]').forEach(b => {
+    const isMatch = b.dataset.page === page || (b.dataset.qpGroup && QP_GROUP_PAGES.includes(page));
+    b.classList.toggle('active', isMatch);
+  });
   document.getElementById('pageTitle').textContent = PAGES[page].title;
   document.getElementById('pageSub').textContent = PAGES[page].sub;
+  qpSyncTabsBar(page);
   if (!checkApiConfigured()) return;
   document.getElementById('content').innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   PAGES[page].render(token);
