@@ -882,6 +882,7 @@
   .proj-tab .pt-stats .pending{ color:var(--red); font-weight:700; }
   .proj-tab.active .pt-stats .pending{ color:#e8a5a0; }
   .proj-tab.ready-to-close{ border-color:var(--green); }
+  .proj-tab.finished{ opacity:.6; }
 
   .proj-add{ display:flex; gap:6px; align-items:center; min-width:220px; }
   .proj-add input{ flex:1; padding:9px 11px; border:1.5px dashed var(--border); border-radius:9px; font-size:12.5px;
@@ -8235,16 +8236,24 @@ async function wfrLoad(token) {
 }
 
 /* ══════════════ 4.3) بنود المشاريع (تصميم كروت + ثريد ملاحظات لكل بند) ══════════════ */
-let MISTATE = { projects: [], project: '', items: [], summary: [], filter: 'all', openNotes: new Set(), pending: [] };
+let MISTATE = { projects: [], project: '', items: [], summary: [], filter: 'all', openNotes: new Set(), pending: [], finishedProjects: [], showFinished: false };
 const WORKFLOW_UNITS_JS = ['قطعة', 'متر طولي', 'متر مربع', 'متر مكعب', 'كجم', 'يوم', 'دفعة'];
 
 async function renderMissingItems(token) {
   try {
-    const [{ projects }, { summary }] = await Promise.all([apiGet('listProjects'), apiGet('getMissingItemsSummary')]);
+    const [{ projects }, { summary }, { projects: finishedProjects }] = await Promise.all([
+      apiGet('listProjects'), apiGet('getMissingItemsSummary'), apiGet('listFinishedMiProjects')
+    ]);
     if (isStaleNav(token)) return;
     MISTATE.projects = projects || [];
     MISTATE.summary = summary || [];
-    if (!MISTATE.project || !MISTATE.projects.includes(MISTATE.project)) MISTATE.project = MISTATE.projects[0] || '';
+    MISTATE.finishedProjects = finishedProjects || [];
+    // ⚠️ إضافة 2026-08-15: أول مشروع نختاره تلقائي لازم يكون مش متعلّم "تم الانهاء" —
+    // وإلا أول ما تفتح الصفحة هتلاقي نفسك واقف على مشروع مخفي من غير ما تاخد بالك
+    const visibleProjects = MISTATE.projects.filter(p => !MISTATE.finishedProjects.includes(p));
+    if (!MISTATE.project || !MISTATE.projects.includes(MISTATE.project) || (MISTATE.finishedProjects.includes(MISTATE.project) && !MISTATE.showFinished)) {
+      MISTATE.project = visibleProjects[0] || MISTATE.projects[0] || '';
+    }
     MISTATE.filter = 'all';
     document.getElementById('content').innerHTML = `
       <div class="proj-tabs-row">
@@ -8254,6 +8263,7 @@ async function renderMissingItems(token) {
           <button type="button" id="miAddProjBtn">+ مشروع</button>
         </div>
       </div>
+      <div class="msg" id="miShowFinishedRow" style="margin:0 0 10px;"></div>
       <div class="panel">
         <h3 id="miItemsPanelTitle">بنود المشروع</h3>
         <div class="items-summary" id="miItemsSummary"></div>
@@ -8295,6 +8305,7 @@ async function renderMissingItems(token) {
     `;
     miBindStaticEvents();
     miRenderProjTabs();
+    miRenderShowFinishedRow();
     miLoadList();
   } catch (err) { showError(err); }
 }
@@ -8320,14 +8331,42 @@ function miProjectSummary(p) {
   return MISTATE.summary.find(s => s.project === p) || { project: p, total: 0, done: 0, pending: 0 };
 }
 
+// المشاريع اللي المفروض تظهر في التبويبات — المشاريع المتعلّمة "تم الانهاء" بتتخفي
+// تلقائي، إلا لو المستخدم دوس "عرض المشاريع الخلصت" (MISTATE.showFinished)
+function miVisibleProjects() {
+  if (MISTATE.showFinished) return MISTATE.projects;
+  return MISTATE.projects.filter(p => !MISTATE.finishedProjects.includes(p));
+}
+
+function miRenderShowFinishedRow() {
+  const box = document.getElementById('miShowFinishedRow'); if (!box) return;
+  const n = MISTATE.finishedProjects.length;
+  if (!n) { box.innerHTML = ''; return; }
+  box.innerHTML = `<button type="button" class="btn btn-outline btn-sm" id="miToggleFinished">
+    ${MISTATE.showFinished ? 'إخفاء المشاريع الخلصت' : `🗄️ عرض المشاريع الخلصت (${n})`}
+  </button>`;
+  document.getElementById('miToggleFinished').addEventListener('click', () => {
+    MISTATE.showFinished = !MISTATE.showFinished;
+    if (!MISTATE.showFinished && MISTATE.finishedProjects.includes(MISTATE.project)) {
+      MISTATE.project = miVisibleProjects()[0] || '';
+    }
+    miRenderProjTabs();
+    miRenderShowFinishedRow();
+    miRenderItemsSummary();
+    miRenderItemsList();
+  });
+}
+
 function miRenderProjTabs() {
   const box = document.getElementById('miProjTabs'); if (!box) return;
-  box.innerHTML = MISTATE.projects.map(p => {
+  const visible = miVisibleProjects();
+  box.innerHTML = visible.map(p => {
     const s = miProjectSummary(p);
     const pct = s.total ? Math.round(s.done / s.total * 100) : 0;
     const readyToClose = s.total > 0 && s.pending === 0;
-    return `<div class="proj-tab ${p === MISTATE.project ? 'active' : ''} ${readyToClose ? 'ready-to-close' : ''}" data-selectproj="${qEsc(p)}">
-      <div class="pt-name">${qEsc(p)}</div>
+    const isFinished = MISTATE.finishedProjects.includes(p);
+    return `<div class="proj-tab ${p === MISTATE.project ? 'active' : ''} ${readyToClose ? 'ready-to-close' : ''} ${isFinished ? 'finished' : ''}" data-selectproj="${qEsc(p)}">
+      <div class="pt-name">${qEsc(p)}${isFinished ? ' ✅' : ''}</div>
       <div class="pt-bar"><div class="pt-fill" style="width:${pct}%;"></div></div>
       <div class="pt-stats"><span class="pending">${s.pending} ناقص</span><span>${s.done}/${s.total} خلص</span></div>
     </div>`;
@@ -8376,12 +8415,64 @@ function miRenderItemsSummary() {
   if (!MISTATE.project) { if (titleEl) titleEl.textContent = 'بنود المشروع'; box.innerHTML = ''; return; }
   const s = miProjectSummary(MISTATE.project);
   const pct = s.total ? Math.round(s.done / s.total * 100) : 0;
-  if (titleEl) titleEl.innerHTML = `بنود: ${qEsc(MISTATE.project)} <span class="sub">${s.done}/${s.total} خلص</span>`;
+  const isFinished = MISTATE.finishedProjects.includes(MISTATE.project);
+  const readyToClose = s.total > 0 && s.pending === 0;
+  if (titleEl) titleEl.innerHTML = `بنود: ${qEsc(MISTATE.project)} <span class="sub">${s.done}/${s.total} خلص</span>${isFinished ? ' <span class="sub">— تم الانهاء ✅</span>' : ''}`;
+  // ⚠️ إضافة 2026-08-15: زرار "تم الانهاء" بيظهر بس لو كل بنود المشروع خلصت
+  // وهو لسه مش متعلّم كده. بعد ما تدوسه، المشروع بيتخفي من التبويبات فوق.
+  // لو المشروع أصلًا متعلّم "تم الانهاء" (باين لو فاتح "عرض المشاريع الخلصت")،
+  // بيظهر بدل منه زرار "تراجع" يرجّعه يبان تاني.
+  let actionBtn = '';
+  if (isFinished) {
+    actionBtn = `<button type="button" class="btn btn-outline btn-sm" id="miUnfinishBtn" style="margin-inline-start:10px;">↩️ تراجع عن الانهاء</button>`;
+  } else if (readyToClose) {
+    actionBtn = `<button type="button" class="btn btn-primary btn-sm" id="miFinishBtn" style="margin-inline-start:10px;">✅ تم الانهاء</button>`;
+  }
   box.innerHTML = `
     <span class="isum-count">${s.pending} بند لسه ناقص</span>
     <div class="isum-bar"><div class="isum-fill" style="width:${pct}%;"></div></div>
     <span class="isum-pct">${pct}%</span>
+    ${actionBtn}
   `;
+  const finishBtn = document.getElementById('miFinishBtn');
+  if (finishBtn) finishBtn.addEventListener('click', miFinishCurrentProject);
+  const unfinishBtn = document.getElementById('miUnfinishBtn');
+  if (unfinishBtn) unfinishBtn.addEventListener('click', miUnfinishCurrentProject);
+}
+
+async function miFinishCurrentProject() {
+  const project = MISTATE.project;
+  if (!project) return;
+  if (!confirm(`تأكيد إنهاء "${project}"؟ هيختفي من قايمة المشاريع هنا (بس هيفضل موجود عادي في باقي الصفحات).`)) return;
+  const btn = document.getElementById('miFinishBtn'); if (btn) btn.disabled = true;
+  try {
+    const res = await apiPost('finishMiProject', { project });
+    if (res && res.error) { showToast(res.error, 'error'); return; }
+    showToast('✅ اتسجل المشروع كـ"تم الانهاء"', 'success');
+    MISTATE.finishedProjects.push(project);
+    MISTATE.project = miVisibleProjects()[0] || '';
+    miRenderProjTabs();
+    miRenderShowFinishedRow();
+    miRenderItemsSummary();
+    miRenderItemsList();
+  } catch (err) { showToast('خطأ: ' + (err.message || err), 'error'); }
+  finally { if (btn) btn.disabled = false; }
+}
+
+async function miUnfinishCurrentProject() {
+  const project = MISTATE.project;
+  if (!project) return;
+  const btn = document.getElementById('miUnfinishBtn'); if (btn) btn.disabled = true;
+  try {
+    const res = await apiPost('unfinishMiProject', { project });
+    if (res && res.error) { showToast(res.error, 'error'); return; }
+    showToast('✅ رجع المشروع يبان تاني', 'success');
+    MISTATE.finishedProjects = MISTATE.finishedProjects.filter(p => p !== project);
+    miRenderProjTabs();
+    miRenderShowFinishedRow();
+    miRenderItemsSummary();
+  } catch (err) { showToast('خطأ: ' + (err.message || err), 'error'); }
+  finally { if (btn) btn.disabled = false; }
 }
 
 function miFmtDate(iso) {
