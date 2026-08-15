@@ -6696,9 +6696,32 @@ function qBuildPdfHtml(){
       table.items thead th, table.items tbody td, table.items tfoot td{padding:4px 3px!important;} }
     table.items thead tr{background:#2C5F3A;color:#fff;} table.items thead th{padding:6px 4px;text-align:right;font-weight:600;white-space:nowrap;font-size:11px;overflow:hidden;text-overflow:ellipsis;}
     table.items tbody td{padding:6px 4px;vertical-align:top;word-wrap:break-word;overflow-wrap:break-word;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    /* FIX 2026-08-15 (عمود "ملاحظات" كان بيتقص بـ "...": القاعدة العامة فوق
+       بتحط white-space:nowrap + text-overflow:ellipsis على كل الخلايا، وكان
+       فيه استثناء لعمودي الوحدة والمطلوب تنفيذه بس (nth-child 3 و4) — عمود
+       الملاحظات (nth-child 8) كان لسه ماشي على القاعدة العامة فبيتقص أي نص
+       أطول من عرض الخلية. دلوقتي بيلف زي باقي الأعمدة الطويلة. */
     table.items tbody td:nth-child(3){white-space:normal;word-break:break-word;overflow:visible;text-overflow:clip;} table.items tbody td:nth-child(4){white-space:normal;line-height:1.45;overflow:visible;text-overflow:clip;}
+    table.items tbody td:nth-child(8){white-space:normal;word-break:break-word;overflow:visible;text-overflow:clip;line-height:1.45;}
     table.items tfoot tr{background:#1E1A15;color:#D4B483;} table.items tfoot td{padding:9px 7px;font-weight:700;font-size:13px;}
     table.items tfoot td.ltr{direction:ltr;text-align:left;} table.items thead th.ltr{direction:ltr;text-align:left;}
+    /* FIX 2026-08-15 (الملاحظات وجملة الشكر تحت الجدول كانت شكلها "وحش" —
+       كلام عادي بلا أي تنسيق): الكلاسات دي (.notes-box / .intro / .footer)
+       كانت متستخدمة جوه الـ HTML تحت بس مش متعرفة خالص هنا جوه الـ CSS
+       (عكس نسخة كشف الدفعات pBuildPdfHtml اللي معرّفة فيها بالظبط) — فكانت
+       بترجع تنسيق المتصفح الافتراضي (نص أسود عادي، بلا برواز، بلا خط). */
+    .notes-box{background:#F3EFEA;border:1px solid #D9D0C4;border-radius:5px;padding:13px 16px;font-size:12px;color:#6B5E4E;line-height:2.1;margin-bottom:16px;text-align:right;}
+    .intro{text-align:center;font-size:13px;color:#6B5E4E;margin-bottom:0;}
+    .footer{text-align:center;font-size:13px;color:#B8975A;font-family:'Playfair Display',Georgia,serif;letter-spacing:1px;direction:ltr;}
+    /* FIX 2026-08-15 (الكلام بيتقص عند حد الصفحة وقت الطباعة/الـ PDF): من غير
+       دي، لو صف من الجدول أو صندوق الملاحظات وقع بالظبط عند نهاية الصفحة،
+       المتصفح كان بيقسمه نص فوق ونص تحت (يظهر وكأنه "مقصوص"). page-break-
+       inside:avoid بتمنع القسمة دي وتنقل العنصر كله للصفحة اللي بعدها بدل
+       ما يتقطع في النص. */
+    @media print{
+      table.items tr{ page-break-inside:avoid; break-inside:avoid; }
+      .notes-box, .intro, .footer, .client-box, .brand-block{ page-break-inside:avoid; break-inside:avoid; }
+    }
   </style></head>
   <body><div style="padding:24px 28px;">
     <div class="brand-block"><div class="brand-title">Living <span>Mood</span></div><div class="brand-sub">Interior Design &amp; Furniture</div></div>
