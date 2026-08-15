@@ -78,10 +78,12 @@
   .nav::-webkit-scrollbar-track{ background:transparent; }
   .nav::-webkit-scrollbar-thumb{ background:var(--gold-dim); border-radius:6px; }
   .nav::-webkit-scrollbar-thumb:hover{ background:var(--gold); }
-  .nav button{ all:unset; box-sizing:border-box; width:100%; min-width:0; cursor:pointer; padding:11px 14px; border-radius:8px; font-size:13.5px; color:#cbbfae; display:flex; align-items:center; gap:9px; transition:background .2s, color .2s, transform .25s var(--bounce); font-family:inherit; }
+  .nav button{ all:unset; box-sizing:border-box; width:100%; min-width:0; cursor:pointer; padding:11px 14px; border-radius:8px; font-size:13.5px; color:#cbbfae; display:flex; align-items:center; gap:9px; transition:background .2s, border-color .2s, color .2s, transform .25s var(--bounce); font-family:inherit;
+    /* لون تاني غير الدهبي — كارت خفيف داكن لكل زرار في حالته العادية، عشان الدهبي يفضل مخصوص بس للصفحة المفتوحة */
+    background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.07); }
   .nav button .label{ min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .nav button:hover{ background:var(--dark2); color:#fff; transform:translateX(-5px); }
-  .nav button.active{ background:var(--gold); color:var(--dark); font-weight:700; animation:navPop .4s var(--bounce); }
+  .nav button:hover{ background:rgba(255,255,255,.09); border-color:rgba(255,255,255,.12); color:#fff; transform:translateX(-5px); }
+  .nav button.active{ background:var(--gold); border-color:var(--gold); color:var(--dark); font-weight:700; animation:navPop .4s var(--bounce); }
   .nav .icon{ font-size:15px; width:18px; text-align:center; }
   .nav .sep{ height:1px; background:#3a3129; margin:10px 12px; }
   @keyframes navPop{ 0%{ transform:scale(.88); } 55%{ transform:scale(1.06); } 100%{ transform:scale(1); } }
