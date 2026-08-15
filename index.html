@@ -6351,6 +6351,10 @@ async function qOpenCustomer(c){
     QSTATE.rows = (d.rows || []).map(r => ({...r, _id:Math.random()}));
     if (!QSTATE.rows.length) QSTATE.rows = [qNewRow()];
     QSTATE.discount = d.discount || {percent:0, amount:0};
+    // FIX 2026-08-15 ("بيقرا غلط"): شيت الكوتيشن نفسه هو مصدر الحقيقة، مش صف
+    // شيت الـ Index (اللي ممكن يبقى قديم أو متعارض). لو الباك إند رجّع القيم ديه
+    if (d.engineer !== undefined) QSTATE.customer.engineer = d.engineer;
+    if (d.address !== undefined) QSTATE.customer.address = d.address;
     QSTATE.dollar = QSTATE.dollar || QCFG.defaultDollar;
     QSTATE.subpage = 'editor';
     qSaveSession();
@@ -6666,11 +6670,12 @@ function qBuildPdfHtml(){
   });
   return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"/>
   <title>${qEsc(pdfFileTitle('Quotation', c.address || c.name))}</title>
+  <meta name="viewport" content="width=1000"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet"/>
   <style>
-    *{box-sizing:border-box;margin:0;padding:0;} body{font-family:'Cairo','Arial',sans-serif;direction:rtl;color:#1E1A15;background:#fff;}
-    @page{size:A4;margin:14mm 12mm;} @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+    *{box-sizing:border-box;margin:0;padding:0;} body{font-family:'Cairo','Arial',sans-serif;direction:rtl;color:#1E1A15;background:#fff;min-width:1000px;}
+    @page{size:A4;margin:14mm 12mm;} @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;min-width:0;}}
     .brand-block{text-align:center;padding-bottom:14px;border-bottom:2px solid #B8975A;margin-bottom:16px;}
     .brand-title{font-family:'Playfair Display',Georgia,serif;font-size:38px;letter-spacing:5px;color:#1E1A15;direction:ltr;}
     .brand-title span{color:#B8975A;} .brand-sub{font-size:9px;letter-spacing:3px;color:#6B5E4E;text-transform:uppercase;margin-top:4px;direction:ltr;}
@@ -6678,18 +6683,22 @@ function qBuildPdfHtml(){
     .client-row{display:flex;align-items:baseline;gap:8px;margin-bottom:6px;}
     .client-lbl{font-size:11px;color:#6B5E4E;font-weight:700;white-space:nowrap;} .client-val{font-size:14px;font-weight:700;}
     .date-row{font-size:12px;color:#6B5E4E;direction:ltr;text-align:left;margin-bottom:14px;}
-    table.items{width:100%;min-width:760px;border-collapse:collapse;font-size:13px;margin-bottom:14px;}
+    /* FIX 2026-08-15 (طباعة الموبايل بتكسر الوصف كلمتين كلمتين): من غير meta
+       viewport ثابتة، متصفح الموبايل كان بيرسم صفحة الطباعة بعرض الشاشة الضيق
+       بدل عرض A4 المفروض، فعمود الوصف/الوحدة كان بياخد مساحة ضئيلة (الباقي من
+       أعمدة nowrap التانية) فبيتلف كل كلمة أو كلمتين في سطر. الحل: 1) viewport
+       ثابتة (1000px) تخلي الصفحة تترسم بنفس العرض على الموبايل والكمبيوتر،
+       2) table-layout:fixed + colgroup بعرض نسبي ثابت لكل عمود عشان عمود الوصف
+       ياخد نسبة مضمونة من العرض دايمًا. */
+    table.items{width:100%;min-width:760px;border-collapse:collapse;table-layout:fixed;font-size:13px;margin-bottom:14px;}
     .items-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
     @media print{ .items-wrap{overflow:visible!important;} table.items{min-width:0!important;width:100%!important;font-size:10px!important;}
       table.items thead th, table.items tbody td, table.items tfoot td{padding:4px 3px!important;} }
-    table.items thead tr{background:#2C5F3A;color:#fff;} table.items thead th{padding:6px 4px;text-align:right;font-weight:600;white-space:nowrap;font-size:11px;}
-    table.items tbody td{padding:6px 4px;vertical-align:top;word-wrap:break-word;overflow-wrap:break-word;font-size:11px;white-space:nowrap;}
-    table.items tbody td:nth-child(3){white-space:normal;word-break:break-word;} table.items tbody td:nth-child(4){white-space:normal;line-height:1.45;}
+    table.items thead tr{background:#2C5F3A;color:#fff;} table.items thead th{padding:6px 4px;text-align:right;font-weight:600;white-space:nowrap;font-size:11px;overflow:hidden;text-overflow:ellipsis;}
+    table.items tbody td{padding:6px 4px;vertical-align:top;word-wrap:break-word;overflow-wrap:break-word;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    table.items tbody td:nth-child(3){white-space:normal;word-break:break-word;overflow:visible;text-overflow:clip;} table.items tbody td:nth-child(4){white-space:normal;line-height:1.45;overflow:visible;text-overflow:clip;}
     table.items tfoot tr{background:#1E1A15;color:#D4B483;} table.items tfoot td{padding:9px 7px;font-weight:700;font-size:13px;}
     table.items tfoot td.ltr{direction:ltr;text-align:left;} table.items thead th.ltr{direction:ltr;text-align:left;}
-    .notes-box{background:#F3EFEA;border:1px solid #D9D0C4;border-radius:5px;padding:13px 16px;font-size:12px;color:#6B5E4E;line-height:2.1;margin-bottom:16px;text-align:right;}
-    .intro{font-size:13px;color:#6B5E4E;line-height:1.9;text-align:center;}
-    .footer{text-align:center;font-size:13px;color:#B8975A;font-family:'Playfair Display',Georgia,serif;letter-spacing:1px;direction:ltr;}
   </style></head>
   <body><div style="padding:24px 28px;">
     <div class="brand-block"><div class="brand-title">Living <span>Mood</span></div><div class="brand-sub">Interior Design &amp; Furniture</div></div>
@@ -6701,6 +6710,7 @@ function qBuildPdfHtml(){
     ${discAmt > 0 ? `<div style="background:#2C5F3A;color:#fff;text-align:center;padding:8px 14px;border-radius:5px;font-size:13px;font-weight:700;margin-bottom:14px;">• خصم خاص ${fmt((QSTATE.discount&&QSTATE.discount.percent)||0)}% — ${fmt(discAmt)} جنيه</div>` : ''}
     <br/>
     <div class="items-wrap"><table class="items">
+      <colgroup><col style="width:4%"><col style="width:11%"><col style="width:9%"><col style="width:32%"><col style="width:6%"><col style="width:12%"><col style="width:12%"><col style="width:14%"></colgroup>
       <thead><tr><th>#</th><th>النموذج</th><th>الوحدة</th><th>المطلوب تنفيذه</th><th style="text-align:center;">عدد</th><th class="ltr">السعر</th><th class="ltr">الإجمالي</th><th>ملاحظات</th></tr></thead>
       <tbody>${tbody}</tbody>
       <tfoot>
