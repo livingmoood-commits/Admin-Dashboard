@@ -4910,42 +4910,115 @@ async function renderTreasuryExpensesTab(token) {
     if (projects.length) await peLoad(initial, token);
   } catch(err){ showError(err); }
 }
+
+let _peData = null;             // ⚠️ إضافة 2026-08-16: بيانات المشروع الحالي بالكامل (كل الأسابيع/البنود) بعد آخر تحميل من السيرفر — بنفلتر منها محليًا (client-side) من غير أي نداء API جديد، فالفلترة نفسها فورية زي ما هي بتكتب
+let _peFilters = { desc: '' };  // فلتر البحث في "الوصف" الحالي لتاب "متابعة صرف المشاريع"
+
 async function peLoad(name, token){
   token = token || _navToken;
   sessionStorage.setItem('lm_peProject', name);
   const box = document.getElementById('peBox');
   if (!box) return;
   box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  _peFilters = { desc: '' }; // فلتر جديد لكل مشروع تفتحه
   try {
     const d = await apiGet('getProjectExpensesDetail', { name });
     if (isStaleNav(token)) return;
     if (d.error) { box.innerHTML = `<div class="msg err" style="display:block;">${d.error}</div>`; return; }
-    box.innerHTML = `
-      <div class="cards" style="margin-bottom:18px;">
-        <div class="card"><div class="label">إجمالي الإيرادات</div><div class="value green">${fmt(d.revenue)} ج</div></div>
-        <div class="card"><div class="label">إجمالي المصاريف</div><div class="value gold">${fmt(d.expense)} ج</div></div>
-        <div class="card"><div class="label">صافي الربح</div><div class="value ${d.net>=0?'green':'red'}">${fmt(d.net)} ج</div></div>
-        <div class="card"><div class="label">نسبة المصاريف</div><div class="value">${(Number(d.expenseRatio)||0).toFixed(1)}%</div></div>
-      </div>
-      ${d.weeks.length ? d.weeks.map((w,i) => `
-        <details ${i===d.weeks.length-1?'open':''} style="margin-bottom:10px;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
-          <summary style="cursor:pointer;padding:12px 14px;background:var(--cream);font-weight:700;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-            <span>${w.label}</span>
-            <span style="font-weight:400;color:var(--muted);font-size:13px;">
-              مصاريف: <b style="color:var(--dark);">${fmt(w.weekExpense)} ج</b> &nbsp;|&nbsp;
-              إيرادات: <b style="color:var(--dark);">${fmt(w.weekRevenue)} ج</b> &nbsp;|&nbsp;
-              صافي: <b style="color:${w.weekNet>=0?'var(--green)':'var(--red)'};">${fmt(w.weekNet)} ج</b>
-            </span>
-          </summary>
-          <div style="padding:0 14px 14px;">
-            ${w.items.length ? `<div class="tbl-wrap"><table><thead><tr><th>الوصف</th><th>المبلغ</th><th>التاريخ</th></tr></thead>
-            <tbody>${w.items.map(it=>`<tr><td>${it.desc}</td><td>${fmt(it.amount)} ج</td><td>${it.date}</td></tr>`).join('')}</tbody></table></div>`
-            : `<div class="empty">مفيش مصاريف مسجلة في الاسبوع ده</div>`}
-          </div>
-        </details>
-      `).join('') : `<div class="empty">مفيش أي بيانات مسجلة للمشروع ده لسه</div>`}
-    `;
+    _peData = d;
+    peRenderShell();
   } catch(err){ box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message||err}</div>`; }
+}
+
+// ⚠️ إضافة 2026-08-16: بار الفلتر (البحث في الوصف) + الكروت بيترسموا مرة واحدة
+// بس هنا. البنود بعد كده بتترسم في peResultsBox لوحده (peRenderResults) — كل ما
+// تكتب حرف في خانة البحث، بنعيد رسم النتايج بس مش بار الفلتر نفسه، عشان الفوكس
+// والكرسور في الخانة يفضلوا زي ما هما من غير قطع مع كل حرف بتكتبه.
+function peRenderShell(){
+  const box = document.getElementById('peBox');
+  const d = _peData;
+  if (!box || !d) return;
+  box.innerHTML = `
+    <div class="cards" style="margin-bottom:18px;">
+      <div class="card"><div class="label">إجمالي الإيرادات</div><div class="value green">${fmt(d.revenue)} ج</div></div>
+      <div class="card"><div class="label">إجمالي المصاريف</div><div class="value gold">${fmt(d.expense)} ج</div></div>
+      <div class="card"><div class="label">صافي الربح</div><div class="value ${d.net>=0?'green':'red'}">${fmt(d.net)} ج</div></div>
+      <div class="card"><div class="label">نسبة المصاريف</div><div class="value">${(Number(d.expenseRatio)||0).toFixed(1)}%</div></div>
+    </div>
+    <div class="adv-filter" style="grid-template-columns:1fr auto;">
+      <div class="af-field">
+        <label>دور في الوصف</label>
+        <input type="text" id="pe-desc-filter" placeholder="مثال: دهانات" autocomplete="off">
+      </div>
+      <div class="af-field af-actions">
+        <button type="button" class="af-reset" id="pe-desc-reset">✕ مسح الفلتر</button>
+      </div>
+    </div>
+    <div class="adv-filter-count" id="peFilterCount"></div>
+    <div id="peResultsBox"></div>
+  `;
+  document.getElementById('pe-desc-filter').addEventListener('input', e => { _peFilters.desc = e.target.value; peRenderResults(); });
+  document.getElementById('pe-desc-reset').addEventListener('click', () => {
+    _peFilters.desc = '';
+    document.getElementById('pe-desc-filter').value = '';
+    peRenderResults();
+  });
+  peRenderResults();
+}
+
+// بيرسم أسابيع المشروع حسب فلتر "الوصف" الحالي. من غير فلتر: نفس الشكل القديم
+// بالظبط (كل الأسابيع، كل البنود، أرقام الأسبوع العادية بمصاريف/إيرادات/صافي).
+// مع فلتر شغال: كل أسبوع بيبان فيه بس البنود اللي وصفها مطابق (بحث جزئي مش لازم
+// يطابق بالكامل)، والأسابيع اللي مفيهاش أي تطابق بتتخفي خالص، وكل أسبوع بيبان
+// فوق جدوله مجموع البنود المطابقة فيه (رقم صافي من غير فواصل آلاف — بناءً على
+// طلب صريح، تمييزًا له عن فورمات الأرقام العادي fmt() في باقي الموقع)، وفوق
+// الكل بار الفلتر بيبيّن عدد البنود المطابقة + مجموعها الكلي في كل الأسابيع مع بعض.
+function peRenderResults(){
+  const d = _peData;
+  const resBox = document.getElementById('peResultsBox');
+  if (!d || !resBox) return;
+  const q = (_peFilters.desc || '').trim().toLowerCase();
+  const filtering = !!q;
+
+  const weeksCalc = d.weeks.map(w => {
+    const items = filtering ? w.items.filter(it => String(it.desc||'').toLowerCase().includes(q)) : w.items;
+    const sum = items.reduce((s,it) => s + (Number(it.amount)||0), 0);
+    return { ...w, _items: items, _sum: sum };
+  });
+  const visibleWeeks = filtering ? weeksCalc.filter(w => w._items.length) : weeksCalc;
+
+  const countEl = document.getElementById('peFilterCount');
+  if (countEl) {
+    if (filtering) {
+      const total = weeksCalc.reduce((s,w) => s + w._sum, 0);
+      const count = weeksCalc.reduce((s,w) => s + w._items.length, 0);
+      countEl.innerHTML = count
+        ? `${count} بند مطابق &nbsp;|&nbsp; مجموع الفلتر: <b class="mono" style="color:var(--dark);">${Math.round(total)}</b> ج`
+        : '';
+    } else {
+      countEl.textContent = '';
+    }
+  }
+
+  resBox.innerHTML = visibleWeeks.length ? visibleWeeks.map((w,i) => `
+    <details ${(filtering || i===visibleWeeks.length-1)?'open':''} style="margin-bottom:10px;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+      <summary style="cursor:pointer;padding:12px 14px;background:var(--cream);font-weight:700;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+        <span>${w.label}</span>
+        ${filtering
+          ? `<span style="font-weight:400;color:var(--muted);font-size:13px;">مجموع المطابق: <b class="mono" style="color:var(--dark);">${Math.round(w._sum)}</b> ج</span>`
+          : `<span style="font-weight:400;color:var(--muted);font-size:13px;">
+            مصاريف: <b style="color:var(--dark);">${fmt(w.weekExpense)} ج</b> &nbsp;|&nbsp;
+            إيرادات: <b style="color:var(--dark);">${fmt(w.weekRevenue)} ج</b> &nbsp;|&nbsp;
+            صافي: <b style="color:${w.weekNet>=0?'var(--green)':'var(--red)'};">${fmt(w.weekNet)} ج</b>
+          </span>`}
+      </summary>
+      <div style="padding:0 14px 14px;">
+        ${w._items.length ? `<div class="tbl-wrap"><table><thead><tr><th>الوصف</th><th>المبلغ</th><th>التاريخ</th></tr></thead>
+        <tbody>${w._items.map(it=>`<tr><td>${it.desc}</td><td>${fmt(it.amount)} ج</td><td>${it.date}</td></tr>`).join('')}</tbody></table></div>`
+        : `<div class="empty">مفيش مصاريف مسجلة في الاسبوع ده</div>`}
+      </div>
+    </details>
+  `).join('') : `<div class="empty">${filtering ? 'مفيش بنود مطابقة للفلتر' : 'مفيش أي بيانات مسجلة للمشروع ده لسه'}</div>`;
 }
 
 /* ================= Product Costing ================= */
