@@ -3783,6 +3783,8 @@ let _movesFilters = { date:'', type:'all', project:'', amountOp:'', amountVal:''
 // active واحد بس (_treasuryTab) بيتحكم في المحتوى المعروض تحت البار، من غير ما
 // نحمّل بيانات الخزنة والمصاريف مع بعض في نفس اللحظة — كل تاب بيتحمّل لما تفتحه بس.
 let _treasuryTab = 'moves';
+let _treasurySummary = null;   // ⚠️ إضافة 2026-08-16: بيانات ملخص الخزنة الأصلية (رأس المال ثابت مايتفلترش، والباقي بيتحسب من _treasuryMoves حسب الفلتر)
+let _tfFilters = { from: '', to: '' }; // فلتر "من تاريخ - لحد تاريخ" لكروت الخزنة فوق
 
 async function renderTreasury(token) {
   try {
@@ -3793,22 +3795,84 @@ async function renderTreasury(token) {
     _allProjectsForTreasury = projectsData.projects || []; // ⚠️ إضافة: أسماء المشاريع الحقيقية (تبويبات ملف "مصاريف المشاريع") — لعمل اقتراحات في حقل "المشروع" تحت، ولتاب "متابعة صرف المشاريع"
     _editingMoveId = null;
     _movesFilters = { date:'', type:'all', project:'', amountOp:'', amountVal:'', desc:'' };
+    _treasurySummary = summary;
+    // ⚠️ إضافة 2026-08-16: الدفلت بتاع فلتر التاريخ فوق = من أول يوم اتسجلت فيه
+    // أي حركة في الخزنة (أقدم تاريخ في _treasuryMoves) لحد النهارده — يعني بيبان
+    // بالظبط زي الأرقام الكلية العادية أول ما تفتح الصفحة، وأي فلتر بعد كده هو
+    // اللي بيضيّق الفترة.
+    const earliestDate = _treasuryMoves.length
+      ? _treasuryMoves.reduce((min, m) => (m.date && m.date < min) ? m.date : min, _treasuryMoves[0].date)
+      : todayStr();
+    _tfFilters = { from: earliestDate, to: todayStr() };
     document.getElementById('content').innerHTML = `
-      <div class="cards">
-        <div class="card"><div class="label">الرصيد الحالي</div><div class="value green">${fmt(summary.balance)} ج</div></div>
-        <div class="card"><div class="label">رأس المال</div><div class="value">${fmt(summary.capital)} ج</div></div>
-        <div class="card"><div class="label">إجمالي الإيداعات</div><div class="value green">${fmt(summary.totalDeposits)} ج</div></div>
-        <div class="card"><div class="label">إجمالي المصاريف</div><div class="value red">${fmt(summary.totalExpenses)} ج</div></div>
+      <div class="adv-filter" id="tfFilterBar">
+        <div class="af-field">
+          <label>من تاريخ</label>
+          <input type="date" id="tf-from" autocomplete="off" value="${_tfFilters.from}">
+        </div>
+        <div class="af-field">
+          <label>لحد تاريخ</label>
+          <input type="date" id="tf-to" autocomplete="off" value="${_tfFilters.to}">
+        </div>
+        <div class="af-field af-actions">
+          <button type="button" class="af-reset" id="tf-reset">↺ رجّع الفترة الافتراضية</button>
+        </div>
       </div>
+      <div class="adv-filter-count" id="tfFilterNote"></div>
+      <div class="cards" id="treasuryCardsBox"></div>
       <div class="q-steps p-filter-tabs" id="treasury-tabs">
         <div class="step ${_treasuryTab==='moves'?'active':''}" onclick="treasurySwitchTab('moves')">الحركات والإيداعات</div>
         <div class="step ${_treasuryTab==='expenses'?'active':''}" onclick="treasurySwitchTab('expenses')">متابعة صرف المشاريع</div>
       </div>
       <div id="treasury-tab-body"></div>
     `;
+    document.getElementById('tf-from').addEventListener('change', e => { _tfFilters.from = e.target.value; tfRenderCards(); });
+    document.getElementById('tf-to').addEventListener('change', e => { _tfFilters.to = e.target.value; tfRenderCards(); });
+    document.getElementById('tf-reset').addEventListener('click', () => {
+      _tfFilters = { from: earliestDate, to: todayStr() };
+      document.getElementById('tf-from').value = _tfFilters.from;
+      document.getElementById('tf-to').value = _tfFilters.to;
+      tfRenderCards();
+    });
+    tfRenderCards();
     renderTreasuryTabBody(token);
   } catch(err){ showError(err); }
 }
+
+// ⚠️ إضافة 2026-08-16: بيرسم كروت الخزنة الأربعة حسب فلتر "من تاريخ - لحد تاريخ"
+// الحالي (_tfFilters)، محليًا من غير أي نداء API جديد (كل الحركات _treasuryMoves
+// معانا خلاص من التحميل الأول). "إجمالي المصاريف" و"إجمالي الإيداعات" بيبقوا
+// مجموع حركات النوع ده جوه الفترة بس. "الرصيد الحالي" بيبقى رصيد الخزنة زي ما
+// كان في نهاية يوم "لحد تاريخ" بالظبط (رأس المال + كل الإيداعات لحد فيه - كل
+// المصاريف لحد فيه)، مش الرصيد اللحظي الفعلي، عشان يتماشى مع الفترة المختارة.
+// "رأس المال" مابيتفلترش خالص لأنه رقم ثابت اتحدد مرة واحدة، مش حركة ليها تاريخ.
+function tfRenderCards(){
+  const box = document.getElementById('treasuryCardsBox');
+  const note = document.getElementById('tfFilterNote');
+  if (!box || !_treasurySummary) return;
+  const { from, to } = _tfFilters;
+  const moves = _treasuryMoves || [];
+
+  const inRange = (d) => (!from || d >= from) && (!to || d <= to);
+  const upToDate = (d) => !to || d <= to;
+
+  const periodExpenses = moves.filter(m => m.type === 'مصروف' && inRange(m.date)).reduce((s,m) => s + (Number(m.amount)||0), 0);
+  const periodDeposits = moves.filter(m => m.type === 'إيداع' && inRange(m.date)).reduce((s,m) => s + (Number(m.amount)||0), 0);
+  const depositsUpToDate = moves.filter(m => m.type === 'إيداع' && upToDate(m.date)).reduce((s,m) => s + (Number(m.amount)||0), 0);
+  const expensesUpToDate = moves.filter(m => m.type === 'مصروف' && upToDate(m.date)).reduce((s,m) => s + (Number(m.amount)||0), 0);
+  const balanceAsOfTo = (Number(_treasurySummary.capital)||0) + depositsUpToDate - expensesUpToDate;
+
+  const isDefaultRange = from === (moves.length ? moves.reduce((min,m)=>(m.date && m.date<min)?m.date:min, moves[0].date) : todayStr()) && to === todayStr();
+
+  box.innerHTML = `
+    <div class="card"><div class="label">${to === todayStr() ? 'الرصيد الحالي' : 'الرصيد حتى ' + to}</div><div class="value green">${fmt(balanceAsOfTo)} ج</div></div>
+    <div class="card"><div class="label">رأس المال</div><div class="value">${fmt(_treasurySummary.capital)} ج</div></div>
+    <div class="card"><div class="label">إجمالي الإيداعات${isDefaultRange ? '' : ' (الفترة)'}</div><div class="value green">${fmt(periodDeposits)} ج</div></div>
+    <div class="card"><div class="label">إجمالي المصاريف${isDefaultRange ? '' : ' (الفترة)'}</div><div class="value red">${fmt(periodExpenses)} ج</div></div>
+  `;
+  if (note) note.textContent = isDefaultRange ? '' : `عرض الفترة من ${from || 'البداية'} لحد ${to || 'النهارده'}`;
+}
+
 
 function treasurySwitchTab(tab){
   if (_treasuryTab === tab) return;
