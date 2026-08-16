@@ -153,6 +153,14 @@
   .cost-day-head{ display:flex; align-items:baseline; gap:10px; padding:8px 12px; background:var(--dark); color:#fff; border-radius:10px 10px 0 0; }
   .cost-day-head .sub{ color:var(--gold); font-size:12px; margin-inline-start:auto; }
   .cost-day-group .tbl-wrap{ border-radius:0 0 10px 10px; overflow:hidden; }
+  /* ===== تفصيل البنود بند بند جوه خلية "البنود" في جدول التكاليف (بدل السطر المجمّع القديم) ===== */
+  .cost-items-breakdown{ display:flex; flex-direction:column; gap:0; min-width:220px; }
+  .cost-item-line{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:4px 0; border-bottom:1px dashed var(--border); font-size:12.5px; }
+  .cost-item-line:last-of-type{ border-bottom:none; }
+  .cost-item-line .ci-name{ color:var(--dark); flex:1; }
+  .cost-item-line .ci-calc{ color:var(--muted); white-space:nowrap; font-size:11.5px; }
+  .cost-item-line .ci-total{ white-space:nowrap; font-weight:700; }
+  .cost-items-subtotal{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:5px 0 2px; margin-top:2px; border-top:1.5px solid var(--gold-dim); font-size:12.5px; font-weight:800; color:var(--gold-dim); }
 
 
   .to-stat-strip{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:20px; }
@@ -1062,15 +1070,12 @@
     <button data-page="costs"><span class="icon">&#128176;</span><span class="label">التكاليف</span></button>
     <div class="sep"></div>
     <button data-page="treasury"><span class="icon">&#128176;</span><span class="label">الخزنة (Cash Flow)</span></button>
-    <button data-page="dailyExpenses"><span class="icon">&#128221;</span><span class="label">مصاريف يومية</span></button>
-    <button data-page="fixedExp"><span class="icon">&#128203;</span><span class="label">المصاريف الثابتة</span></button>
+    <button data-page="dailyExpenses" data-exp-group="1"><span class="icon">&#128221;</span><span class="label">مصاريف</span></button>
     <button data-page="debts"><span class="icon">&#128308;</span><span class="label">ديون</span></button>
     <button data-page="partnerWithdrawals"><span class="icon">&#129309;</span><span class="label">مسحوبات شركاء</span></button>
     <div class="sep"></div>
     <div class="nav-section-label">Work Flow</div>
-    <button data-page="taskOrganize"><span class="icon">&#128221;</span><span class="label">تنظيم المهام</span></button>
-    <button data-page="workflowReport"><span class="icon">&#128203;</span><span class="label">تقرير يومي بالصنايعية</span></button>
-    <button data-page="missingItems"><span class="icon">&#128230;</span><span class="label">بنود المشاريع</span></button>
+    <button data-page="taskOrganize" data-wf-group="1"><span class="icon">&#128221;</span><span class="label">Work Flow</span></button>
     <div class="sep"></div>
     <button data-page="quotation" data-qp-group="1"><span class="icon">&#128221;</span><span class="label">Quotations &amp; Payments</span></button>
   </div>
@@ -1106,6 +1111,15 @@
   <div class="q-steps p-filter-tabs" id="qpSwitchTabs" style="display:none;margin-bottom:16px;">
     <div class="step" id="qp-tab-quotation" data-page="quotation"><span class="icon" style="margin-inline-end:6px;">&#128221;</span>Quotations</div>
     <div class="step" id="qp-tab-debtors" data-page="debtors"><span class="icon" style="margin-inline-end:6px;">&#128184;</span>Payment Statements</div>
+  </div>
+  <div class="q-steps p-filter-tabs" id="expSwitchTabs" style="display:none;margin-bottom:16px;">
+    <div class="step" id="exp-tab-daily" data-page="dailyExpenses"><span class="icon" style="margin-inline-end:6px;">&#128221;</span>مصاريف يومية</div>
+    <div class="step" id="exp-tab-fixed" data-page="fixedExp"><span class="icon" style="margin-inline-end:6px;">&#128203;</span>المصاريف الثابتة</div>
+  </div>
+  <div class="q-steps p-filter-tabs" id="wfSwitchTabs" style="display:none;margin-bottom:16px;">
+    <div class="step" id="wf-tab-taskOrganize" data-page="taskOrganize"><span class="icon" style="margin-inline-end:6px;">&#128221;</span>تنظيم المهام</div>
+    <div class="step" id="wf-tab-workflowReport" data-page="workflowReport"><span class="icon" style="margin-inline-end:6px;">&#128203;</span>تقرير يومي بالصنايعية</div>
+    <div class="step" id="wf-tab-missingItems" data-page="missingItems"><span class="icon" style="margin-inline-end:6px;">&#128230;</span>بنود المشاريع</div>
   </div>
   <div id="content"><div class="loading-row">جاري التحميل...</div></div>
 </div>
@@ -1645,6 +1659,11 @@ function checkApiConfigured(){
 // render خاص بيها زي ما كان — بس دلوقتي بيتفتحوا كـ"تابين" جوه نفس الصفحة (شوف
 // qpSyncTabsBar تحت) بدل ما يكونوا زرارين مستقلين في القائمة.
 const QP_GROUP_PAGES = ['quotation', 'debtors'];
+// صفحتين "مصاريف يومية" و"المصاريف الثابتة" بقوا مجمّعين تحت زرار واحد في القائمة
+// الجانبية (data-exp-group) بنفس فكرة QP_GROUP_PAGES فوق بالظبط.
+const EXP_GROUP_PAGES = ['dailyExpenses', 'fixedExp'];
+// نفس الفكرة لصفحات Work Flow التلاتة تحت زرار واحد (data-wf-group)
+const WF_GROUP_PAGES = ['taskOrganize', 'workflowReport', 'missingItems'];
 const PAGES = {
   dashboard:    { title:'نظرة عامة', sub:'ملخص شامل لكل حاجة في المصنع', render: renderDashboard },
   payroll:      { title:'مرتبات', sub:'كشف حضور الشهر بالظبط زي الشيت — عدّل أي خلية وهتتسجل في الشيت الحقيقي مباشرة', render: renderPayroll },
@@ -1713,6 +1732,12 @@ document.getElementById('bottomNav').addEventListener('click', e => {
 document.getElementById('qpSwitchTabs').addEventListener('click', e => {
   const btn = e.target.closest('.step'); if (!btn) return; goTo(btn.dataset.page);
 });
+document.getElementById('expSwitchTabs').addEventListener('click', e => {
+  const btn = e.target.closest('.step'); if (!btn) return; goTo(btn.dataset.page);
+});
+document.getElementById('wfSwitchTabs').addEventListener('click', e => {
+  const btn = e.target.closest('.step'); if (!btn) return; goTo(btn.dataset.page);
+});
 // بيظبط ظهور واختفاء شريط التابات ده، وأنهي تاب فيه active — بينده من جوه goTo()
 function qpSyncTabsBar(page){
   const bar = document.getElementById('qpSwitchTabs');
@@ -1721,6 +1746,25 @@ function qpSyncTabsBar(page){
   if (!show) return;
   document.getElementById('qp-tab-quotation').classList.toggle('active', page === 'quotation');
   document.getElementById('qp-tab-debtors').classList.toggle('active', page === 'debtors');
+}
+// نفس فكرة qpSyncTabsBar بس لتابات "مصاريف يومية"/"المصاريف الثابتة"
+function expSyncTabsBar(page){
+  const bar = document.getElementById('expSwitchTabs');
+  const show = EXP_GROUP_PAGES.includes(page);
+  bar.style.display = show ? '' : 'none';
+  if (!show) return;
+  document.getElementById('exp-tab-daily').classList.toggle('active', page === 'dailyExpenses');
+  document.getElementById('exp-tab-fixed').classList.toggle('active', page === 'fixedExp');
+}
+// نفس الفكرة لتابات صفحات Work Flow التلاتة
+function wfSyncTabsBar(page){
+  const bar = document.getElementById('wfSwitchTabs');
+  const show = WF_GROUP_PAGES.includes(page);
+  bar.style.display = show ? '' : 'none';
+  if (!show) return;
+  document.getElementById('wf-tab-taskOrganize').classList.toggle('active', page === 'taskOrganize');
+  document.getElementById('wf-tab-workflowReport').classList.toggle('active', page === 'workflowReport');
+  document.getElementById('wf-tab-missingItems').classList.toggle('active', page === 'missingItems');
 }
 // كل مرة ندخل صفحة، بيتزود التوكن ده. أي صفحة قديمة لسه بتحمّل (fetch) بتتاكد قبل
 // ما تكتب في الـ DOM إن التوكن بتاعها لسه هو الحالي — لو المستخدم دخل صفحة تانية
@@ -1738,12 +1782,14 @@ function goTo(page, costTab) {
   sessionStorage.setItem('lm_currentPage', page);
   document.querySelectorAll('.nav button.active, .bottom-nav button.active').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.nav button, .bottom-nav button[data-page]').forEach(b => {
-    const isMatch = b.dataset.page === page || (b.dataset.qpGroup && QP_GROUP_PAGES.includes(page));
+    const isMatch = b.dataset.page === page || (b.dataset.qpGroup && QP_GROUP_PAGES.includes(page)) || (b.dataset.expGroup && EXP_GROUP_PAGES.includes(page)) || (b.dataset.wfGroup && WF_GROUP_PAGES.includes(page));
     if (isMatch) b.classList.add('active');
   });
   document.getElementById('pageTitle').textContent = PAGES[page].title;
   document.getElementById('pageSub').textContent = PAGES[page].sub;
   qpSyncTabsBar(page);
+  expSyncTabsBar(page);
+  wfSyncTabsBar(page);
   if (!checkApiConfigured()) return;
   document.getElementById('content').innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   PAGES[page].render(token);
@@ -4559,6 +4605,22 @@ async function dConfirmAlreadySaved(){
 }
 // حالة سطور "مصاريف اليوم المسجلة فعليًا" — بتتخزن هنا عشان نقدر نعدّل/نحذف بالـ row الصحيح
 let D_TODAY_ROWS = [];
+// ⚠️ إصلاح باگ: بعد حذف صف، كل الصفوف اللي تحته بتتزحلق رقم واحد لفوق في الشيت.
+// من غير القفل ده، لو المستخدم دوس حذف/تعديل/نقل على صف تاني *قبل* ما القايمة
+// تتحدث من الشيت تاني، الطلب هيروح برقم صف قديم بقى غلط دلوقتي — يعني ممكن يمسح
+// أو يعدّل على صف تاني خالص غير اللي هو شايفه قدامه. القفل ده بيمنع أي تفاعل تاني
+// مع الجدول لحد ما العملية الحالية تخلص والقايمة تتحمّل من جديد بأرقام صحيحة.
+let _dTodayBusy = false;
+function _dTodayLock(){
+  _dTodayBusy = true;
+  const box = document.getElementById('d-today-box');
+  if (box) { box.style.pointerEvents = 'none'; box.style.opacity = '.55'; }
+}
+function _dTodayUnlock(){
+  _dTodayBusy = false;
+  const box = document.getElementById('d-today-box');
+  if (box) { box.style.pointerEvents = ''; box.style.opacity = ''; }
+}
 function dRenderTodayLog(rows){
   const box = document.getElementById('d-today-box'); if (!box) return;
   D_TODAY_ROWS = rows || [];
@@ -4595,6 +4657,7 @@ function dTodayRowHtml(r, idx, total){
 /* بوكس ملاحظة سطر متسجل فعليًا (زي dToggleNotePopup بالظبط بس للسطور المتسجلة، مش المسودة) —
  * بيستخدم نفس عنصر الـ popover (_dNotePopover) وبيفرّقه عن وضع المسودة بـ dataset.todayRow */
 function dTodayToggleNote(rowNum, btnEl){
+  if (_dTodayBusy) return;
   const box = _dNotePopover(); if (!box) return;
   const wasOpenForThisRow = box.classList.contains('open') && box.dataset.todayRow === String(rowNum);
   dCloseAllQuickTags();
@@ -4618,6 +4681,7 @@ function dTodayToggleNote(rowNum, btnEl){
   setTimeout(() => { const ta = document.getElementById('d-today-note-ta-' + rowNum); if (ta) ta.focus(); }, 50);
 }
 async function dTodaySaveNote(rowNum, textareaEl){
+  if (_dTodayBusy) return;
   const rec = D_TODAY_ROWS.find(r => r.row === rowNum); if (!rec) return;
   const value = textareaEl.value;
   if (String(value) === String(rec.note || '')) return;
@@ -4632,6 +4696,8 @@ async function dTodaySaveNote(rowNum, textareaEl){
 }
 // نقل سطر متسجل خانة لفوق/لتحت جوه شيت اليوم (بيبدّل بيانات السطر مع اللي جنبه فعليًا في الشيت)
 async function dTodayMove(rowNum, dir){
+  if (_dTodayBusy) return;
+  _dTodayLock();
   const tr = document.getElementById('d-today-row-' + rowNum);
   if (tr) tr.classList.add('saving');
   try {
@@ -4641,6 +4707,8 @@ async function dTodayMove(rowNum, dir){
   } catch(err){
     if (tr) tr.classList.remove('saving');
     _dTodayMsg('err', '✕ تعذر النقل: ' + (err.message || err));
+  } finally {
+    _dTodayUnlock();
   }
 }
 function _dTodayMsg(type, text){
@@ -4652,6 +4720,7 @@ function _dTodayMsg(type, text){
 // تعديل سريع لخانة واحدة: بيتحفظ أول ما تخرج من الخانة (onchange)، مع تحديث فوري
 // للشكل (تعتيم + سبينر وقت الحفظ، ثم فلاش أخضر لو نجح أو أحمر لو فشل).
 async function dTodaySave(rowNum, field, inputEl){
+  if (_dTodayBusy) return;
   const rec = D_TODAY_ROWS.find(r => r.row === rowNum); if (!rec) return;
   let value = inputEl.value;
   if (field === 'amount') {
@@ -4683,26 +4752,30 @@ async function dTodaySave(rowNum, field, inputEl){
   }
 }
 async function dTodayDelete(rowNum){
+  if (_dTodayBusy) return;
   const ok = await openGenConfirm('هل تريد حذف هذا المصروف نهائيًا من الشيت؟', 'حذف مصروف');
   if (!ok) return;
+  _dTodayLock();
   const tr = document.getElementById('d-today-row-' + rowNum);
   if (tr) tr.classList.add('saving');
   try {
     await apiPost('deleteDailyExpenseRow', { date: DSTATE.date, row: rowNum });
-    if (tr) {
-      tr.classList.add('removing');
-      setTimeout(async () => {
-        // بعد الحذف، أرقام الصفوف اللي بعده بتتزحلق — فبنعيد تحميل قايمة اليوم عشان الأرقام تفضل مطابقة
-        try {
-          const log = await apiGet('getDailyExpenses', { date: DSTATE.date });
-          dRenderTodayLog(log.rows || []);
-          _dTodayMsg('ok', '✔ اتحذف المصروف');
-        } catch(err){ _dTodayMsg('err', '✕ اتحذف بس تعذر تحديث القايمة: ' + (err.message || err)); }
-      }, 200);
-    }
+    if (tr) tr.classList.add('removing');
+    // بعد الحذف، أرقام الصفوف اللي بعده بتتزحلق — فبنستنى شوية للأنيميشن وبعدين
+    // نعيد تحميل قايمة اليوم كاملة عشان الأرقام تفضل مطابقة. الجدول فاضل مقفول
+    // (_dTodayLock فوق) طول الوقت ده، فمفيش أي حذف/تعديل تاني ممكن يحصل برقم
+    // صف قديم غلط قبل ما القايمة الجديدة تتحمّل.
+    await new Promise(res => setTimeout(res, 200));
+    try {
+      const log = await apiGet('getDailyExpenses', { date: DSTATE.date });
+      dRenderTodayLog(log.rows || []);
+      _dTodayMsg('ok', '✔ اتحذف المصروف');
+    } catch(err){ _dTodayMsg('err', '✕ اتحذف بس تعذر تحديث القايمة: ' + (err.message || err)); }
   } catch(err){
     if (tr) tr.classList.remove('saving');
     _dTodayMsg('err', '✕ تعذر الحذف: ' + (err.message || err));
+  } finally {
+    _dTodayUnlock();
   }
 }
 
@@ -5461,7 +5534,18 @@ function renderCostsList(costs){
       <div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>العملية</th><th>البنود</th><th>العمالة (مين وكام ساعة)</th><th>الإجمالي</th><th></th></tr></thead>
         <tbody>${rows.map(p=>{
           const laborTxt = (p.labor||[]).filter(l=>l.employee).map(l=>`${qEsc(l.employee)} (${fmtHoursDays(l.hours)}${l.eveningAmount?' + سهرة '+fmt(l.eveningAmount)+'ج':''})`).join('، ') || '—';
-          const itemsTxt = (p.items||[]).map(m=>qEsc(m.name)+(m.qty?' × '+m.qty:'')).join('، ') || '—';
+          // ⚠️ إصلاح: كان بيعرض البنود كلها مجمّعة في سطر واحد "اسم × كمية" من غير أي
+          // سعر، فمكنش واضح تكلفة كل خامة لوحدها. البيانات نفسها (qty/unitPrice) كانت
+          // موجودة فعلاً في كل بند — دلوقتي كل بند بيبان في سطره لوحده بسعر الوحدة
+          // والإجمالي بتاعه، وتحتهم إجمالي البنود كلها مع بعض.
+          const itemsTxt = (p.items && p.items.length)
+            ? `<div class="cost-items-breakdown">${p.items.map(m=>{
+                const qty = Number(m.qty) || 0;
+                const unitPrice = Number(m.unitPrice) || 0;
+                const lineTotal = qty * unitPrice;
+                return `<div class="cost-item-line"><span class="ci-name">${qEsc(m.name)}${m.unit?' <span class="ci-calc">('+qEsc(m.unit)+')</span>':''}</span><span class="ci-calc">${qty} × ${fmt(unitPrice)} ج</span><span class="ci-total">${fmt(lineTotal)} ج</span></div>`;
+              }).join('')}<div class="cost-items-subtotal"><span>إجمالي البنود</span><span>${fmt(p.itemsCost)} ج</span></div></div>`
+            : '—';
           return `<tr><td>${qEsc(p.date||'—')}</td><td>${qEsc(p.name)}</td><td>${itemsTxt}</td><td>${laborTxt}</td><td><b>${fmt(p.totalCost)} ج</b></td>
           <td><button class="btn btn-sm btn-danger" onclick="deleteCostConfirm('${qEscJs(p.project)}','${qEscJs(p.id)}')">حذف</button></td></tr>`;
         }).join('')}</tbody></table></div>
@@ -5647,6 +5731,7 @@ function renderDebtsPage(debts){
         <div id="debtsListBox"></div>
       </div>
     </div>
+    <div class="d-quick-popover" id="debt-note-popover"></div>
   `;
   // ⚠️ إضافة: 4 تبويبات (الكل/مسدد بالكامل/غير مسدد/مسدد جزء) — نفس تصميم تبويبات "بنود المشاريع"
   renderDebtsGrouped(debts);
@@ -5862,7 +5947,9 @@ function renderDebtsList(allDebts){
   const remainingAll = debts.reduce((s,d)=>s+d.remaining, 0);
   box.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>الجهة</th><th>الوصف</th><th>الإجمالي</th><th>المسدد</th><th>الباقي</th><th>الحالة</th><th></th></tr></thead>
     <tbody>${debts.map(d=>`<tr>
-      <td>${qEsc(d.creditor)}</td><td>${qEsc(d.desc||'—')}</td><td>${fmt(d.total)} ج</td><td>${fmt(d.paid)} ج</td>
+      <td>${qEsc(d.creditor)}</td>
+      <td>${qEsc(d.desc||'—')}${d.notes ? ` <button type="button" class="d-log-note-btn has-note" title="فيه ملاحظة — دوس لعرضها" onclick="toggleDebtNotePopover('${qEscJs(d.id)}', this)">📝</button>` : ''}</td>
+      <td>${fmt(d.total)} ج</td><td>${fmt(d.paid)} ج</td>
       <td style="color:${d.remaining>0.01?'var(--red)':'var(--green)'};font-weight:700;">${fmt(d.remaining)} ج</td>
       <td><span class="pill ${d.settled?'dep':'exp'}">${d.settled?'مسدد':'باقي'}</span></td>
       <td style="display:flex;gap:6px;">
@@ -5880,6 +5967,36 @@ function renderDebtsList(allDebts){
     </tr></tfoot>
     </table></div>`;
 }
+// بوب-أب صغير بيعرض ملاحظة الدين لما تدوس على أيقونة 📝 جنب الوصف — نفس فكرة
+// ملاحظة "مصاريف يومية" بالظبط بس مستقلة عن صفحة الديون (بوكس خاص بيها هنا).
+function _debtNotePopover(){ return document.getElementById('debt-note-popover'); }
+function closeDebtNotePopover(){
+  const box = _debtNotePopover(); if (!box) return;
+  box.classList.remove('open'); box.dataset.debtId = '';
+  document.querySelectorAll('.d-log-note-btn.open').forEach(b => b.classList.remove('open'));
+}
+function toggleDebtNotePopover(id, btnEl){
+  const box = _debtNotePopover(); if (!box) return;
+  const wasOpenForThisRow = box.classList.contains('open') && box.dataset.debtId === String(id);
+  closeDebtNotePopover();
+  if (wasOpenForThisRow) return;
+  const d = (_debtsCache||[]).find(x => x.id === id); if (!d) return;
+  box.innerHTML = `<div style="padding:10px;font-size:13px;white-space:pre-wrap;line-height:1.6;">${qEsc(d.notes || '')}</div>
+    <div class="d-pop-hint">ملاحظة الدين — عدّلها من زرار "تعديل"</div>`;
+  box.dataset.debtId = String(id);
+  const rect = btnEl.getBoundingClientRect();
+  box.style.width = '240px';
+  const spaceBelow = window.innerHeight - rect.bottom;
+  const openUp = spaceBelow < 220 && rect.top > spaceBelow;
+  box.style.left = ''; box.style.right = (window.innerWidth - rect.right) + 'px';
+  if (openUp){ box.style.top = ''; box.style.bottom = (window.innerHeight - rect.top + 6) + 'px'; }
+  else { box.style.bottom = ''; box.style.top = (rect.bottom + 6) + 'px'; }
+  box.classList.add('open');
+  btnEl.classList.add('open');
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('.d-log-note-btn') && !e.target.closest('#debt-note-popover')) closeDebtNotePopover();
+});
 async function payDebtPrompt(id, remaining){
   const val = await openGenPrompt('المبلغ المسدد دلوقتي (من إجمالي الباقي '+fmt(remaining)+' ج):', remaining, 'سداد دين');
   if (val === null) return;
