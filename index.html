@@ -4913,6 +4913,7 @@ async function renderTreasuryExpensesTab(token) {
 
 let _peData = null;             // ⚠️ إضافة 2026-08-16: بيانات المشروع الحالي بالكامل (كل الأسابيع/البنود) بعد آخر تحميل من السيرفر — بنفلتر منها محليًا (client-side) من غير أي نداء API جديد، فالفلترة نفسها فورية زي ما هي بتكتب
 let _peFilters = { desc: '' };  // فلتر البحث في "الوصف" الحالي لتاب "متابعة صرف المشاريع"
+let _peView = 'weekly';         // ⚠️ إضافة 2026-08-16: 'weekly' = بلوكات أسبوعية بفواصل زي الأول، 'all' = كل البنود مجمّعة في جدول واحد من غير فواصل أسابيع + مجموع كلي فوق
 
 async function peLoad(name, token){
   token = token || _navToken;
@@ -4921,6 +4922,7 @@ async function peLoad(name, token){
   if (!box) return;
   box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   _peFilters = { desc: '' }; // فلتر جديد لكل مشروع تفتحه
+  _peView = 'weekly';        // ونرجع لعرض الأسابيع الافتراضي كل ما تفتح مشروع تاني
   try {
     const d = await apiGet('getProjectExpensesDetail', { name });
     if (isStaleNav(token)) return;
@@ -4945,6 +4947,10 @@ function peRenderShell(){
       <div class="card"><div class="label">صافي الربح</div><div class="value ${d.net>=0?'green':'red'}">${fmt(d.net)} ج</div></div>
       <div class="card"><div class="label">نسبة المصاريف</div><div class="value">${(Number(d.expenseRatio)||0).toFixed(1)}%</div></div>
     </div>
+    <div class="q-steps p-filter-tabs" id="peViewTabs" style="margin-bottom:14px;">
+      <div class="step ${_peView==='weekly'?'active':''}" data-view="weekly" onclick="peSwitchView('weekly')">تفاصيل أسبوعية</div>
+      <div class="step ${_peView==='all'?'active':''}" data-view="all" onclick="peSwitchView('all')">الكل</div>
+    </div>
     <div class="adv-filter" style="grid-template-columns:1fr auto;">
       <div class="af-field">
         <label>دور في الوصف</label>
@@ -4966,13 +4972,28 @@ function peRenderShell(){
   peRenderResults();
 }
 
-// بيرسم أسابيع المشروع حسب فلتر "الوصف" الحالي. من غير فلتر: نفس الشكل القديم
-// بالظبط (كل الأسابيع، كل البنود، أرقام الأسبوع العادية بمصاريف/إيرادات/صافي).
-// مع فلتر شغال: كل أسبوع بيبان فيه بس البنود اللي وصفها مطابق (بحث جزئي مش لازم
-// يطابق بالكامل)، والأسابيع اللي مفيهاش أي تطابق بتتخفي خالص، وكل أسبوع بيبان
-// فوق جدوله مجموع البنود المطابقة فيه (رقم صافي من غير فواصل آلاف — بناءً على
-// طلب صريح، تمييزًا له عن فورمات الأرقام العادي fmt() في باقي الموقع)، وفوق
-// الكل بار الفلتر بيبيّن عدد البنود المطابقة + مجموعها الكلي في كل الأسابيع مع بعض.
+// ⚠️ إضافة 2026-08-16: بيبدّل بين "تفاصيل أسبوعية" (بلوكات فيها فواصل بين كل
+// أسبوع وأسبوع، زي ما كان الوضع الافتراضي دايمًا) و"الكل" (كل البنود من كل
+// الأسابيع مجمّعة في جدول واحد متصل من غير أي فواصل، ومجموعها الكلي فوق الجدول).
+// بيحافظ على أي فلتر شغال وقت التبديل.
+function peSwitchView(view){
+  if (_peView === view) return;
+  _peView = view;
+  const tabsBox = document.getElementById('peViewTabs');
+  if (tabsBox) tabsBox.querySelectorAll('.step').forEach(el => el.classList.toggle('active', el.dataset.view === view));
+  peRenderResults();
+}
+
+// بيرسم نتايج تاب "متابعة صرف المشاريع" حسب فلتر "الوصف" الحالي (_peFilters.desc)
+// وحسب طريقة العرض الحالية (_peView):
+// - 'weekly': نفس الشكل القديم بالظبط — بلوكات details/summary لكل أسبوع، بفواصل
+//   واضحة بينهم. من غير فلتر: كل البنود، بأرقام الأسبوع العادية (مصاريف/إيرادات/
+//   صافي). مع فلتر شغال: كل أسبوع بيبان فيه بس البنود المطابقة (بحث جزئي)، والأسابيع
+//   اللي مفيهاش تطابق بتتخفي، وكل أسبوع بيبان فوق جدوله مجموع بنوده المطابقة (رقم
+//   صافي من غير فواصل آلاف بناءً على طلب صريح).
+// - 'all': كل البنود (من كل الأسابيع، بعد الفلتر لو شغال) في جدول واحد متصل من
+//   غير أي فواصل أسابيع، ومجموع كلي فوق الجدول.
+// وفي الحالتين: بار الفلتر فوق بيبيّن عدد البنود المطابقة ومجموعها الكلي.
 function peRenderResults(){
   const d = _peData;
   const resBox = document.getElementById('peResultsBox');
@@ -4985,21 +5006,30 @@ function peRenderResults(){
     const sum = items.reduce((s,it) => s + (Number(it.amount)||0), 0);
     return { ...w, _items: items, _sum: sum };
   });
-  const visibleWeeks = filtering ? weeksCalc.filter(w => w._items.length) : weeksCalc;
+  const totalCount = weeksCalc.reduce((s,w) => s + w._items.length, 0);
+  const totalSum = weeksCalc.reduce((s,w) => s + w._sum, 0);
 
   const countEl = document.getElementById('peFilterCount');
   if (countEl) {
-    if (filtering) {
-      const total = weeksCalc.reduce((s,w) => s + w._sum, 0);
-      const count = weeksCalc.reduce((s,w) => s + w._items.length, 0);
-      countEl.innerHTML = count
-        ? `${count} بند مطابق &nbsp;|&nbsp; مجموع الفلتر: <b class="mono" style="color:var(--dark);">${Math.round(total)}</b> ج`
-        : '';
-    } else {
-      countEl.textContent = '';
-    }
+    countEl.innerHTML = (filtering && totalCount)
+      ? `${totalCount} بند مطابق &nbsp;|&nbsp; مجموع الفلتر: <b class="mono" style="color:var(--dark);">${Math.round(totalSum)}</b> ج`
+      : '';
   }
 
+  if (_peView === 'all') {
+    const allItems = weeksCalc.flatMap(w => w._items.map(it => ({ ...it, _week: w.label })));
+    resBox.innerHTML = allItems.length ? `
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;padding:12px 14px;background:var(--cream);border:1px solid var(--border);border-radius:10px;">
+        <span style="font-weight:700;">${filtering ? 'إجمالي البنود المطابقة' : 'إجمالي كل المصاريف'} (${allItems.length} بند)</span>
+        <span style="font-weight:800;font-size:15px;color:var(--dark);">${fmt(totalSum)} ج</span>
+      </div>
+      <div class="tbl-wrap"><table><thead><tr><th>الوصف</th><th>المبلغ</th><th>التاريخ</th><th>الاسبوع</th></tr></thead>
+      <tbody>${allItems.map(it=>`<tr><td>${it.desc}</td><td>${fmt(it.amount)} ج</td><td>${it.date}</td><td style="color:var(--muted);font-size:12.5px;">${it._week}</td></tr>`).join('')}</tbody></table></div>
+    ` : `<div class="empty">${filtering ? 'مفيش بنود مطابقة للفلتر' : 'مفيش أي بيانات مسجلة للمشروع ده لسه'}</div>`;
+    return;
+  }
+
+  const visibleWeeks = filtering ? weeksCalc.filter(w => w._items.length) : weeksCalc;
   resBox.innerHTML = visibleWeeks.length ? visibleWeeks.map((w,i) => `
     <details ${(filtering || i===visibleWeeks.length-1)?'open':''} style="margin-bottom:10px;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
       <summary style="cursor:pointer;padding:12px 14px;background:var(--cream);font-weight:700;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
