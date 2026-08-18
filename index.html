@@ -6553,6 +6553,19 @@ function qFormatListDate_(dateVal){
   }
   return s;
 }
+// ⚠️ إصلاح 2026-08-18: التاريخ متسجل كنص خام بصيغة d-M-yyyy من غير أصفار
+// (مثلاً "8-5-2026")، وكان بيترتب بمقارنة نصوص (localeCompare) بدل ما يترتب
+// كتاريخ فعلي — فـ"8-5-2026" كان بيطلع فوق "15-8-2026" غلط لأن الحرف "8"
+// أكبر أبجديًا من "1". الدالة دي بترجع رقم قابل للمقارنة (yyyy*10000+mm*100+dd)
+// عشان الترتيب "الأحدث فوق" يبقى صح فعليًا بغض النظر عن شكل النص.
+function qDateSortKey_(dateVal){
+  const s = qFormatListDate_(dateVal);
+  const p = String(s || '').trim().split(/[-\/]/);
+  if (p.length !== 3) return -1;
+  const d = Number(p[0]), m = Number(p[1]), y = Number(p[2]);
+  if (!y || !m || !d) return -1;
+  return y * 10000 + m * 100 + d;
+}
 function qPopulateCategoryList(){
   const dl = document.getElementById('q-cat-list');
   if (dl) dl.innerHTML = QCFG.categories.map(c => `<option value="${qEsc(c)}"></option>`).join('');
@@ -6616,6 +6629,7 @@ async function qRenderHome(token){
     `;
     _qHomeCustomers = customers;
     _qOpenClientKeys = new Set();
+    _qClistVisibleCount = Q_CLIST_PAGE_SIZE; // كل ما الصفحة تتفتح من جديد، ابدأ بأول 10
     qRenderCustomerListPanel_();
     qRenderClientTablePanel_();
   } catch(err){ showError(err); }
@@ -6624,13 +6638,22 @@ async function qRenderHome(token){
 // ===== كارت 1: "الكوتيشنات السابقة" — كل كوتيشن بيتعرض كسطر مستقل لوحده (زي ما كان الأصل) =====
 let _qHomeCustomers = [];
 
+// عدد الكوتيشنات الظاهرة حاليًا في القائمة — بيبدأ بـ10 وبيزيد 10 كل ما تدوس
+// "عرض المزيد"، وبيترجع لـ10 تاني كل ما القائمة تتحمّل من جديد (فتح الصفحة).
+let _qClistVisibleCount = 10;
+const Q_CLIST_PAGE_SIZE = 10;
+
 function qRenderCustomerListPanel_(){
   const box = document.getElementById('q-clist-panel'); if (!box) return;
   const customers = _qHomeCustomers;
   if (!customers.length) { box.innerHTML = `<div class="empty">مفيش كوتيشنات لسه</div>`; return; }
 
-  const items = customers.slice().sort((a,b) => String(b.date||'').localeCompare(String(a.date||'')));
-  box.innerHTML = items.map(c => `
+  // الأحدث فوق — ترتيب بالتاريخ الفعلي (qDateSortKey_) مش بمقارنة نصوص
+  const items = customers.slice().sort((a,b) => qDateSortKey_(b.date) - qDateSortKey_(a.date));
+  const visible = items.slice(0, _qClistVisibleCount);
+  const remaining = items.length - visible.length;
+
+  box.innerHTML = visible.map(c => `
     <div class="c-item">
       <div class="ci-info" onclick='qOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
         <div class="ci-name">${qEsc(c.engineer || c.address || c.name)}</div>
@@ -6640,7 +6663,17 @@ function qRenderCustomerListPanel_(){
         <button class="ci-badge" onclick='qOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>فتح ←</button>
         <button class="btn btn-sm btn-danger" onclick="qDeleteCustomer('${c.name.replace(/'/g,"\\'")}')">🗑 حذف</button>
       </div>
-    </div>`).join('');
+    </div>`).join('')
+    + (remaining > 0
+      ? `<div style="text-align:center;padding:12px 0 2px;">
+           <button type="button" class="btn btn-outline btn-sm" onclick="qShowMoreClist_()">عرض المزيد (${remaining})</button>
+         </div>`
+      : '');
+}
+
+function qShowMoreClist_(){
+  _qClistVisibleCount += Q_CLIST_PAGE_SIZE;
+  qRenderCustomerListPanel_();
 }
 
 // ===== كارت 2: "العملاء وكوتيشناتهم" — جدول منفصل تمامًا، بشكل مختلف (جدول حقيقي
@@ -6689,7 +6722,7 @@ function qRenderClientTablePanel_(){
   const groups = qGroupCustomers_(customers);
   box.innerHTML = groups.map(g => {
     const isOpen = _qOpenClientKeys.has(g.key);
-    const items = g.items.slice().sort((a,b) => String(b.date||'').localeCompare(String(a.date||'')));
+    const items = g.items.slice().sort((a,b) => qDateSortKey_(b.date) - qDateSortKey_(a.date));
     return `
     <div class="qc2-card${isOpen ? ' open' : ''}">
       <div class="qc2-head" onclick="qToggleClientRow_('${qEscJs(g.key)}')">
