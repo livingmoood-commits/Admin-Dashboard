@@ -744,6 +744,11 @@
   .ci-badge{ background:var(--gold); color:#fff; font-size:11px; padding:4px 12px; border-radius:20px; font-weight:700; cursor:pointer; border:none; font-family:inherit; transition:transform .2s var(--bounce), background .2s; }
   .ci-badge:hover{ transform:scale(1.1); background:var(--gold-dim); }
   .ci-badge:active{ transform:scale(.9); }
+  /* صف "عرض المزيد / عرض أقل" — بنفس ارتفاع/عرض صف الكوتيشن العادي (c-item)
+     عشان يبان جزء طبيعي من القائمة مش زرار تحتها */
+  .q-clist .c-item-more{ display:flex; align-items:center; justify-content:center; gap:6px; padding:13px 14px; background:transparent; border:1.5px dashed var(--gold-dim); border-radius:6px; margin-bottom:8px; cursor:pointer; color:var(--gold-dim); font-weight:700; font-size:13px; transition:background .2s, border-color .2s, color .2s, transform .22s var(--bounce); }
+  .q-clist .c-item-more:hover{ background:rgba(184,151,90,.08); border-color:var(--gold); color:var(--gold); transform:translateY(-2px); }
+  .q-clist .c-item-more:active{ transform:scale(.98); }
 
   /* ===== تجميع الكوتيشنات حسب العميل — كروت أكورديون بأفاتار، شكل مختلف
      تمامًا عن كروت q-clist (اللي هي مستطيلة مسطحة) وعن أي شكل جدول تقليدي ===== */
@@ -6653,6 +6658,8 @@ function qRenderCustomerListPanel_(){
   const visible = items.slice(0, _qClistVisibleCount);
   const remaining = items.length - visible.length;
 
+  const canCollapse = remaining === 0 && items.length > Q_CLIST_PAGE_SIZE;
+
   box.innerHTML = visible.map(c => `
     <div class="c-item">
       <div class="ci-info" onclick='qOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
@@ -6665,15 +6672,21 @@ function qRenderCustomerListPanel_(){
       </div>
     </div>`).join('')
     + (remaining > 0
-      ? `<div style="text-align:center;padding:12px 0 2px;">
-           <button type="button" class="btn btn-outline btn-sm" onclick="qShowMoreClist_()">عرض المزيد (${remaining})</button>
-         </div>`
+      ? `<div class="c-item-more" onclick="qShowMoreClist_()">عرض المزيد (${remaining}) ▾</div>`
+      : '')
+    + (canCollapse
+      ? `<div class="c-item-more" onclick="qShowLessClist_()">عرض أقل ▴</div>`
       : '');
 }
 
 function qShowMoreClist_(){
   _qClistVisibleCount += Q_CLIST_PAGE_SIZE;
   qRenderCustomerListPanel_();
+}
+function qShowLessClist_(){
+  _qClistVisibleCount = Q_CLIST_PAGE_SIZE;
+  qRenderCustomerListPanel_();
+  document.getElementById('q-clist-panel')?.scrollIntoView({ block:'nearest', behavior:'smooth' });
 }
 
 // ===== كارت 2: "العملاء وكوتيشناتهم" — جدول منفصل تمامًا، بشكل مختلف (جدول حقيقي
@@ -7346,6 +7359,7 @@ async function pRenderHome(token){
     const { customers } = await apiGet('payListCustomers');
     if (isStaleNav(token) || _pActionToken !== myTok) return;
     _pHomeCustomers = customers;
+    _pClistVisibleCount = P_CLIST_PAGE_SIZE; // كل ما الصفحة تتفتح من جديد، ابدأ بأول 10
     document.getElementById('content').innerHTML = `
       <div class="panel" id="p-master-panel"></div>
       <div class="panel">
@@ -7477,8 +7491,13 @@ function pRenderMasterPanel(){
   `;
 }
 
+// نفس نظام الصفحات (10 في الأول + عرض المزيد/عرض أقل) بتاع قائمة الكوتيشنات
+let _pClistVisibleCount = 10;
+const P_CLIST_PAGE_SIZE = 10;
+
 function pSetHomeFilter(val){
   _pHomeFilter = val;
+  _pClistVisibleCount = P_CLIST_PAGE_SIZE; // كل ما تغيّر الفلتر، ابدأ من أول 10 تاني
   pRenderClistPanel();
 }
 
@@ -7487,17 +7506,25 @@ function pRenderClistPanel(){
   const customers = _pHomeCustomers;
   const completedCount = customers.filter(c => c.completed).length;
   const filter = _pHomeFilter;
-  const visible = filter === 'completed' ? customers.filter(c => c.completed)
+  const visibleSet = filter === 'completed' ? customers.filter(c => c.completed)
                 : filter === 'incomplete' ? customers.filter(c => !c.completed)
                 : customers;
-  const sorted = [...visible].sort((a,b) => {
+  // ⚠️ إصلاح 2026-08-18: نفس باج ترتيب التاريخ بتاع الكوتيشنات — كان بيقارن
+  // التاريخ كنص (localeCompare) بدل تاريخ فعلي، فبيرتب غلط أحيانًا. غير التاريخ،
+  // المكتمل بيفضل تحت خالص زي ما هو (الشرط الأول في الترتيب مش بيتغيّر).
+  const sorted = [...visibleSet].sort((a,b) => {
     if (!!a.completed !== !!b.completed) return a.completed ? 1 : -1; // المكتمل ينزل تحت
-    return String(b.date||'').localeCompare(String(a.date||'')); // الأحدث فوق داخل كل مجموعة
+    return qDateSortKey_(b.date) - qDateSortKey_(a.date); // الأحدث فوق داخل كل مجموعة
   });
   const emptyMsg = filter === 'completed' ? 'مفيش سجلات مكتملة الدفع'
                  : filter === 'incomplete' ? 'مفيش سجلات لسه مكملتش الدفع'
                  : 'مفيش سجلات لسه';
   const incompleteCount = customers.length - completedCount;
+
+  const shown = sorted.slice(0, _pClistVisibleCount);
+  const remaining = sorted.length - shown.length;
+  const canCollapse = remaining === 0 && sorted.length > P_CLIST_PAGE_SIZE;
+
   panel.innerHTML = `
     <h3>السجلات السابقة (${customers.length})</h3>
     <div class="q-steps p-filter-tabs">
@@ -7505,9 +7532,9 @@ function pRenderClistPanel(){
       <div class="step ${filter==='completed'?'active':''}" onclick="pSetHomeFilter('completed')">مكتمل (${completedCount})</div>
       <div class="step ${filter==='incomplete'?'active':''}" onclick="pSetHomeFilter('incomplete')">غير مكتمل (${incompleteCount})</div>
     </div>
-    <div class="q-clist" style="animation:contentIn .35s var(--bounce);">
-    ${sorted.length ? sorted.map(c => {
-      const remaining = (Number(c.total)||0) - (Number(c.received)||0);
+    <div class="q-clist" id="p-clist-rows" style="animation:contentIn .35s var(--bounce);">
+    ${sorted.length ? shown.map(c => {
+      const remainingAmt = (Number(c.total)||0) - (Number(c.received)||0);
       const pct = c.total > 0 ? Math.min(100, (Number(c.received)||0)/c.total*100) : 0;
       return `
       <div class="c-item ${c.completed ? 'is-completed' : ''}">
@@ -7518,7 +7545,7 @@ function pRenderClistPanel(){
             <span>آخر دفعة: <b>${qEsc(c.lastPayment || '—')}</b></span>
             <span>الإجمالي: <b>${fmt(c.total)}</b></span>
             <span>المستلم: <b>${fmt(c.received)}</b></span>
-            <span>الباقي: <b style="color:${Math.abs(remaining)<=0.01?'var(--green)':'var(--red)'};">${fmt(remaining)}</b></span>
+            <span>الباقي: <b style="color:${Math.abs(remainingAmt)<=0.01?'var(--green)':'var(--red)'};">${fmt(remainingAmt)}</b></span>
             <span>النسبة: <b>${pct.toFixed(0)}%</b></span>
           </div>
         </div>
@@ -7527,9 +7554,22 @@ function pRenderClistPanel(){
           <button class="btn btn-sm btn-danger" onclick="pDeleteCustomer('${c.name.replace(/'/g,"\\'")}')">🗑 حذف</button>
         </div>
       </div>`;
-    }).join('') : `<div class="empty">${emptyMsg}</div>`}
+    }).join('')
+      + (remaining > 0 ? `<div class="c-item-more" onclick="pShowMoreClist_()">عرض المزيد (${remaining}) ▾</div>` : '')
+      + (canCollapse ? `<div class="c-item-more" onclick="pShowLessClist_()">عرض أقل ▴</div>` : '')
+    : `<div class="empty">${emptyMsg}</div>`}
     </div>
   `;
+}
+
+function pShowMoreClist_(){
+  _pClistVisibleCount += P_CLIST_PAGE_SIZE;
+  pRenderClistPanel();
+}
+function pShowLessClist_(){
+  _pClistVisibleCount = P_CLIST_PAGE_SIZE;
+  pRenderClistPanel();
+  document.getElementById('p-list-panel')?.scrollIntoView({ block:'nearest', behavior:'smooth' });
 }
 
 function pCreateRecord(){
