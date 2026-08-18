@@ -6571,6 +6571,19 @@ function qDateSortKey_(dateVal){
   if (!y || !m || !d) return -1;
   return y * 10000 + m * 100 + d;
 }
+// ⚠️ إصلاح 2026-08-19 ("لسه نفس المشكلة"): بعض الكوتيشنات القديمة كان فيها باج
+// في الباك إند بيكتب اسم المشروع/العنوان غلط في خلية التاريخ (زي "ارض المعارض"
+// بدل تاريخ فعلي) — والقايمة هنا كانت بس بتتحقق إن c.date "موجود" (truthy) مش
+// إنه شكله تاريخ فعلاً، فكانت بتعرض النص الغلط ده كأنه تاريخ. الدالة دي بتتأكد
+// إن القيمة شكلها يوم-شهر-سنة صحيح فعلاً قبل ما نعرضها؛ أي حاجة تانية (زي اسم
+// مشروع اتكتب غلط) بترجع false فمش بتتعرض خالص.
+function qIsValidListDate_(v){
+  const s = String(v || '').trim();
+  if (!s) return false;
+  if (!/^\d{1,2}[-\/]\d{1,2}[-\/]\d{4}$/.test(s)) return false;
+  const p = s.split(/[-\/]/).map(Number);
+  return p[0] >= 1 && p[0] <= 31 && p[1] >= 1 && p[1] <= 12;
+}
 function qPopulateCategoryList(){
   const dl = document.getElementById('q-cat-list');
   if (dl) dl.innerHTML = QCFG.categories.map(c => `<option value="${qEsc(c)}"></option>`).join('');
@@ -6660,17 +6673,26 @@ function qRenderCustomerListPanel_(){
 
   const canCollapse = remaining === 0 && items.length > Q_CLIST_PAGE_SIZE;
 
-  box.innerHTML = visible.map(c => `
+  box.innerHTML = visible.map(c => {
+    const title = c.engineer || c.address || c.name;
+    // لو العنوان/اسم المشروع مختلف عن العنوان الرئيسي المعروض فوق، نوريه
+    // جنب التاريخ (مثال: العنوان "Eng/Shady" فوق، وتحته "ارض المعارض · 18-8-2026")
+    const showAddress = c.address && c.address.trim() && c.address.trim() !== String(title).trim();
+    const metaBits = [];
+    if (showAddress) metaBits.push(qEsc(c.address));
+    if (qIsValidListDate_(c.date)) metaBits.push(qEsc(qFormatListDate_(c.date)));
+    return `
     <div class="c-item">
       <div class="ci-info" onclick='qOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
-        <div class="ci-name">${qEsc(c.engineer || c.address || c.name)}</div>
-        <div class="ci-meta">${c.date ? qEsc(qFormatListDate_(c.date)) : ''}</div>
+        <div class="ci-name">${qEsc(title)}</div>
+        <div class="ci-meta">${metaBits.join(' &middot; ')}</div>
       </div>
       <div class="ci-actions">
         <button class="ci-badge" onclick='qOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>فتح ←</button>
         <button class="btn btn-sm btn-danger" onclick="qDeleteCustomer('${c.name.replace(/'/g,"\\'")}')">🗑 حذف</button>
       </div>
-    </div>`).join('')
+    </div>`;
+  }).join('')
     + (remaining > 0
       ? `<div class="c-item-more" onclick="qShowMoreClist_()">عرض المزيد (${remaining}) ▾</div>`
       : '')
