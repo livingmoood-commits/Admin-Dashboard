@@ -6680,7 +6680,13 @@ function qRenderCustomerListPanel_(){
     const showAddress = c.address && c.address.trim() && c.address.trim() !== String(title).trim();
     const metaBits = [];
     if (showAddress) metaBits.push(qEsc(c.address));
-    if (qIsValidListDate_(c.date)) metaBits.push(qEsc(qFormatListDate_(c.date)));
+    // ⚠️ إصلاح 2026-08-19 (تاني): كنت بتحقق من صحة c.date الخام قبل ما
+    // qFormatListDate_ تتشغل عليه — فأي تاريخ لسه بشكله الغريب الأصلي
+    // (Date.toString()) كان بيترفض كـ"مش تاريخ صحيح" رغم إنه تاريخ صح فعلاً
+    // ومحتاج بس يتحوّل لشكل عادي. دلوقتي بنحوّل الأول (qFormatListDate_) وبعدين
+    // نتحقق من الناتج.
+    const formattedDate = qFormatListDate_(c.date);
+    if (qIsValidListDate_(formattedDate)) metaBits.push(qEsc(formattedDate));
     return `
     <div class="c-item">
       <div class="ci-info" onclick='qOpenCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'>
