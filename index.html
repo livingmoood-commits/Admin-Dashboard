@@ -598,6 +598,26 @@
      اللون لما القيمة فعلاً != 0 عشان تبان الحاجات المهمة (غياب/خصم حقيقي) واضحة.
      ⚠️ الترتيب هنا مهم: sm-cell لازم يتعرّف قبل mc-* عشان لون الخصم/الإضافة يغلب الرمادي. */
   td.sm-cell{ background:#fbf9f5; color:var(--muted); font-size:13.5px; white-space:nowrap; padding:6px 8px !important; }
+  /* ⚠️ إضافة 2026-08-20: زرار تفاصيل "إضافات (ج)" جوه خلية الملخص + البوكس اللي بيفتحه */
+  .pay-add-detail-btn{ display:inline-flex; align-items:center; gap:4px; background:none; border:none; padding:0; margin:0; font:inherit; font-weight:700; color:inherit; cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px; }
+  .pay-add-detail-btn:hover{ color:var(--green); }
+  .pay-add-detail-ic{ font-size:11px; opacity:.7; }
+  .pay-add-popover{ z-index:900; background:#fff; border:1.5px solid var(--border); border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.16); min-width:220px; max-width:300px; max-height:320px; overflow-y:auto; font-size:12.5px; }
+  .pay-add-pop-head{ padding:9px 12px; font-weight:700; background:var(--cream); border-bottom:1px solid var(--border); border-radius:10px 10px 0 0; position:sticky; top:0; }
+  .pay-add-pop-list{ padding:4px 8px; }
+  .pay-add-pop-row{ display:flex; align-items:center; gap:8px; padding:6px 4px; border-bottom:1px dashed var(--border); }
+  .pay-add-pop-row:last-child{ border-bottom:none; }
+  .pay-add-pop-tag{ background:#2C5F3A1a; color:var(--green); border:1px solid #2C5F3A55; border-radius:4px; padding:1px 6px; font-size:10.5px; font-weight:700; white-space:nowrap; }
+  .pay-add-pop-tag.sehra{ background:#8a64081a; color:#8a6408; border-color:#8a640855; }
+  .pay-add-pop-date{ color:var(--muted); white-space:pre-line; flex:1; }
+  .pay-add-pop-amount{ font-weight:700; direction:ltr; }
+  .pay-add-pop-total{ padding:8px 12px; border-top:1px solid var(--border); font-size:12.5px; text-align:left; direction:ltr; }
+  /* ⚠️ إضافة 2026-08-20: جدول الإجمالي الكلي في آخر مودال "تقرير اسبوعي" */
+  .wr-grand-tbl{ width:100%; border-collapse:collapse; font-size:13px; }
+  .wr-grand-tbl td{ padding:7px 10px; border-bottom:1px solid var(--border); }
+  .wr-grand-tbl td:first-child{ color:var(--muted); }
+  .wr-grand-tbl td:last-child{ font-weight:700; text-align:left; direction:ltr; }
+  .wr-grand-tbl tr:last-child td{ border-bottom:none; }
   td.mc-ded{ color:var(--red); font-weight:700; }
   td.mc-add{ color:var(--green); font-weight:700; }
   td.mc-draw{ color:#8a6408; font-weight:700; }
@@ -2819,7 +2839,19 @@ function payrollRenderWeeklyTable_(box, data){
       const sumHeaders = data.weekHeaderBlocks[wi].sumHeaders;
       const daysHtml = wk.dayCells.map((v, di) => payrollDayCellHtml_(r.row, dayStartCol + di, v, empIdx, dayCursor + di, dayDates[di], r.name, (wk.dayNotes || [])[di])).join('');
       dayCursor += wk.dayCells.length;
-      const sumHtml = wk.summaryCells.map((v, si) => `<td class="sm-cell ${summaryCellClass(sumHeaders[si], v)}" data-sum-idx="${sumFlatIdx++}">${qEsc(v)}</td>`).join('');
+      // ⚠️ إضافة 2026-08-20: خلية "إضافات (ج)" — لو فيها قيمة، بتتحول لزرار قابل
+      // للدوس بيفتح بوكس صغير جنبها فيه تفصيل كل إضافة/سهرة في الأسبوع ده
+      // (بالتاريخ واليوم والسعر لكل واحدة)، مبني على نفس بيانات "تقرير اسبوعي"
+      // الموجودة أصلاً — من غير ما نضطر نفتح المودال الكامل بتاعه.
+      const sumHtml = wk.summaryCells.map((v, si) => {
+        const header = sumHeaders[si];
+        const cls = summaryCellClass(header, v);
+        const idx = sumFlatIdx++;
+        if (/إضافات/.test(header) && qNum(v) > 0) {
+          return `<td class="sm-cell ${cls}" data-sum-idx="${idx}"><button type="button" class="pay-add-detail-btn" data-emp="${qEsc(r.name)}" data-week="${wi}" title="اضغط لعرض تفاصيل الإضافات (السهرات) في الأسبوع ده">${qEsc(v)}<span class="pay-add-detail-ic">🔎</span></button></td>`;
+        }
+        return `<td class="sm-cell ${cls}" data-sum-idx="${idx}">${qEsc(v)}</td>`;
+      }).join('');
       return daysHtml + sumHtml;
     }).join('');
     const monthSumHtml = r.monthSummaryCells.map((v, si) => `<td class="sm-cell ${summaryCellClass(data.monthSummaryHeaders[si], v)}" data-sum-idx="${sumFlatIdx++}">${qEsc(v)}</td>`).join('');
@@ -2866,6 +2898,97 @@ function payrollRenderWeeklyTable_(box, data){
   payrollQaHighlight_();
   const wrBtn = document.getElementById('payWeeklyReportBtn');
   if (wrBtn) wrBtn.addEventListener('click', () => payrollOpenWeeklyReportModal(data));
+  // ⚠️ إضافة 2026-08-20: زراير تفاصيل "إضافات (ج)" لكل أسبوع
+  box.querySelectorAll('.pay-add-detail-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      payShowAdditionsPopover(btn.dataset.emp, parseInt(btn.dataset.week, 10), btn);
+    });
+  });
+}
+
+/* ═══════════════════ بوكس صغير: تفصيل الإضافات/السهرات لموظف في أسبوع معيّن ═══════════════════
+ * ⚠️ إضافة 2026-08-20: بيتفتح لما تدوس على قيمة خلية "إضافات (ج)" في الجدول
+ * الأسبوعي الرئيسي — من غير ما تفتح مودال "تقرير اسبوعي" الكامل. بيستخدم نفس
+ * أكشن getWeeklyReport الموجود أصلاً، وبيفلتر منه بس الأيام اللي فيها إضافة
+ * (add > 0)، وبيوضح لو الإضافة دي "سهرة" (لو النوت بتاعتها فيها كلمة سهرة). */
+let _payAddPopoverEl = null;
+function closePayAddPopover(){
+  if (_payAddPopoverEl) { _payAddPopoverEl.remove(); _payAddPopoverEl = null; }
+  document.removeEventListener('mousedown', _payAddPopoverOutsideClick_, true);
+  window.removeEventListener('scroll', closePayAddPopover, true);
+  window.removeEventListener('resize', closePayAddPopover);
+}
+function _payAddPopoverOutsideClick_(e){
+  if (_payAddPopoverEl && !_payAddPopoverEl.contains(e.target) && !e.target.closest('.pay-add-detail-btn')) closePayAddPopover();
+}
+async function payShowAdditionsPopover(empName, weekIndex, btnEl){
+  const alreadyOpenForThis = _payAddPopoverEl && _payAddPopoverEl.dataset.forBtn === (empName + '|' + weekIndex);
+  closePayAddPopover();
+  if (alreadyOpenForThis) return; // دوسة تانية على نفس الزرار = تقفل بس
+
+  const pop = document.createElement('div');
+  pop.className = 'pay-add-popover';
+  pop.dataset.forBtn = empName + '|' + weekIndex;
+  pop.innerHTML = '<div class="loading-row" style="padding:10px;font-size:12.5px;">جاري التحميل...</div>';
+  document.body.appendChild(pop);
+  _payAddPopoverEl = pop;
+  _payPositionPopover_(pop, btnEl);
+  setTimeout(() => {
+    document.addEventListener('mousedown', _payAddPopoverOutsideClick_, true);
+    window.addEventListener('scroll', closePayAddPopover, true);
+    window.addEventListener('resize', closePayAddPopover);
+  }, 0);
+
+  try {
+    const res = await apiGet('getWeeklyReport', { year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex, weekIndex, employees: [empName] });
+    if (_payAddPopoverEl !== pop) return; // اتقفل قبل ما الرد يوصل
+    if (!res || !res.exists || !res.employees || !res.employees.length) {
+      pop.innerHTML = `<div class="msg err" style="display:block;padding:8px 10px;margin:0;">${qEsc((res && res.error) || 'تعذر تحميل التفاصيل')}</div>`;
+      return;
+    }
+    const days = (res.employees[0].days || []).filter(d => qNum(d.add) > 0);
+    if (!days.length) {
+      pop.innerHTML = '<div class="empty" style="padding:10px;font-size:12.5px;">مفيش تفاصيل إضافات مسجلة للأسبوع ده</div>';
+      return;
+    }
+    pop.innerHTML = `
+      <div class="pay-add-pop-head">${qEsc(empName)} — الإضافات (${days.length})</div>
+      <div class="pay-add-pop-list">
+        ${days.map(d => {
+          const isSehra = /سهر[ةه]/.test(d.note || '');
+          return `<div class="pay-add-pop-row">
+            <span class="pay-add-pop-tag ${isSehra ? 'sehra' : ''}">${isSehra ? 'سهرة' : 'إضافة'}</span>
+            <span class="pay-add-pop-date">${qEsc(d.label || d.date)}</span>
+            <span class="pay-add-pop-amount">${fmt(d.add)} ج</span>
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="pay-add-pop-total">الإجمالي: <b>${fmt(days.reduce((s,d)=>s+qNum(d.add),0))} ج</b></div>
+    `;
+    _payPositionPopover_(pop, btnEl); // الحجم اتغيّر بعد ما اتملى بالمحتوى — نعيد الحساب
+  } catch (err) {
+    if (_payAddPopoverEl === pop) pop.innerHTML = `<div class="msg err" style="display:block;padding:8px 10px;margin:0;">خطأ: ${qEsc(err.message || err)}</div>`;
+  }
+}
+// بتحط البوكس جنب الزرار اللي اتدوس عليه، وبتراعي حواف الشاشة عشان ميطلعش برة
+function _payPositionPopover_(pop, anchorEl){
+  const r = anchorEl.getBoundingClientRect();
+  const margin = 8;
+  pop.style.position = 'fixed';
+  pop.style.visibility = 'hidden';
+  pop.style.top = '0px'; pop.style.left = '0px';
+  requestAnimationFrame(() => {
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    let top = r.bottom + margin;
+    if (top + ph > window.innerHeight - margin) top = Math.max(margin, r.top - ph - margin);
+    let left = r.left;
+    if (left + pw > window.innerWidth - margin) left = window.innerWidth - pw - margin;
+    if (left < margin) left = margin;
+    pop.style.top = top + 'px';
+    pop.style.left = left + 'px';
+    pop.style.visibility = 'visible';
+  });
 }
 
 /* ═══════════════════ زرار "تقرير اسبوعي" — الموظفين الاسبوعيين ═══════════════════
@@ -2952,6 +3075,62 @@ async function payrollShowWeeklyReport(weekIndex, employeeNames){
   }
 }
 
+// ⚠️ إضافة 2026-08-20: جدول إجمالي واحد في آخر التقرير الأسبوعي (المودال +
+// الـ PDF) — بيجمع كل الأرقام بتاعة كل الموظفين المختارين مع بعض في مكان واحد.
+// بنجمع من مصدرين: (1) totals المحسوبة من أكواد الأيام (إضافة/خصم/غياب/مسحوبات/
+// شغل الجمعة)، و(2) weekSummary الرسمي (نفس أعمدة الشيت زي "صافي الأسبوع")
+// لكل موظف، وبنجمعهم عمود بعمود بنفس ترتيب ظهورهم.
+function _wrComputeGrandTotals_(employees){
+  const totals = { add: 0, deduct: 0, absent: 0, withdraw: 0, fridayWork: 0, fullAbsenceDays: 0 };
+  const weekSumTotals = {}; const weekSumOrder = [];
+  (employees || []).forEach(e => {
+    const t = e.totals || {};
+    totals.add += qNum(t.add); totals.deduct += qNum(t.deduct); totals.absent += qNum(t.absent);
+    totals.withdraw += qNum(t.withdraw); totals.fridayWork += qNum(t.fridayWork);
+    totals.fullAbsenceDays += qNum(t.fullAbsenceDays);
+    (e.weekSummary || []).forEach(s => {
+      if (!(s.label in weekSumTotals)) { weekSumTotals[s.label] = 0; weekSumOrder.push(s.label); }
+      weekSumTotals[s.label] += qNum(s.value);
+    });
+  });
+  return { totals, weekSumTotals, weekSumOrder, count: (employees || []).length };
+}
+// HTML الجدول نفسه — بتتنادى مرتين (مودال بستايل عادي، وPDF بستايل الطباعة) —
+// forPrint بيتحكم في الألوان/الفونت سايز عشان تتناسب مع باقي الـ PDF.
+function _wrGrandTotalsTableHtml_(employees, forPrint){
+  const g = _wrComputeGrandTotals_(employees);
+  if (!g.count) return '';
+  const rows = [];
+  g.weekSumOrder.forEach(label => rows.push([label, fmt(g.weekSumTotals[label]) + ' ج']));
+  rows.push(['إجمالي الإضافات (سهرات)', fmt(g.totals.add) + ' ج']);
+  rows.push(['إجمالي الخصومات', fmt(g.totals.deduct) + ' ج']);
+  rows.push(['إجمالي الغياب', fmt(g.totals.absent) + ' ج' + (g.totals.fullAbsenceDays ? ` (${g.totals.fullAbsenceDays} يوم كامل)` : '')]);
+  rows.push(['إجمالي المسحوبات', fmt(g.totals.withdraw) + ' ج']);
+  if (g.totals.fridayWork) rows.push(['إجمالي شغل الجمعة', fmt(g.totals.fridayWork) + ' ج']);
+  rows.push(['عدد الموظفين في التقرير', String(g.count)]);
+
+  if (forPrint) {
+    return `
+      <div style="margin-top:20px;border-top:2px solid #B8975A;padding-top:12px;">
+        <div style="font-weight:700;font-size:13px;margin-bottom:6px;">📊 إجمالي التقرير (كل الموظفين المختارين)</div>
+        <table style="width:100%;border-collapse:collapse;font-size:11.5px;">
+          <tbody>
+            ${rows.map(([label, val]) => `<tr><td style="padding:5px 8px;border-bottom:1px solid #E7E0D4;color:#6B5E4E;">${qEsc(label)}</td><td style="padding:5px 8px;border-bottom:1px solid #E7E0D4;font-weight:700;">${qEsc(val)}</td></tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+  return `
+    <div class="panel" style="margin-top:4px;">
+      <h4 style="margin-bottom:8px;">📊 إجمالي التقرير (كل الموظفين المختارين)</h4>
+      <table class="wr-grand-tbl">
+        <tbody>
+          ${rows.map(([label, val]) => `<tr><td>${qEsc(label)}</td><td>${qEsc(val)}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
 function renderWeeklyReportModal_(data){
   const employees = data.employees || [];
   // ⚠️ إضافة 2026-08-15: النوت بقت ممكن تبقى فيها أكتر من سطر (كل سطر بيخص
@@ -3021,6 +3200,7 @@ function renderWeeklyReportModal_(data){
       <button class="btn btn-primary btn-sm" onclick="payrollPrintWeeklyReport()">⬇ تحميل PDF</button>
     </div>
     <div id="wrEmpList">${empHtml}</div>
+    ${_wrGrandTotalsTableHtml_(employees, false)}
   `);
 }
 
@@ -3089,6 +3269,8 @@ function payrollBuildWeeklyReportPdfHtml_(data){
       </div>`;
   }).join('') : '<p style="text-align:center;color:#6B5E4E;padding:20px;">مفيش موظفين اسبوعيين مسجلين</p>';
 
+  const grandTotalsHtml = _wrGrandTotalsTableHtml_(employees, true);
+
   return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"/>
   <title>${qEsc(pdfFileTitle('تقرير اسبوعي', data.weekLabel))}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -3102,6 +3284,7 @@ function payrollBuildWeeklyReportPdfHtml_(data){
     table.wr-days-table tr{page-break-inside:avoid;break-inside:avoid;}
     .wr-emp-block{page-break-inside:auto;}
     .wr-emp-head{page-break-after:avoid;break-after:avoid;}
+    div[style*="border-top:2px solid #B8975A"]{page-break-inside:avoid;break-inside:avoid;}
     .brand-block{text-align:center;padding-bottom:14px;border-bottom:2px solid #B8975A;margin-bottom:16px;}
     .brand-title{font-family:'Playfair Display',Georgia,serif;font-size:38px;letter-spacing:5px;color:#1E1A15;direction:ltr;}
     .brand-title span{color:#B8975A;} .brand-sub{font-size:9px;letter-spacing:3px;color:#6B5E4E;text-transform:uppercase;margin-top:4px;direction:ltr;}
@@ -3112,6 +3295,7 @@ function payrollBuildWeeklyReportPdfHtml_(data){
     <h2 style="text-align:center;margin-bottom:4px;">تقرير اسبوعي — الموظفين الاسبوعيين</h2>
     <p style="text-align:center;color:#6B5E4E;font-size:12.5px;margin-bottom:18px;">الأسبوع ${qEsc(data.weekLabel)} &nbsp;(${qEsc(data.from)} → ${qEsc(data.to)})</p>
     ${sections}
+    ${grandTotalsHtml}
     <div class="footer">Living Mood</div>
   </div></body></html>`;
 }
@@ -6911,10 +7095,19 @@ function qSetField(id, f, v){ const r = QSTATE.rows.find(r => r._id === id); if 
 function qSetNumField(id, f, v){ const r = QSTATE.rows.find(r => r._id === id); if (r) r[f] = qNum(v); qRefreshTotals(); qSaveSession(); }
 // ⚠️ إضافة: زرار عداد +/- لخانة الكمية — بيزود/ينقّص 1 في كل ضغطة بدل ما تكتب
 // الرقم بإيدك كل مرة. مبيقلش عن 0.
+// ⚠️ إصلاح 2026-08-20: كان بينادي qRenderRows() اللي بتعيد بناء كل صفوف الجدول
+// من الصفر (innerHTML) — أي كلام مكتوب في خانة "الوصف" أو "ملاحظات" في أي صف
+// (حتى لو صف تاني غير اللي بتدوس فيه +/-) ومتسجلش لسه (كان onchange بيتسجل
+// بس لما تسيب الخانة/تعمل blur) كان بيتمسح فورًا. دلوقتي بنحدّث خانة الكمية
+// وعمود الإجمالي بتاعين الصف ده بس مباشرة في الـ DOM، من غير أي إعادة رسم
+// لباقي الجدول — فمفيش أي فوكس أو كتابة هتضيع في أي خانة تانية.
 function qStepQty(id, delta){
   const r = QSTATE.rows.find(r => r._id === id); if (!r) return;
   r.qty = Math.max(0, qNum(r.qty) + delta);
-  qRenderRows();
+  const qtyInput = document.querySelector(`[data-qty-input="${id}"]`);
+  if (qtyInput) qtyInput.value = r.qty;
+  const totalCell = document.querySelector(`[data-qty-total="${id}"]`);
+  if (totalCell) totalCell.textContent = fmt(qTot(r));
   qRefreshTotals();
   qSaveSession();
 }
@@ -6958,22 +7151,22 @@ function qRenderRows(){
   const tb = document.getElementById('q-body'); if (!tb) return;
   const n = QSTATE.rows.length;
   tb.innerHTML = QSTATE.rows.map((r,i) => `
-    <tr>
+    <tr data-qrow="${r._id}">
       <td style="text-align:center;color:var(--muted);font-size:11px;">${i+1}</td>
       <td><input autocomplete="off" type="text" list="q-cat-list" value="${qEsc(r.category)}" placeholder="DOORS"
-        onchange="qSetField(${r._id},'category',this.value)"></td>
-      <td><input autocomplete="off" type="text" value="${qEsc(r.unit)}" placeholder="الوحده" onchange="qSetField(${r._id},'unit',this.value)"></td>
-      <td><textarea placeholder="اكتب وصف العمل هنا..." onchange="qSetField(${r._id},'description',this.value)">${qEsc(r.description)}</textarea></td>
+        oninput="qSetField(${r._id},'category',this.value)"></td>
+      <td><input autocomplete="off" type="text" value="${qEsc(r.unit)}" placeholder="الوحده" oninput="qSetField(${r._id},'unit',this.value)"></td>
+      <td><textarea placeholder="اكتب وصف العمل هنا..." oninput="qSetField(${r._id},'description',this.value)">${qEsc(r.description)}</textarea></td>
       <td style="white-space:nowrap;">
         <div style="display:flex;align-items:center;gap:2px;">
           <button type="button" class="btn btn-sm" title="نقص 1" onmousedown="event.preventDefault();" onclick="qStepQty(${r._id},-1)" style="padding:2px 7px;">−</button>
-          <input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" value="${r.qty}" onchange="qSetNumField(${r._id},'qty',this.value)" onkeypress="return /[0-9.]/.test(event.key)" style="width:48px;text-align:center;">
+          <input autocomplete="off" type="text" class="ltr-num" data-qty-input="${r._id}" inputmode="numeric" value="${r.qty}" oninput="qSetNumField(${r._id},'qty',this.value)" onkeypress="return /[0-9.]/.test(event.key)" style="width:48px;text-align:center;">
           <button type="button" class="btn btn-sm" title="زود 1" onmousedown="event.preventDefault();" onclick="qStepQty(${r._id},1)" style="padding:2px 7px;">+</button>
         </div>
       </td>
-      <td><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" value="${r.price}" onchange="qSetNumField(${r._id},'price',this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
-      <td class="num-cell">${fmt(qTot(r))}</td>
-      <td><textarea placeholder="ملاحظة..." onchange="qSetField(${r._id},'notes',this.value)">${qEsc(r.notes)}</textarea></td>
+      <td><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" value="${r.price}" oninput="qSetNumField(${r._id},'price',this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
+      <td class="num-cell" data-qty-total="${r._id}">${fmt(qTot(r))}</td>
+      <td><textarea placeholder="ملاحظة..." oninput="qSetField(${r._id},'notes',this.value)">${qEsc(r.notes)}</textarea></td>
       <td style="white-space:nowrap;">
         <button type="button" class="btn btn-sm" title="نقل لفوق" ${i===0?'disabled':''} onmousedown="event.preventDefault();" onclick="qMoveRow(${r._id},'up')">▲</button>
         <button type="button" class="btn btn-sm" title="نقل لتحت" ${i===n-1?'disabled':''} onmousedown="event.preventDefault();" onclick="qMoveRow(${r._id},'down')">▼</button>
