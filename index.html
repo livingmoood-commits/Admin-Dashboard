@@ -9243,14 +9243,21 @@ async function renderMissingItems(token) {
             <select class="d-input" id="mi_project">${MISTATE.projects.map(p => `<option value="${qEsc(p)}" ${p === MISTATE.project ? 'selected' : ''}>${qEsc(p)}</option>`).join('')}</select>
           </div>
         </div>
-        <!-- ⚠️ إصلاح 2026-08-11 (تاني): بدل الفورم اللي بيتصفّر بعد كل بند —
-             دلوقتي بالظبط زي جدول بنود الكوتيشن: كل دوسة "+ إضافة سطر" بتفتح
-             سطر (أو أكتر، حسب العدد جنبها) فاضي جاهز تملاه على طول جوه الجدول
-             نفسه، وتقدر تفتح كذا سطر مرة واحدة بالعداد وتملاهم واحد واحد، وفي
-             الآخر دوسة واحدة "💾 حفظ الكل" تبعتهم كلهم للسيرفر مع بعض. -->
+        <!-- ⚠️ إصلاح 2026-08-20 (على الموبايل: الخلايا بتبقى صغيرة جدًا ومش
+             بتشوف بتكتب إيه): الجدول ده كان من غير min-width، فالمتصفح على
+             الموبايل كان بيضغط كل الأعمدة عشان تتلم في عرض الشاشة الضيق بدل
+             ما يعمل سكرول أفقي (اللي أصلاً متجهز في .tbl-wrap تحت) — فكل
+             خانة كانت بتبقى كام بكسل بس، والكتابة جواها متقصوصة تمامًا.
+             دلوقتي الجدول له عرض أدنى ثابت (min-width) وكل عمود له عرض
+             مضمون عن طريق colgroup، فالخانات بقت بحجم مريح تشوف بتكتب
+             فيه إيه، وعلى الشاشة الضيقة تقدر تسحب يمين/شمال تشوف باقي
+             الأعمدة زي أي جدول تاني في الداشبورد. -->
         <div class="tbl-wrap" style="margin-top:10px;">
-          <table>
-            <thead><tr><th>البند</th><th style="width:130px;">المقاس</th><th style="width:150px;">الوحدة</th><th style="width:90px;">الكمية</th><th>ملاحظة</th><th style="width:40px;"></th></tr></thead>
+          <table style="min-width:660px;table-layout:fixed;">
+            <colgroup>
+              <col style="width:190px;"><col style="width:130px;"><col style="width:140px;"><col style="width:100px;"><col style="width:190px;"><col style="width:44px;">
+            </colgroup>
+            <thead><tr><th>البند</th><th>المقاس</th><th>الوحدة</th><th>الكمية</th><th>ملاحظة</th><th></th></tr></thead>
             <tbody id="miPendingBody"><tr><td colspan="6" class="empty">دوس "+ إضافة سطر" عشان تبدأ تضيف بنود</td></tr></tbody>
           </table>
         </div>
@@ -9599,17 +9606,17 @@ function miRenderPending() {
   if (!MISTATE.pending.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">دوس "+ إضافة سطر" عشان تبدأ تضيف بنود</td></tr>'; return; }
   tb.innerHTML = MISTATE.pending.map(p => `
     <tr>
-      <td><input class="d-input" autocomplete="off" type="text" value="${qEsc(p.name)}" placeholder="مثال: كوع ألوميتال 90 درجة"
-        onchange="miSetPendingField(${p._id},'name',this.value)"></td>
-      <td><input class="d-input" autocomplete="off" type="text" value="${qEsc(p.size)}" placeholder="مثال: 4 سم"
-        onchange="miSetPendingField(${p._id},'size',this.value)"></td>
-      <td><select class="d-input" onchange="miSetPendingField(${p._id},'unit',this.value)">
+      <td><input class="d-input" data-mirow="${p._id}" data-mifield="name" autocomplete="off" type="text" value="${qEsc(p.name)}" placeholder="مثال: كوع ألوميتال 90 درجة"
+        oninput="miSetPendingField(${p._id},'name',this.value)"></td>
+      <td><input class="d-input" data-mirow="${p._id}" data-mifield="size" autocomplete="off" type="text" value="${qEsc(p.size)}" placeholder="مثال: 4 سم"
+        oninput="miSetPendingField(${p._id},'size',this.value)"></td>
+      <td><select class="d-input" data-mirow="${p._id}" data-mifield="unit" onchange="miSetPendingField(${p._id},'unit',this.value)">
         <option value=""></option>${WORKFLOW_UNITS_JS.map(u => `<option value="${qEsc(u)}" ${p.unit===u?'selected':''}>${qEsc(u)}</option>`).join('')}
       </select></td>
-      <td><input class="d-input ltr-num" autocomplete="off" type="text" inputmode="decimal" value="${qEsc(p.qty)}" placeholder="مثال: 12"
-        onchange="miSetPendingField(${p._id},'qty',this.value)"></td>
-      <td><input class="d-input" autocomplete="off" type="text" value="${qEsc(p.notes)}" placeholder="أي تفاصيل إضافية..."
-        onchange="miSetPendingField(${p._id},'notes',this.value)"></td>
+      <td><input class="d-input ltr-num" data-mirow="${p._id}" data-mifield="qty" autocomplete="off" type="text" inputmode="decimal" value="${qEsc(p.qty)}" placeholder="مثال: 12"
+        oninput="miSetPendingField(${p._id},'qty',this.value)"></td>
+      <td><input class="d-input" data-mirow="${p._id}" data-mifield="notes" autocomplete="off" type="text" value="${qEsc(p.notes)}" placeholder="أي تفاصيل إضافية..."
+        oninput="miSetPendingField(${p._id},'notes',this.value)"></td>
       <td><button type="button" class="btn btn-sm btn-danger" onclick="miRemovePending(${p._id})">✕</button></td>
     </tr>`).join('');
 }
