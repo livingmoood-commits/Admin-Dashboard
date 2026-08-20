@@ -3128,12 +3128,16 @@ function _wrComputeGrandTotals_(employees){
 function _wrGrandTotalsTableHtml_(employees, forPrint){
   const g = _wrComputeGrandTotals_(employees);
   if (!g.count) return '';
+  // ⚠️ تعديل: أي صف قيمته صفر بيتشال خالص من الجدول (مش بس بيتلوّن) — التقرير
+  // بيبقى أقصر وأوضح ومركّز بس على الحاجات اللي فعلاً حصلت. "عدد الموظفين"
+  // مستثنى لأنه عدد مش "قيمة مالية" وبيفيد كمعلومة حتى لو صفر (نادرًا ما يحصل
+  // أصلًا — لو g.count صفر الدالة بترجع '' فوق وميوصلش هنا خالص).
   const rows = [];
-  g.weekSumOrder.forEach(label => rows.push([label, fmt(g.weekSumTotals[label]) + ' ج']));
-  rows.push(['إجمالي الإضافات (سهرات)', fmt(g.totals.add) + ' ج']);
-  rows.push(['إجمالي الخصومات', fmt(g.totals.deduct) + ' ج']);
-  rows.push(['إجمالي الغياب', fmt(g.totals.absent) + ' ج' + (g.totals.fullAbsenceDays ? ` (${g.totals.fullAbsenceDays} يوم كامل)` : '')]);
-  rows.push(['إجمالي المسحوبات', fmt(g.totals.withdraw) + ' ج']);
+  g.weekSumOrder.forEach(label => { if (qNum(g.weekSumTotals[label]) !== 0) rows.push([label, fmt(g.weekSumTotals[label]) + ' ج']); });
+  if (g.totals.add)      rows.push(['إجمالي الإضافات (سهرات)', fmt(g.totals.add) + ' ج']);
+  if (g.totals.deduct)   rows.push(['إجمالي الخصومات', fmt(g.totals.deduct) + ' ج']);
+  if (g.totals.absent)   rows.push(['إجمالي الغياب', fmt(g.totals.absent) + ' ج' + (g.totals.fullAbsenceDays ? ` (${g.totals.fullAbsenceDays} يوم كامل)` : '')]);
+  if (g.totals.withdraw) rows.push(['إجمالي المسحوبات', fmt(g.totals.withdraw) + ' ج']);
   if (g.totals.fridayWork) rows.push(['إجمالي شغل الجمعة', fmt(g.totals.fridayWork) + ' ج']);
   rows.push(['عدد الموظفين في التقرير', String(g.count)]);
 
