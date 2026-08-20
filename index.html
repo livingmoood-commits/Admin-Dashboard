@@ -7305,7 +7305,21 @@ function qFormatDesc(text){
   if (parts.length <= 1) return qEsc(String(text).trim());
   return parts.map(p => `<div style="margin-bottom:4px;">• ${qEsc(p)}</div>`).join('');
 }
-function qBuildPdfHtml(){
+// ⚠️ إصلاح 2026-08-20 (معاينة الكوتيشن بتطلع صفحة بيضة فاضية على الموبايل):
+// الدالة دي كانت بتتستخدم لحاجتين مختلفين خالص بنفس الـ HTML: (1) نافذة
+// الطباعة/PDF الحقيقية اللي بتتفتح في تابّ جديد كامل (محتاجة عرض ثابت 1000px
+// عشان الطباعة تطلع مظبوطة — شوف تعليق 2026-08-15 تحت)، و(2) الـ <iframe>
+// الصغير اللي بيعرض المعاينة جوه الصفحة نفسها. مشكلة إن نفس الـ HTML بيتحط
+// جوه iframe: تاج <meta name="viewport"> جوه مستند iframe مش حاجة قياسية
+// أصلاً (الفيوبورت بتاعها بتتحسب من أعلى صفحة بس حسب المواصفة)، وموبايل
+// سفاري بالذات عنده باج معروف إنه بيحاول يطبقها بشكل غلط جوه الـ iframe،
+// فبيرندر الصفحة مقلوبة زوم غالبًا "فاضية" بيضة أو مقصوصة تمامًا. الحل:
+// باراميتر forPreview — لو true، بنشيل تاج الـ viewport والعرض الثابت
+// 1000px خالص ونخلي الصفحة مرنة (responsive) وتاخد عرض الـ iframe نفسه،
+// وجدول العناصر بيتلف/يعمل سكرول أفقي لوحده لو ضاق زي أي مكان تاني في
+// الداشبورد. نافذة الطباعة الحقيقية (forPreview=false, الافتراضي) لسه
+// شغالة بنفس الطريقة القديمة بالظبط عشان الطباعة تفضل مظبوطة.
+function qBuildPdfHtml(forPreview){
   const c = QSTATE.customer || {};
   const dlr = QSTATE.dollar || QCFG.defaultDollar;
   const date = new Date().toLocaleDateString('en-GB');
@@ -7328,11 +7342,11 @@ function qBuildPdfHtml(){
   });
   return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"/>
   <title>${qEsc(pdfFileTitle('Quotation', c.address || c.name))}</title>
-  <meta name="viewport" content="width=1000"/>
+  ${forPreview ? '<meta name="viewport" content="width=device-width,initial-scale=1"/>' : '<meta name="viewport" content="width=1000"/>'}
   <link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet"/>
   <style>
-    *{box-sizing:border-box;margin:0;padding:0;} body{font-family:'Cairo','Arial',sans-serif;direction:rtl;color:#1E1A15;background:#fff;min-width:1000px;}
+    *{box-sizing:border-box;margin:0;padding:0;} body{font-family:'Cairo','Arial',sans-serif;direction:rtl;color:#1E1A15;background:#fff;${forPreview ? '' : 'min-width:1000px;'}}
     @page{size:A4;margin:14mm 12mm;} @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;min-width:0;}}
     .brand-block{text-align:center;padding-bottom:14px;border-bottom:2px solid #B8975A;margin-bottom:16px;}
     .brand-title{font-family:'Playfair Display',Georgia,serif;font-size:38px;letter-spacing:5px;color:#1E1A15;direction:ltr;}
@@ -7444,14 +7458,27 @@ function qRenderPreview(){
     </div>
   `;
   const frame = document.getElementById('qPreviewFrame');
-  frame.addEventListener('load', () => {
-    try { frame.style.height = (frame.contentDocument.documentElement.scrollHeight + 20) + 'px'; } catch(e){ frame.style.height = '1200px'; }
-  });
-  frame.srcdoc = qBuildPdfHtml();
+  // ⚠️ إصلاح 2026-08-20: كان بيعتمد بس على حدث load وحيد قبل ما srcdoc
+  // تتحط أصلاً — على بعض متصفحات الموبايل ممكن حدث الـ load بتاع الـ
+  // about:blank الأولي (قبل ما srcdoc يتحط) يجري بنفس اللحظة، فيحسب ارتفاع
+  // مستند فاضي (0) ويسيب المعاينة كإنها مقفولة/فاضية. دلوقتي بنستخدم دالة
+  // واحدة معاد استخدامها، وبنضيف مهلة احتياطية (timeout) تتأكد إن الارتفاع
+  // اتظبط حتى لو حدث الـ load الصحيح فاتنا لأي سبب.
+  let _qPreviewSized = false;
+  const sizeFrame = () => {
+    try {
+      const h = frame.contentDocument.documentElement.scrollHeight;
+      if (h > 50) { frame.style.height = (h + 20) + 'px'; _qPreviewSized = true; }
+    } catch (e) { /* تجاهل — هيستخدم الـ min-height من الـ CSS كحد أدنى */ }
+  };
+  frame.addEventListener('load', sizeFrame);
+  setTimeout(() => { if (!_qPreviewSized) sizeFrame(); }, 400);
+  setTimeout(() => { if (!_qPreviewSized) sizeFrame(); }, 1200);
+  frame.srcdoc = qBuildPdfHtml(true);
 }
 
 function qPrintPreview(){
-  _openPrintDoc(qBuildPdfHtml()); // شوف ملحوظة _openPrintDoc — نافذة منفصلة تمامًا، صافية من غير منيو ولا شريط جانبي، على الموبايل زي الكومبيوتر بالظبط
+  _openPrintDoc(qBuildPdfHtml(false)); // شوف ملحوظة _openPrintDoc — نافذة منفصلة تمامًا، صافية من غير منيو ولا شريط جانبي، على الموبايل زي الكومبيوتر بالظبط
 }
 
 function qOpenMailPrompt(){
