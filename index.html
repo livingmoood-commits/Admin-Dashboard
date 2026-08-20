@@ -445,6 +445,18 @@
     [style*="flex-wrap:wrap"] > select,
     [style*="flex-wrap:wrap"] > input,
     [style*="flex-wrap:wrap"] > button{ flex:1 1 auto; min-width:120px; }
+    /* ⚠️ إصلاح 2026-08-20 (خانات الكتابة صغيرة جدًا وصعب تشوف بتكتب إيه فيها
+       على الموبايل، في كل صفحات الموقع مش بس واحدة): القاعدة فوق دي
+       (table{font-size:12px}) كانت بتصغّر خط أي خانة إدخال جوه أي جدول
+       كمان، وده غير إن أي خانة إدخال بخط أصغر من 16px بتخلي سفاري الموبايل
+       يعمل زوم تلقائي غريب لكل الصفحة أول ما تدوس فيها (باج معروف في آبل)،
+       وده اللي كان بيدي إحساس إن "مفيش حاجة بتتشاف". الحل: أي
+       input/select/textarea في أي مكان في الموقع (جوه جدول أو برة) بياخد
+       حجم خط 16px تابت على الموبايل — أكبر شوية من باقي النص، ده مقصود
+       ومطلوب عشان سفاري يسيبها من غير زوم، وبرضه يبقى واضح تشوف بتكتب إيه. */
+    input, select, textarea,
+    table input, table select, table textarea,
+    .d-input, .ltr-num{ font-size:16px !important; padding:9px 10px !important; }
   }
   @media(max-width:380px){
     .cards{ grid-template-columns:1fr; }
@@ -455,8 +467,15 @@
 
   .field{ margin-bottom:16px; }
   .field label{ display:block; font-size:12px; font-weight:700; color:var(--muted); margin-bottom:6px; }
+  /* ⚠️ إضافة 2026-08-20: حجم خط افتراضي لأي input/select/textarea في الموقع
+     كله مالوش كلاس مخصص (.d-input أو .field/.form) — زي الخانات الخام جوه
+     بعض الجداول (مثلاً جدول الكوتيشن). من غيرها كانت بتورّث حجم الخط من
+     العنصر اللي حواليها (مثلاً الجدول اللي بيصغّر لـ 12px على الموبايل)
+     فبتبقى صغيرة جدًا وصعب تتقرا. */
+  input, select, textarea{ font-size:14.5px; font-family:inherit; }
+
   .field select, .field input, .field textarea,
-  form select, form input, form textarea{ width:100%; box-sizing:border-box; padding:10px 12px; border:1.5px solid var(--border); border-radius:8px; font-size:13.5px; font-family:inherit; background:#fdfcfa; transition:border-color .2s, box-shadow .2s; }
+  form select, form input, form textarea{ width:100%; box-sizing:border-box; padding:10px 12px; border:1.5px solid var(--border); border-radius:8px; font-size:14.5px; font-family:inherit; background:#fdfcfa; transition:border-color .2s, box-shadow .2s; }
   .field select:focus, .field input:focus, .field textarea:focus,
   form select:focus, form input:focus, form textarea:focus{ outline:none; border-color:var(--gold); box-shadow:0 0 0 3px rgba(184,151,90,.18); }
   .field textarea{ resize:vertical; min-height:70px; }
@@ -481,7 +500,7 @@
   /* ===== مصاريف يومية: بار التاريخ + مربعات الإدخال ===== */
   .d-date-bar{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px; padding:12px 14px; background:var(--cream); border:1px solid var(--border); border-radius:10px; }
   .d-date-bar label{ font-size:13px; font-weight:700; color:var(--muted); }
-  .d-input{ width:100%; padding:9px 11px; border:1.5px solid var(--border); border-radius:8px; font-size:13.5px; font-family:inherit; background:#fdfcfa; color:var(--dark); transition:border-color .2s, box-shadow .2s; }
+  .d-input{ width:100%; padding:9px 11px; border:1.5px solid var(--border); border-radius:8px; font-size:14.5px; font-family:inherit; background:#fdfcfa; color:var(--dark); transition:border-color .2s, box-shadow .2s; }
   .d-input:hover{ border-color:#d8cdb8; }
   .d-input:focus{ outline:none; border-color:var(--gold); box-shadow:0 0 0 3px rgba(184,151,90,.18); background:#fff; }
   .d-input::placeholder{ color:#b7ac9a; }
@@ -610,6 +629,8 @@
   .pay-add-pop-tag{ background:#2C5F3A1a; color:var(--green); border:1px solid #2C5F3A55; border-radius:4px; padding:1px 6px; font-size:10.5px; font-weight:700; white-space:nowrap; }
   .pay-add-pop-tag.sehra{ background:#8a64081a; color:#8a6408; border-color:#8a640855; }
   .pay-add-pop-date{ color:var(--muted); white-space:pre-line; flex:1; }
+  .pay-add-pop-info{ display:flex; flex-direction:column; gap:1px; flex:1; min-width:0; }
+  .pay-add-pop-proj{ color:var(--gold-dim); font-size:11px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .pay-add-pop-amount{ font-weight:700; direction:ltr; }
   .pay-add-pop-total{ padding:8px 12px; border-top:1px solid var(--border); font-size:12.5px; text-align:left; direction:ltr; }
   /* ⚠️ إضافة 2026-08-20: جدول الإجمالي الكلي في آخر مودال "تقرير اسبوعي" */
@@ -2941,7 +2962,10 @@ async function payShowAdditionsPopover(empName, weekIndex, btnEl){
   }, 0);
 
   try {
-    const res = await apiGet('getWeeklyReport', { year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex, weekIndex, employees: [empName] });
+    // ⚠️ إصلاح بطء + إضافة اسم المشروع 2026-08-20: بقينا بننادي أكشن مخصص
+    // أخف (getEmployeeWeekAdditions) بدل getWeeklyReport العام — نفس الفكرة
+    // بس لموظف واحد بس، وبيرجع كمان اسم المشروع لكل يوم فيه إضافة.
+    const res = await apiGet('getEmployeeWeekAdditions', { year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex, weekIndex, employeeName: empName });
     if (_payAddPopoverEl !== pop) return; // اتقفل قبل ما الرد يوصل
     if (!res || !res.exists || !res.employees || !res.employees.length) {
       pop.innerHTML = `<div class="msg err" style="display:block;padding:8px 10px;margin:0;">${qEsc((res && res.error) || 'تعذر تحميل التفاصيل')}</div>`;
@@ -2957,9 +2981,13 @@ async function payShowAdditionsPopover(empName, weekIndex, btnEl){
       <div class="pay-add-pop-list">
         ${days.map(d => {
           const isSehra = /سهر[ةه]/.test(d.note || '');
+          const projects = (d.projects || []).join('، ');
           return `<div class="pay-add-pop-row">
             <span class="pay-add-pop-tag ${isSehra ? 'sehra' : ''}">${isSehra ? 'سهرة' : 'إضافة'}</span>
-            <span class="pay-add-pop-date">${qEsc(d.label || d.date)}</span>
+            <span class="pay-add-pop-info">
+              <span class="pay-add-pop-date">${qEsc(d.label || d.date)}</span>
+              ${projects ? `<span class="pay-add-pop-proj">${qEsc(projects)}</span>` : ''}
+            </span>
             <span class="pay-add-pop-amount">${fmt(d.add)} ج</span>
           </div>`;
         }).join('')}
