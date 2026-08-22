@@ -3643,13 +3643,64 @@ function _meGrandTotalsTableHtml_(data, forPrint){
     </div>`;
 }
 
+// ⚠️ إضافة 2026-08-22: تفصيل يوم بيوم لكل موظف — بس الأيام اللي فيها قيمة/كود
+// فعلي متسجل (مش الأيام الفاضية). البيانات دي كلها موجودة أصلاً جوه r.dayCells
+// و r.dayNotes (نفس اللي بيتعرض في خلايا الجدول)، فمفيش نداء سيرفر جديد.
+function _meEmpDaysList_(r, data){
+  return (r.dayCells || []).map((v, i) => ({
+    header: data.dayHeaders[i],
+    value: v,
+    note: (r.dayNotes || [])[i]
+  })).filter(d => String(d.value || '').trim());
+}
+function _meNoteLinesHtml_(note){
+  return String(note || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => `<div>📝 ${qEsc(l)}</div>`).join('');
+}
+// صفوف ملخص الموظف (من أعمدة الملخص الجاهزة في الشيت نفسه — ساعات الأوفر/
+// إضافات/خصومات/مسحوبات/صافي الشهر إلخ)، بعد ما نشيل اللي بصفر (ماعدا "صافي").
+function _meEmpSummaryRows_(r, data){
+  const rows = data.summaryHeaders.map((h, i) => [h, r.summaryCells[i]]);
+  const isZero = (val) => { const v = parseFloat(String(val || '').replace(/[^\d.\-]/g, '')); return !v || v === 0; };
+  return rows.filter(([label, val]) => /صافي/.test(label) || !isZero(val));
+}
+
+function _meEmpBlockHtml_(r, data){
+  const days = _meEmpDaysList_(r, data);
+  const daysHtml = days.length
+    ? days.map(d => `
+        <div style="padding:6px 0;border-bottom:1px dashed var(--border);">
+          <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+            <span style="font-size:12px;color:var(--muted);min-width:70px;">${qEsc(d.header)}</span>
+            <span style="display:inline-block;background:#8a640822;color:#6B5E4E;border:1px solid #8a640855;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;">${qEsc(d.value)}</span>
+          </div>
+          ${d.note ? `<div style="font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.7;">${_meNoteLinesHtml_(d.note)}</div>` : ''}
+        </div>`).join('')
+    : '<div class="empty" style="padding:6px 0;font-size:12.5px;">مفيش أي حركة مسجلة الشهر ده</div>';
+
+  const summaryRows = _meEmpSummaryRows_(r, data);
+  const summaryHtml = summaryRows.length
+    ? `<div style="display:flex;flex-wrap:wrap;gap:14px;background:var(--cream);border-radius:8px;padding:8px 12px;margin-top:8px;">
+        ${summaryRows.map(([l, v]) => `<span style="font-size:12px;"><span style="color:var(--muted);">${qEsc(l)}:</span> <b>${qEsc(v)}</b></span>`).join('')}
+      </div>` : '';
+
+  return `<div class="panel" style="margin-bottom:12px;">
+    <h4 style="margin-bottom:8px;">${qEsc(r.name)}</h4>
+    <div><b style="font-size:12.5px;">📋 الأيام اللي فيها حركة:</b>${daysHtml}</div>
+    ${summaryHtml}
+  </div>`;
+}
+
 function payrollOpenMonthlyEmpReportModal_(data){
   _meLastReport = data;
+  const empHtml = data.rows.length
+    ? data.rows.map(r => _meEmpBlockHtml_(r, data)).join('')
+    : '<div class="empty">مفيش موظفين شهريين مسجلين</div>';
   openCardModal(`
     <div class="cd-head"><h3>📊 تقرير شهري — ${qEsc(data.sheetName)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
       <button class="btn btn-primary btn-sm" onclick="payrollPrintMonthlyEmpReport()">⬇ تحميل PDF</button>
     </div>
+    <div id="meEmpList">${empHtml}</div>
     ${_meGrandTotalsTableHtml_(data, false)}
   `);
 }
@@ -3659,9 +3710,51 @@ function payrollPrintMonthlyEmpReport(){
   _openPrintDoc(payrollBuildMonthlyEmpReportPdfHtml_(_meLastReport));
 }
 
-// نفس أسلوب payrollBuildMonthlyReportPdfHtml_ بالظبط، بس المحتوى إجمالي واحد
-// بس (مفيش تفاصيل يوم بيوم لكل موظف هنا).
+// نسخة الـ PDF لبلوك الموظف — نفس بيانات _meEmpBlockHtml_ بس بستايلات inline
+// (زي payrollBuildWeeklyReportPdfHtml_ بالظبط) عشان تتناسب مع باقي التقارير.
+function _mePdfEmpBlockHtml_(r, data, isFirst){
+  const days = _meEmpDaysList_(r, data);
+  const dayRows = days.length
+    ? days.map(d => {
+        const noteHtml = d.note ? String(d.note).split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => qEsc(l)).join('<br>') : '';
+        return `<tr><td style="padding:5px 6px;">${qEsc(d.header)}</td><td style="padding:5px 6px;">${qEsc(d.value)}</td><td style="padding:5px 6px;">${noteHtml}</td></tr>`;
+      }).join('')
+    : `<tr><td colspan="3" style="padding:6px;color:#6B5E4E;">مفيش أي حركة مسجلة الشهر ده</td></tr>`;
+
+  const summaryRows = _meEmpSummaryRows_(r, data);
+  const summaryHtmlPdf = summaryRows.length ? `
+    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:8px;">
+      <tbody>
+        ${summaryRows.map(([label, val]) => {
+          const isNet = /صافي/.test(label);
+          const styleTd = isNet ? 'background:#1E1A15;color:#D4B483;font-weight:700;font-size:12px;' : 'color:#6B5E4E;';
+          return `<tr><td style="padding:5px 8px;${styleTd}">${qEsc(label)}</td><td style="padding:5px 8px;text-align:left;direction:ltr;${isNet ? 'background:#1E1A15;color:#D4B483;font-weight:700;' : 'font-weight:700;'}">${qEsc(val)}</td></tr>`;
+        }).join('')}
+      </tbody>
+    </table>` : '';
+
+  return `
+    <div class="wr-emp-block"${isFirst ? '' : ' style="border-top:2px dashed #D9D0C4;margin-top:18px;padding-top:18px;"'}>
+      <div class="wr-emp-head">
+        <div style="background:#1E1A15;color:#D4B483;padding:8px 12px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0;">${qEsc(r.name)}</div>
+      </div>
+      <div style="border:1px solid #D9D0C4;border-top:none;padding:10px 12px;">
+        <div style="font-size:11.5px;font-weight:700;color:#3a2f22;margin-bottom:4px;">📌 الأيام اللي فيها حركة</div>
+        <table class="wr-days-table" style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:6px;">
+          <thead><tr style="background:#F3EFEA;"><th style="padding:5px 6px;text-align:right;">اليوم</th><th style="padding:5px 6px;text-align:right;">القيمة</th><th style="padding:5px 6px;text-align:right;">ملاحظة</th></tr></thead>
+          <tbody>${dayRows}</tbody>
+        </table>
+        ${summaryHtmlPdf}
+      </div>
+    </div>`;
+}
+
+// نفس أسلوب payrollBuildMonthlyReportPdfHtml_ بالظبط — بلوك لكل موظف (الأيام
+// اللي فيها حركة بس + ملخصه) وفي الآخر إجمالي الشهر لكل الموظفين مع بعض.
 function payrollBuildMonthlyEmpReportPdfHtml_(data){
+  const sections = data.rows.length
+    ? data.rows.map((r, i) => _mePdfEmpBlockHtml_(r, data, i === 0)).join('')
+    : '<p style="text-align:center;color:#6B5E4E;padding:20px;">مفيش موظفين شهريين مسجلين</p>';
   const grandTotalsHtml = _meGrandTotalsTableHtml_(data, true);
   return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"/>
   <title>${qEsc(pdfFileTitle('تقرير شهري', data.sheetName))}</title>
@@ -3670,6 +3763,9 @@ function payrollBuildMonthlyEmpReportPdfHtml_(data){
   <style>
     *{box-sizing:border-box;margin:0;padding:0;} body{font-family:'Cairo','Arial',sans-serif;direction:rtl;color:#1E1A15;background:#fff;}
     @page{size:A4;margin:14mm 12mm;} @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+    table.wr-days-table tr{page-break-inside:avoid;break-inside:avoid;}
+    .wr-emp-block{page-break-inside:auto;}
+    .wr-emp-head{page-break-after:avoid;break-after:avoid;}
     .brand-block{text-align:center;padding-bottom:14px;border-bottom:2px solid #B8975A;margin-bottom:16px;}
     .brand-title{font-family:'Playfair Display',Georgia,serif;font-size:38px;letter-spacing:5px;color:#1E1A15;direction:ltr;}
     .brand-title span{color:#B8975A;} .brand-sub{font-size:9px;letter-spacing:3px;color:#6B5E4E;text-transform:uppercase;margin-top:4px;direction:ltr;}
@@ -3679,6 +3775,7 @@ function payrollBuildMonthlyEmpReportPdfHtml_(data){
     <div class="brand-block"><div class="brand-title">Living <span>Mood</span></div><div class="brand-sub">Interior Design &amp; Furniture</div></div>
     <h2 style="text-align:center;margin-bottom:4px;">تقرير شهري — الموظفين الشهريين</h2>
     <p style="text-align:center;color:#6B5E4E;font-size:12.5px;margin-bottom:18px;">${qEsc(data.sheetName)} &nbsp;(${data.rows.length} موظف)</p>
+    ${sections}
     ${grandTotalsHtml}
     <div class="footer">Living Mood</div>
   </div></body></html>`;
