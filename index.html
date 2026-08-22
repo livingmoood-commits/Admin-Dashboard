@@ -639,6 +639,16 @@
   .wr-grand-tbl td:first-child{ color:var(--muted); }
   .wr-grand-tbl td:last-child{ font-weight:700; text-align:left; direction:ltr; }
   .wr-grand-tbl tr:last-child td{ border-bottom:none; }
+  /* ⚠️ إضافة 2026-08-21: بوكس "أيام الشغل + الإضافات − المسحوبات = الصافي" في آخر كل موظف */
+  .wr-final-calc{ margin-top:8px; background:var(--cream); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  .wr-final-calc-row{ display:flex; justify-content:space-between; align-items:center; gap:10px; padding:7px 12px; font-size:12.5px; border-bottom:1px dashed var(--border); }
+  .wr-final-calc-row:last-child{ border-bottom:none; }
+  .wr-final-calc-row span{ color:var(--muted); }
+  .wr-final-calc-row b{ direction:ltr; white-space:nowrap; }
+  .wr-fc-add b{ color:var(--green); }
+  .wr-fc-ded b, .wr-fc-wd b{ color:#8a6408; }
+  .wr-fc-net{ background:var(--dark); }
+  .wr-fc-net span, .wr-fc-net b{ color:#D4B483; font-size:14px; font-weight:700; }
   td.mc-ded{ color:var(--red); font-weight:700; }
   td.mc-add{ color:var(--green); font-weight:700; }
   td.mc-draw{ color:#8a6408; font-weight:700; }
@@ -2906,6 +2916,7 @@ function payrollRenderWeeklyTable_(box, data){
       <h3 style="margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <span>${qEsc(data.sheetName)} (${data.rows.length} موظف)</span>
         <button type="button" class="btn btn-outline btn-sm" id="payWeeklyReportBtn" style="margin-inline-start:auto;">📄 تقرير اسبوعي</button>
+        <button type="button" class="btn btn-outline btn-sm" id="payMonthlyReportBtn">📊 تقرير شهري</button>
       </h3>
       <div class="tbl-wrap tbl-wrap-scroll" style="max-height:70vh;">
         <table style="width:auto;border-collapse:separate;border-spacing:0;">
@@ -2919,6 +2930,8 @@ function payrollRenderWeeklyTable_(box, data){
   payrollQaHighlight_();
   const wrBtn = document.getElementById('payWeeklyReportBtn');
   if (wrBtn) wrBtn.addEventListener('click', () => payrollOpenWeeklyReportModal(data));
+  const mrBtn = document.getElementById('payMonthlyReportBtn');
+  if (mrBtn) mrBtn.addEventListener('click', () => payrollOpenMonthlyReportModal());
   // ⚠️ إضافة 2026-08-20: زراير تفاصيل "إضافات (ج)" لكل أسبوع
   box.querySelectorAll('.pay-add-detail-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -3109,14 +3122,13 @@ async function payrollShowWeeklyReport(weekIndex, employeeNames){
 // شغل الجمعة)، و(2) weekSummary الرسمي (نفس أعمدة الشيت زي "صافي الأسبوع")
 // لكل موظف، وبنجمعهم عمود بعمود بنفس ترتيب ظهورهم.
 function _wrComputeGrandTotals_(employees){
-  const totals = { add: 0, deduct: 0, absent: 0, withdraw: 0, fridayWork: 0, fullAbsenceDays: 0, sehraCount: 0 };
+  const totals = { add: 0, deduct: 0, absent: 0, withdraw: 0, fridayWork: 0, fullAbsenceDays: 0 };
   const weekSumTotals = {}; const weekSumOrder = [];
   (employees || []).forEach(e => {
     const t = e.totals || {};
     totals.add += qNum(t.add); totals.deduct += qNum(t.deduct); totals.absent += qNum(t.absent);
     totals.withdraw += qNum(t.withdraw); totals.fridayWork += qNum(t.fridayWork);
     totals.fullAbsenceDays += qNum(t.fullAbsenceDays);
-    (e.days || []).forEach(d => { if (d.add > 0 && /سهر[ةه]/.test(d.note || '')) totals.sehraCount++; });
     (e.weekSummary || []).forEach(s => {
       if (!(s.label in weekSumTotals)) { weekSumTotals[s.label] = 0; weekSumOrder.push(s.label); }
       weekSumTotals[s.label] += qNum(s.value);
@@ -3129,17 +3141,12 @@ function _wrComputeGrandTotals_(employees){
 function _wrGrandTotalsTableHtml_(employees, forPrint){
   const g = _wrComputeGrandTotals_(employees);
   if (!g.count) return '';
-  // ⚠️ تعديل: أي صف قيمته صفر بيتشال خالص من الجدول (مش بس بيتلوّن) — التقرير
-  // بيبقى أقصر وأوضح ومركّز بس على الحاجات اللي فعلاً حصلت. "عدد الموظفين"
-  // مستثنى لأنه عدد مش "قيمة مالية" وبيفيد كمعلومة حتى لو صفر (نادرًا ما يحصل
-  // أصلًا — لو g.count صفر الدالة بترجع '' فوق وميوصلش هنا خالص).
   const rows = [];
-  g.weekSumOrder.forEach(label => { if (qNum(g.weekSumTotals[label]) !== 0) rows.push([label, fmt(g.weekSumTotals[label]) + ' ج']); });
-  if (g.totals.add)      rows.push(['إجمالي الإضافات (سهرات)', fmt(g.totals.add) + ' ج']);
-  if (g.totals.sehraCount) rows.push(['عدد السهرات', String(g.totals.sehraCount)]);
-  if (g.totals.deduct)   rows.push(['إجمالي الخصومات', fmt(g.totals.deduct) + ' ج']);
-  if (g.totals.absent)   rows.push(['إجمالي الغياب', fmt(g.totals.absent) + ' ج' + (g.totals.fullAbsenceDays ? ` (${g.totals.fullAbsenceDays} يوم كامل)` : '')]);
-  if (g.totals.withdraw) rows.push(['إجمالي المسحوبات', fmt(g.totals.withdraw) + ' ج']);
+  g.weekSumOrder.forEach(label => rows.push([label, fmt(g.weekSumTotals[label]) + ' ج']));
+  rows.push(['إجمالي الإضافات (سهرات)', fmt(g.totals.add) + ' ج']);
+  rows.push(['إجمالي الخصومات', fmt(g.totals.deduct) + ' ج']);
+  rows.push(['إجمالي الغياب', fmt(g.totals.absent) + ' ج' + (g.totals.fullAbsenceDays ? ` (${g.totals.fullAbsenceDays} يوم كامل)` : '')]);
+  rows.push(['إجمالي المسحوبات', fmt(g.totals.withdraw) + ' ج']);
   if (g.totals.fridayWork) rows.push(['إجمالي شغل الجمعة', fmt(g.totals.fridayWork) + ' ج']);
   rows.push(['عدد الموظفين في التقرير', String(g.count)]);
 
@@ -3163,6 +3170,26 @@ function _wrGrandTotalsTableHtml_(employees, forPrint){
         </tbody>
       </table>
     </div>`;
+}
+
+// ⚠️ إضافة 2026-08-21: حساب "أيام الشغل" المطلوب في آخر كل موظف في التقرير
+// الأسبوعي — الأساس 6 أيام شغل في الأسبوع (يومية × 6)، بينقص منها كل يوم
+// غياب كامل، وبيزيد يوم واحد لو الموظف اشتغل يوم الجمعة في الأسبوع ده (يبقى
+// 7 أيام في اليومية). بعد كده: + الإضافات والسهرات، − المسحوبات (والخصومات
+// لو موجودة) = الصافي المتوقع. بتتستخدم في المودال وفي الـ PDF بنفس الحساب
+// بالظبط عشان الرقمين يتطابقوا دايمًا.
+function _wrEmployeeFinalCalc_(e){
+  const dailyRate = e.dailyRate || 0;
+  const t = e.totals || {};
+  const absenceDays = t.fullAbsenceDays || 0;
+  const workedFriday = (e.days || []).some(d => d.isFridayWork);
+  const workDays = Math.max(0, 6 - absenceDays + (workedFriday ? 1 : 0));
+  const dayWages = workDays * dailyRate;
+  const additions = t.add || 0;
+  const withdrawals = t.withdraw || 0;
+  const deductions = t.deduct || 0;
+  const net = dayWages + additions - withdrawals - deductions;
+  return { dailyRate, absenceDays, workedFriday, workDays, dayWages, additions, withdrawals, deductions, net };
 }
 
 function renderWeeklyReportModal_(data){
@@ -3203,30 +3230,41 @@ function renderWeeklyReportModal_(data){
         }).join('')
       : '<div class="empty" style="padding:6px 0;font-size:12.5px;">مفيش أي حركة مسجلة على أيام الأسبوع ده</div>';
 
-    const t = e.totals || {};
-    const sehraDaysCount = days.filter(d => d.add > 0 && /سهر[ةه]/.test(d.note || '')).length;
-    const totalsLine = `
-      <div style="display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--muted);padding:6px 0;">
-        <span>إجمالي إضافة: <b style="color:#2C5F3A;">${fmt(t.add||0)} ج</b></span>
-        <span>إجمالي خصم: <b style="color:#c0392b;">${fmt(t.deduct||0)} ج</b></span>
-        <span>إجمالي غياب: <b style="color:#5e2f80;">${fmt(t.absent||0)} ج</b>${t.fullAbsenceDays?` (${t.fullAbsenceDays} يوم كامل)`:''}</span>
-        <span>إجمالي مسحوبات: <b style="color:#8a6408;">${fmt(t.withdraw||0)} ج</b></span>
-        ${t.fridayWork ? `<span>إجمالي شغل الجمعة: <b style="color:#2C5F3A;">${fmt(t.fridayWork)} ج</b></span>` : ''}
-        ${sehraDaysCount ? `<span>عدد السهرات: <b style="color:#2C5F3A;">${sehraDaysCount}</b></span>` : ''}
-      </div>`;
-
-    // ملخص الأسبوع الرسمي من الشيت نفسه (فيه "صافي الأسبوع" = القبض الفعلي)
-     const wsNonZero = (e.weekSummary || []).filter(s => qNum(s.value) !== 0);
-    const weekSummaryHtml = wsNonZero.length
+    // ملخص الأسبوع الرسمي من الشيت نفسه (فيه "صافي الأسبوع" = القبض الفعلي —
+    // مرجع سريع من فورمولات الشيت الحقيقية، مش بديل عن حساب أيام الشغل تحت)
+    const weekSummaryHtml = (e.weekSummary && e.weekSummary.length)
       ? `<div style="display:flex;flex-wrap:wrap;gap:14px;background:var(--cream);border-radius:8px;padding:8px 12px;margin-bottom:8px;">
-          ${wsNonZero.map(s => `<span style="font-size:12px;"><span style="color:var(--muted);">${qEsc(s.label)}:</span> <b>${qEsc(s.value)}</b></span>`).join('')}
+          ${e.weekSummary.map(s => `<span style="font-size:12px;"><span style="color:var(--muted);">${qEsc(s.label)}:</span> <b>${qEsc(s.value)}</b></span>`).join('')}
         </div>` : '';
+
+    // ⚠️ إضافة 2026-08-21: ملخص "أيام الشغل" النهائي — بالترتيب المطلوب بالظبط:
+    // عدد أيام الشغل (6 − غياب + جمعة) × اليومية، تحتيها + الإضافات والسهرات،
+    // تحتيها − المسحوبات، وفي الآخر = الصافي. بتظهر بعد تفاصيل الأيام مباشرة.
+    const fc = _wrEmployeeFinalCalc_(e);
+    const finalCalcHtml = `
+      <div class="wr-final-calc">
+        <div class="wr-final-calc-row">
+          <span>عدد أيام الشغل (6${fc.absenceDays ? ` − ${fc.absenceDays} غياب` : ''}${fc.workedFriday ? ' + 1 جمعة' : ''} = ${fc.workDays} يوم)</span>
+          <b>${fc.workDays} × ${fmt(fc.dailyRate)} = ${fmt(fc.dayWages)} ج</b>
+        </div>
+        <div class="wr-final-calc-row wr-fc-add">
+          <span>+ الإضافات والسهرات</span><b>${fmt(fc.additions)} ج</b>
+        </div>
+        ${fc.deductions ? `<div class="wr-final-calc-row wr-fc-ded"><span>− خصومات</span><b>${fmt(fc.deductions)} ج</b></div>` : ''}
+        <div class="wr-final-calc-row wr-fc-wd">
+          <span>− المسحوبات</span><b>${fmt(fc.withdrawals)} ج</b>
+        </div>
+        <div class="wr-final-calc-row wr-fc-net">
+          <span>= الصافي</span><b>${fmt(fc.net)} ج</b>
+        </div>
+      </div>`;
 
     return `<div class="panel" style="margin-bottom:12px;">
       <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">اليومية: <b style="color:var(--dark);">${fmt(e.dailyRate||0)} ج</b></div>
       <h4 style="margin-bottom:8px;">${qEsc(e.name)}</h4>
       ${weekSummaryHtml}
-      <div><b style="font-size:12.5px;">📋 تفاصيل الأيام:</b>${daysHtml}${totalsLine}</div>
+      <div><b style="font-size:12.5px;">📋 تفاصيل الأيام:</b>${daysHtml}</div>
+      ${finalCalcHtml}
     </div>`;
   }).join('') : '<div class="empty">مفيش موظفين اسبوعيين مسجلين</div>';
 
@@ -3278,11 +3316,28 @@ function payrollBuildWeeklyReportPdfHtml_(data){
         }).join('')
       : `<tr><td colspan="3" style="padding:6px;color:#6B5E4E;">مفيش أي حركة مسجلة</td></tr>`;
 
-    const t = e.totals || {};
-    const sehraDaysCount = days.filter(d => d.add > 0 && /سهر[ةه]/.test(d.note || '')).length;
-    const totalsTxt = `إجمالي إضافة ${fmt(t.add||0)}ج — إجمالي خصم ${fmt(t.deduct||0)}ج — إجمالي غياب ${fmt(t.absent||0)}ج${t.fullAbsenceDays?` (${t.fullAbsenceDays} يوم كامل)`:''} — إجمالي مسحوبات ${fmt(t.withdraw||0)}ج${t.fridayWork?` — إجمالي شغل الجمعة ${fmt(t.fridayWork)}ج`:''}${sehraDaysCount?` — عدد السهرات ${sehraDaysCount}`:''}`;
-    const wsNonZero = (e.weekSummary || []).filter(s => qNum(s.value) !== 0);
-    const weekSummaryTxt = wsNonZero.length ? wsNonZero.map(s => `${qEsc(s.label)}: ${qEsc(s.value)}`).join(' &nbsp;|&nbsp; ') : '';
+    const weekSummaryTxt = (e.weekSummary && e.weekSummary.length) ? e.weekSummary.map(s => `${qEsc(s.label)}: ${qEsc(s.value)}`).join(' &nbsp;|&nbsp; ') : '';
+    // ⚠️ إضافة 2026-08-21: نفس ملخص "أيام الشغل" بتاع المودال بالظبط، بنفس
+    // دالة الحساب المشتركة (_wrEmployeeFinalCalc_) عشان الرقم يتطابق دايمًا
+    // بين المودال والـ PDF.
+    const fc = _wrEmployeeFinalCalc_(e);
+    const finalCalcRowsPdf = [
+      [`عدد أيام الشغل (6${fc.absenceDays ? ` − ${fc.absenceDays} غياب` : ''}${fc.workedFriday ? ' + 1 جمعة' : ''} = ${fc.workDays} يوم)`, `${fc.workDays} × ${fmt(fc.dailyRate)} = ${fmt(fc.dayWages)} ج`],
+      ['+ الإضافات والسهرات', fmt(fc.additions) + ' ج'],
+      ...(fc.deductions ? [['− خصومات', fmt(fc.deductions) + ' ج']] : []),
+      ['− المسحوبات', fmt(fc.withdrawals) + ' ج'],
+      ['= الصافي', fmt(fc.net) + ' ج'],
+    ];
+    const finalCalcHtmlPdf = `
+      <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:8px;">
+        <tbody>
+          ${finalCalcRowsPdf.map(([label, val], ri) => {
+            const isNet = ri === finalCalcRowsPdf.length - 1;
+            const styleTd = isNet ? 'background:#1E1A15;color:#D4B483;font-weight:700;font-size:12px;' : 'color:#6B5E4E;';
+            return `<tr><td style="padding:5px 8px;${styleTd}">${qEsc(label)}</td><td style="padding:5px 8px;text-align:left;direction:ltr;${isNet?'background:#1E1A15;color:#D4B483;font-weight:700;':'font-weight:700;'}">${qEsc(val)}</td></tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
 
     // ⚠️ إصلاح 2026-08-15: كل موظف كان بياخد صفحة طباعة مستقلة (page-break-
     // inside:avoid كان بيدفع الموظف كله لصفحة جديدة لو مش هيكمل في المساحة
@@ -3303,7 +3358,7 @@ function payrollBuildWeeklyReportPdfHtml_(data){
             <thead><tr style="background:#F3EFEA;"><th style="padding:5px 6px;text-align:right;">اليوم</th><th style="padding:5px 6px;text-align:right;">التفاصيل</th><th style="padding:5px 6px;text-align:right;">ملاحظة</th></tr></thead>
             <tbody>${dayRows}</tbody>
           </table>
-          <div style="font-size:10.5px;color:#6B5E4E;">${totalsTxt}</div>
+          ${finalCalcHtmlPdf}
         </div>
       </div>`;
   }).join('') : '<p style="text-align:center;color:#6B5E4E;padding:20px;">مفيش موظفين اسبوعيين مسجلين</p>';
@@ -3339,7 +3394,205 @@ function payrollBuildWeeklyReportPdfHtml_(data){
   </div></body></html>`;
 }
 
-/* شيت "حضور شهر" — بلوك واحد متصل من أيام الشهر + صف إجمالي متلوّن */
+/* ═══════════════════ تقرير شهري — الموظفين الاسبوعيين (إجماليات الشهر + أيام
+ * فيها أكشن بس، مش يوم بيوم) ═══════════════════
+ * ⚠️ إضافة 2026-08-21 */
+let _mrLastReport = null;
+
+async function payrollOpenMonthlyReportModal(){
+  openCardModal(`<div class="cd-head"><h3>📊 تقرير شهري</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="loading-row">جاري التحميل...</div>`);
+  try {
+    const res = await apiGet('getMonthlyReportForWeeklyEmployees', { year: PAYSTATE.year, monthNum: PAYSTATE.monthIndex + 1 });
+    if (!res || !res.exists) {
+      openCardModal(`<div class="cd-head"><h3>📊 تقرير شهري</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="msg err" style="display:block;">${qEsc((res && res.error) || 'حصل خطأ')}</div>`);
+      return;
+    }
+    _mrLastReport = res;
+    renderMonthlyReportModal_(res);
+  } catch (err) {
+    openCardModal(`<div class="cd-head"><h3>📊 تقرير شهري</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="msg err" style="display:block;">خطأ: ${qEsc(err.message||err)}</div>`);
+  }
+}
+
+// خط واحد لكل "يوم فيه أكشن" — نفس أسلوب شرائح الألوان بتاعة التقرير
+// الأسبوعي بالظبط، بس هنا كل سطر متسبوق باسم الأسبوع عشان تعرف اليوم ده
+// وقع في أي أسبوع من أسابيع الشهر.
+function _mrActionDayLineHtml_(d){
+  const hasSehra = /سهر[ةه]/.test(d.note || '');
+  const chip = (label, amount, color) => amount > 0 ? `<span style="display:inline-block;background:${color}22;color:${color};border:1px solid ${color}55;border-radius:4px;padding:1px 7px;font-size:10.5px;font-weight:700;margin-inline-end:4px;">${label}: ${fmt(amount)} ج</span>` : '';
+  const noteHtml = String(d.note || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => `<div>📝 ${qEsc(l)}</div>`).join('');
+  return `
+    <div style="padding:5px 0;border-bottom:1px dashed var(--border);">
+      <div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
+        <span style="font-size:11px;color:var(--muted);min-width:120px;">${qEsc(d.week)} — ${qEsc(d.label || d.date)}</span>
+        ${d.isFullAbsence ? '<span style="display:inline-block;background:#f1e8f722;color:#5e2f80;border:1px solid #5e2f8055;border-radius:4px;padding:1px 7px;font-size:10.5px;font-weight:700;">غياب يوم كامل</span>' : ''}
+        ${d.isFridayWork ? `<span style="display:inline-block;background:#2C5F3A22;color:#2C5F3A;border:1px solid #2C5F3A55;border-radius:4px;padding:1px 7px;font-size:10.5px;font-weight:700;">${d.workAmount ? `يوم شغل: ${fmt(d.workAmount)} ج` : 'حضر (يوم شغل)'}</span>` : ''}
+        ${chip(hasSehra ? 'سهرة' : 'إضافة', d.add, '#2C5F3A')}
+        ${chip('خصم', d.deduct, '#c0392b')}
+        ${chip('غياب', d.absent, '#5e2f80')}
+        ${chip('مسحوبات', d.withdraw, '#8a6408')}
+      </div>
+      ${noteHtml ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.6;">${noteHtml}</div>` : ''}
+    </div>`;
+}
+
+// صف إجمالي واحد لكل موظف — نفس الترتيب المطلوب بالظبط (أيام الشغل، إضافات،
+// خصومات لو موجودة، مسحوبات، صافي) — بيتشارك بين المودال والـ PDF.
+function _mrFinalCalcRows_(e){
+  const rows = [[`عدد أيام الشغل (الشهر كله)`, `${e.totalWorkDays} يوم = ${fmt(e.totalDayWages)} ج`]];
+  rows.push(['+ الإضافات والسهرات', fmt(e.totalAdditions) + ' ج']);
+  if (e.totalDeductions) rows.push(['− خصومات', fmt(e.totalDeductions) + ' ج']);
+  rows.push(['− المسحوبات', fmt(e.totalWithdrawals) + ' ج']);
+  rows.push(['= الصافي', fmt(e.net) + ' ج']);
+  return rows;
+}
+
+function _mrGrandTotalsTableHtml_(employees, forPrint){
+  if (!employees.length) return '';
+  const g = employees.reduce((acc, e) => {
+    acc.workDays += e.totalWorkDays || 0; acc.dayWages += e.totalDayWages || 0;
+    acc.additions += e.totalAdditions || 0; acc.withdrawals += e.totalWithdrawals || 0;
+    acc.deductions += e.totalDeductions || 0; acc.net += e.net || 0; acc.absence += e.absenceDaysCount || 0;
+    return acc;
+  }, { workDays:0, dayWages:0, additions:0, withdrawals:0, deductions:0, net:0, absence:0 });
+  const rows = [
+    ['إجمالي أيام الشغل', g.workDays + ' يوم'],
+    ['إجمالي قيمة أيام الشغل', fmt(g.dayWages) + ' ج'],
+    ['إجمالي الإضافات (سهرات)', fmt(g.additions) + ' ج'],
+    ['إجمالي الخصومات', fmt(g.deductions) + ' ج'],
+    ['إجمالي المسحوبات', fmt(g.withdrawals) + ' ج'],
+    ['إجمالي أيام الغياب', g.absence + ' يوم'],
+    ['الصافي الكلي', fmt(g.net) + ' ج'],
+    ['عدد الموظفين', String(employees.length)],
+  ];
+  if (forPrint) {
+    return `
+      <div style="margin-top:20px;border-top:2px solid #B8975A;padding-top:12px;">
+        <div style="font-weight:700;font-size:13px;margin-bottom:6px;">📊 إجمالي الشهر (كل الموظفين)</div>
+        <table style="width:100%;border-collapse:collapse;font-size:11.5px;">
+          <tbody>${rows.map(([l,v]) => `<tr><td style="padding:5px 8px;border-bottom:1px solid #E7E0D4;color:#6B5E4E;">${qEsc(l)}</td><td style="padding:5px 8px;border-bottom:1px solid #E7E0D4;font-weight:700;">${qEsc(v)}</td></tr>`).join('')}</tbody>
+        </table>
+      </div>`;
+  }
+  return `<div class="panel" style="margin-top:4px;"><h4 style="margin-bottom:8px;">📊 إجمالي الشهر (كل الموظفين)</h4>
+    <table class="wr-grand-tbl"><tbody>${rows.map(([l,v]) => `<tr><td>${qEsc(l)}</td><td>${qEsc(v)}</td></tr>`).join('')}</tbody></table>
+  </div>`;
+}
+
+function renderMonthlyReportModal_(data){
+  const employees = data.employees || [];
+  const empHtml = employees.length ? employees.map(e => {
+    const daysHtml = (e.actionDays && e.actionDays.length)
+      ? e.actionDays.map(_mrActionDayLineHtml_).join('')
+      : '<div class="empty" style="padding:6px 0;font-size:12.5px;">مفيش أي أكشن مسجل الشهر ده — حضور عادي طول الشهر</div>';
+    const rows = _mrFinalCalcRows_(e);
+    const finalCalcHtml = `<div class="wr-final-calc">${rows.map(([label,val],ri) => `<div class="wr-final-calc-row ${ri===rows.length-1?'wr-fc-net':(label.startsWith('+')?'wr-fc-add':(label.startsWith('−')?'wr-fc-wd':''))}"><span>${qEsc(label)}</span><b>${qEsc(val)}</b></div>`).join('')}</div>`;
+    return `<div class="panel" style="margin-bottom:12px;">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">اليومية: <b style="color:var(--dark);">${fmt(e.dailyRate||0)} ج</b> &nbsp;•&nbsp; ${e.absenceDaysCount||0} يوم غياب في ${e.weeksCount||0} أسبوع</div>
+      <h4 style="margin-bottom:8px;">${qEsc(e.name)}</h4>
+      <div><b style="font-size:12.5px;">📌 الأيام اللي فيها أكشن:</b>${daysHtml}</div>
+      ${finalCalcHtml}
+    </div>`;
+  }).join('') : '<div class="empty">مفيش موظفين اسبوعيين مسجلين</div>';
+
+  openCardModal(`
+    <div class="cd-head"><h3>تقرير شهري — ${qEsc(data.monthLabel)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <p style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">الأسابيع المحسوبة: ${qEsc((data.weekLabels||[]).join('، '))}</p>
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+      <button class="btn btn-primary btn-sm" onclick="payrollPrintMonthlyReport()">⬇ تحميل PDF</button>
+    </div>
+    <div id="mrEmpList">${empHtml}</div>
+    ${_mrGrandTotalsTableHtml_(employees, false)}
+  `);
+}
+
+function payrollPrintMonthlyReport(){
+  if (!_mrLastReport) return;
+  _openPrintDoc(payrollBuildMonthlyReportPdfHtml_(_mrLastReport));
+}
+
+// نفس أسلوب payrollBuildWeeklyReportPdfHtml_ بالظبط، بس المحتوى إجماليات
+// الشهر + قايمة الأيام اللي فيها أكشن بدل جدول أيام كامل.
+function payrollBuildMonthlyReportPdfHtml_(data){
+  const employees = data.employees || [];
+  const mrDayDetailTxt_ = d => {
+    const hasSehra = /سهر[ةه]/.test(d.note || '');
+    const codeTxt = [
+      d.isFullAbsence ? 'غياب يوم كامل' : '',
+      d.isFridayWork ? (d.workAmount ? `يوم شغل ${fmt(d.workAmount)}ج` : 'حضر (يوم شغل)') : '',
+      d.add ? `${hasSehra ? 'سهرة' : 'إضافة'} ${fmt(d.add)}ج` : '',
+      d.deduct ? `خصم ${fmt(d.deduct)}ج` : '',
+      d.absent ? `غياب ${fmt(d.absent)}ج` : '',
+      d.withdraw ? `مسحوبات ${fmt(d.withdraw)}ج` : '',
+    ].filter(Boolean).join(' — ');
+    return codeTxt || '';
+  };
+  const sections = employees.length ? employees.map((e, empIdx) => {
+    const days = e.actionDays || [];
+    const dayRows = days.length
+      ? days.map(d => {
+          const noteHtml = String(d.note || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => qEsc(l)).join('<br>');
+          return `<tr><td style="padding:5px 6px;">${qEsc(d.week)}</td><td style="padding:5px 6px;">${qEsc(d.label||d.date)}</td><td style="padding:5px 6px;">${qEsc(mrDayDetailTxt_(d))}</td><td style="padding:5px 6px;">${noteHtml}</td></tr>`;
+        }).join('')
+      : `<tr><td colspan="4" style="padding:6px;color:#6B5E4E;">مفيش أي أكشن مسجل الشهر ده</td></tr>`;
+
+    const rows = _mrFinalCalcRows_(e);
+    const finalCalcHtmlPdf = `
+      <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:8px;">
+        <tbody>
+          ${rows.map(([label, val], ri) => {
+            const isNet = ri === rows.length - 1;
+            const styleTd = isNet ? 'background:#1E1A15;color:#D4B483;font-weight:700;font-size:12px;' : 'color:#6B5E4E;';
+            return `<tr><td style="padding:5px 8px;${styleTd}">${qEsc(label)}</td><td style="padding:5px 8px;text-align:left;direction:ltr;${isNet?'background:#1E1A15;color:#D4B483;font-weight:700;':'font-weight:700;'}">${qEsc(val)}</td></tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
+
+    const isFirst = empIdx === 0;
+    return `
+      <div class="wr-emp-block"${isFirst ? '' : ' style="border-top:2px dashed #D9D0C4;margin-top:18px;padding-top:18px;"'}>
+        <div class="wr-emp-head">
+          <div style="font-size:10px;color:#6B5E4E;margin-bottom:2px;">اليومية: ${fmt(e.dailyRate||0)} ج &nbsp;•&nbsp; ${e.absenceDaysCount||0} يوم غياب في ${e.weeksCount||0} أسبوع</div>
+          <div style="background:#1E1A15;color:#D4B483;padding:8px 12px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0;">${qEsc(e.name)}</div>
+        </div>
+        <div style="border:1px solid #D9D0C4;border-top:none;padding:10px 12px;">
+          <div style="font-size:11.5px;font-weight:700;color:#3a2f22;margin-bottom:4px;">📌 الأيام اللي فيها أكشن</div>
+          <table class="wr-days-table" style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:6px;">
+            <thead><tr style="background:#F3EFEA;"><th style="padding:5px 6px;text-align:right;">الأسبوع</th><th style="padding:5px 6px;text-align:right;">اليوم</th><th style="padding:5px 6px;text-align:right;">التفاصيل</th><th style="padding:5px 6px;text-align:right;">ملاحظة</th></tr></thead>
+            <tbody>${dayRows}</tbody>
+          </table>
+          ${finalCalcHtmlPdf}
+        </div>
+      </div>`;
+  }).join('') : '<p style="text-align:center;color:#6B5E4E;padding:20px;">مفيش موظفين اسبوعيين مسجلين</p>';
+
+  const grandTotalsHtml = _mrGrandTotalsTableHtml_(employees, true);
+
+  return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"/>
+  <title>${qEsc(pdfFileTitle('تقرير شهري', data.monthLabel))}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;} body{font-family:'Cairo','Arial',sans-serif;direction:rtl;color:#1E1A15;background:#fff;}
+    @page{size:A4;margin:14mm 12mm;} @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+    table.wr-days-table tr{page-break-inside:avoid;break-inside:avoid;}
+    .wr-emp-block{page-break-inside:auto;}
+    .wr-emp-head{page-break-after:avoid;break-after:avoid;}
+    div[style*="border-top:2px solid #B8975A"]{page-break-inside:avoid;break-inside:avoid;}
+    .brand-block{text-align:center;padding-bottom:14px;border-bottom:2px solid #B8975A;margin-bottom:16px;}
+    .brand-title{font-family:'Playfair Display',Georgia,serif;font-size:38px;letter-spacing:5px;color:#1E1A15;direction:ltr;}
+    .brand-title span{color:#B8975A;} .brand-sub{font-size:9px;letter-spacing:3px;color:#6B5E4E;text-transform:uppercase;margin-top:4px;direction:ltr;}
+    .footer{text-align:center;font-size:13px;color:#B8975A;font-family:'Playfair Display',Georgia,serif;letter-spacing:1px;direction:ltr;margin-top:10px;}
+  </style></head>
+  <body><div style="padding:24px 28px;">
+    <div class="brand-block"><div class="brand-title">Living <span>Mood</span></div><div class="brand-sub">Interior Design &amp; Furniture</div></div>
+    <h2 style="text-align:center;margin-bottom:4px;">تقرير شهري — الموظفين الاسبوعيين</h2>
+    <p style="text-align:center;color:#6B5E4E;font-size:12.5px;margin-bottom:18px;">${qEsc(data.monthLabel)} &nbsp;(${qEsc((data.weekLabels||[]).join('، '))})</p>
+    ${sections}
+    ${grandTotalsHtml}
+    <div class="footer">Living Mood</div>
+  </div></body></html>`;
+}
 function payrollRenderMonthlyTable_(box, data){
   PAYSTATE._flatHeaders = data.summaryHeaders;
   const bodyRows = data.rows.map((r, empIdx) => `
