@@ -3150,13 +3150,23 @@ function _wrGrandTotalsTableHtml_(employees, forPrint){
   if (g.totals.fridayWork) rows.push(['إجمالي شغل الجمعة', fmt(g.totals.fridayWork) + ' ج']);
   rows.push(['عدد الموظفين في التقرير', String(g.count)]);
 
+  // ⚠️ إضافة 2026-08-22: بنشيل الصفوف اللي قيمتها صفر (زي "ساعات الأوفر" أو
+  // "خصم أيام" لما محدش أخد أوفر أو خصم أيام أصلاً) — مفيش داعي نعرضها فاضية
+  // في التقرير. "صافي الأسبوع" و"عدد الموظفين" بيفضلوا ظاهرين دايمًا مهما كانت قيمتهم.
+  const _grKeepAlways = /صافي|عدد الموظفين/;
+  const _grIsZero = (val) => {
+    const v = parseFloat(String(val || '').replace(/[^\d.\-]/g, ''));
+    return !v || v === 0;
+  };
+  const visibleRows = rows.filter(([label, val]) => _grKeepAlways.test(label) || !_grIsZero(val));
+
   if (forPrint) {
     return `
       <div style="margin-top:20px;border-top:2px solid #B8975A;padding-top:12px;">
         <div style="font-weight:700;font-size:13px;margin-bottom:6px;">📊 إجمالي التقرير (كل الموظفين المختارين)</div>
         <table style="width:100%;border-collapse:collapse;font-size:11.5px;">
           <tbody>
-            ${rows.map(([label, val]) => `<tr><td style="padding:5px 8px;border-bottom:1px solid #E7E0D4;color:#6B5E4E;">${qEsc(label)}</td><td style="padding:5px 8px;border-bottom:1px solid #E7E0D4;font-weight:700;">${qEsc(val)}</td></tr>`).join('')}
+            ${visibleRows.map(([label, val]) => `<tr><td style="padding:5px 8px;border-bottom:1px solid #E7E0D4;color:#6B5E4E;">${qEsc(label)}</td><td style="padding:5px 8px;border-bottom:1px solid #E7E0D4;font-weight:700;">${qEsc(val)}</td></tr>`).join('')}
           </tbody>
         </table>
       </div>`;
@@ -3166,7 +3176,7 @@ function _wrGrandTotalsTableHtml_(employees, forPrint){
       <h4 style="margin-bottom:8px;">📊 إجمالي التقرير (كل الموظفين المختارين)</h4>
       <table class="wr-grand-tbl">
         <tbody>
-          ${rows.map(([label, val]) => `<tr><td>${qEsc(label)}</td><td>${qEsc(val)}</td></tr>`).join('')}
+          ${visibleRows.map(([label, val]) => `<tr><td>${qEsc(label)}</td><td>${qEsc(val)}</td></tr>`).join('')}
         </tbody>
       </table>
     </div>`;
@@ -3593,6 +3603,87 @@ function payrollBuildMonthlyReportPdfHtml_(data){
     <div class="footer">Living Mood</div>
   </div></body></html>`;
 }
+// ═══════════════════ زرار "تقرير شهري" — الموظفين الشهريين ═══════════════════
+// ⚠️ إضافة 2026-08-22: تقرير إجمالي بسيط لصفحة "الموظفين الشهريين" (تبويب حضور
+// الموظفين الشهريين) — بيستخدم نفس بيانات صف "الإجمالي" الموجودة أصلاً تحت
+// الجدول (data.totals مقابل data.summaryHeaders)، من غير أي نداء سيرفر إضافي.
+// نفس فكرة _wrGrandTotalsTableHtml_ بالظبط (بيشيل صفوف الصفر) + زرار تحميل PDF.
+let _meLastReport = null;
+
+function _meGrandTotalsTableHtml_(data, forPrint){
+  if (!data.totals || !data.rows.length) return '';
+  const rows = data.summaryHeaders.map((h, i) => [h, data.totals[i]]);
+  const _meKeepAlways = /صافي|عدد الموظفين/;
+  const _meIsZero = (val) => {
+    const v = parseFloat(String(val || '').replace(/[^\d.\-]/g, ''));
+    return !v || v === 0;
+  };
+  const visibleRows = rows.filter(([label, val]) => _meKeepAlways.test(label) || !_meIsZero(val));
+  visibleRows.push(['عدد الموظفين', String(data.rows.length)]);
+
+  if (forPrint) {
+    return `
+      <div style="margin-top:20px;border-top:2px solid #B8975A;padding-top:12px;">
+        <div style="font-weight:700;font-size:13px;margin-bottom:6px;">📊 إجمالي الشهر (كل الموظفين)</div>
+        <table style="width:100%;border-collapse:collapse;font-size:11.5px;">
+          <tbody>
+            ${visibleRows.map(([label, val]) => `<tr><td style="padding:5px 8px;border-bottom:1px solid #E7E0D4;color:#6B5E4E;">${qEsc(label)}</td><td style="padding:5px 8px;border-bottom:1px solid #E7E0D4;font-weight:700;">${qEsc(val)}</td></tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+  return `
+    <div class="panel" style="margin-top:4px;">
+      <h4 style="margin-bottom:8px;">📊 إجمالي الشهر (كل الموظفين)</h4>
+      <table class="wr-grand-tbl">
+        <tbody>
+          ${visibleRows.map(([label, val]) => `<tr><td>${qEsc(label)}</td><td>${qEsc(val)}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function payrollOpenMonthlyEmpReportModal_(data){
+  _meLastReport = data;
+  openCardModal(`
+    <div class="cd-head"><h3>📊 تقرير شهري — ${qEsc(data.sheetName)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+      <button class="btn btn-primary btn-sm" onclick="payrollPrintMonthlyEmpReport()">⬇ تحميل PDF</button>
+    </div>
+    ${_meGrandTotalsTableHtml_(data, false)}
+  `);
+}
+
+function payrollPrintMonthlyEmpReport(){
+  if (!_meLastReport) return;
+  _openPrintDoc(payrollBuildMonthlyEmpReportPdfHtml_(_meLastReport));
+}
+
+// نفس أسلوب payrollBuildMonthlyReportPdfHtml_ بالظبط، بس المحتوى إجمالي واحد
+// بس (مفيش تفاصيل يوم بيوم لكل موظف هنا).
+function payrollBuildMonthlyEmpReportPdfHtml_(data){
+  const grandTotalsHtml = _meGrandTotalsTableHtml_(data, true);
+  return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"/>
+  <title>${qEsc(pdfFileTitle('تقرير شهري', data.sheetName))}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;} body{font-family:'Cairo','Arial',sans-serif;direction:rtl;color:#1E1A15;background:#fff;}
+    @page{size:A4;margin:14mm 12mm;} @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+    .brand-block{text-align:center;padding-bottom:14px;border-bottom:2px solid #B8975A;margin-bottom:16px;}
+    .brand-title{font-family:'Playfair Display',Georgia,serif;font-size:38px;letter-spacing:5px;color:#1E1A15;direction:ltr;}
+    .brand-title span{color:#B8975A;} .brand-sub{font-size:9px;letter-spacing:3px;color:#6B5E4E;text-transform:uppercase;margin-top:4px;direction:ltr;}
+    .footer{text-align:center;font-size:13px;color:#B8975A;font-family:'Playfair Display',Georgia,serif;letter-spacing:1px;direction:ltr;margin-top:10px;}
+  </style></head>
+  <body><div style="padding:24px 28px;">
+    <div class="brand-block"><div class="brand-title">Living <span>Mood</span></div><div class="brand-sub">Interior Design &amp; Furniture</div></div>
+    <h2 style="text-align:center;margin-bottom:4px;">تقرير شهري — الموظفين الشهريين</h2>
+    <p style="text-align:center;color:#6B5E4E;font-size:12.5px;margin-bottom:18px;">${qEsc(data.sheetName)} &nbsp;(${data.rows.length} موظف)</p>
+    ${grandTotalsHtml}
+    <div class="footer">Living Mood</div>
+  </div></body></html>`;
+}
+
 function payrollRenderMonthlyTable_(box, data){
   PAYSTATE._flatHeaders = data.summaryHeaders;
   const bodyRows = data.rows.map((r, empIdx) => `
@@ -3608,7 +3699,10 @@ function payrollRenderMonthlyTable_(box, data){
 
   box.innerHTML = `
     <div class="panel">
-      <h3 style="margin-bottom:10px;">${qEsc(data.sheetName)} (${data.rows.length} موظف)</h3>
+      <h3 style="margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span>${qEsc(data.sheetName)} (${data.rows.length} موظف)</span>
+        <button type="button" class="btn btn-outline btn-sm" id="payMonthlyEmpReportBtn" style="margin-inline-start:auto;">📄 تقرير</button>
+      </h3>
       <div class="tbl-wrap tbl-wrap-scroll" style="max-height:70vh;">
         <table style="border-collapse:separate;border-spacing:0;">
           <thead><tr>
@@ -3623,6 +3717,8 @@ function payrollRenderMonthlyTable_(box, data){
     </div>
     ${payrollQuickAddPanelHtml_(data)}`;
   payrollQaHighlight_();
+  const meBtn = document.getElementById('payMonthlyEmpReportBtn');
+  if (meBtn) meBtn.addEventListener('click', () => payrollOpenMonthlyEmpReportModal_(data));
 }
 
 function payrollLegendHtml_(){
