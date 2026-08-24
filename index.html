@@ -6958,7 +6958,7 @@ async function renderPartnerWithdrawals(token){
         </div>
         <div style="font-weight:800;font-size:18px;">إجمالي الشركاء الثلاثة: <span id="pw-grand-total" style="color:var(--red);">${fmt(data.grandTotal)} ج</span></div>
       </div>
-      <div id="pw-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;align-items:start;">
+      <div id="pw-grid" style="display:grid;grid-template-columns:1fr;gap:16px;align-items:start;max-width:760px;margin:0 auto;">
         ${data.partners.map(p => pwColumnShellHtml(p)).join('')}
       </div>
     `;
