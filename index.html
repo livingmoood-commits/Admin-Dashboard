@@ -269,10 +269,18 @@
   .to-ticket .fb{ font-size:12.5px; margin-top:4px; }
 
   .to-tp-cards{ display:grid; grid-template-columns:repeat(auto-fit, minmax(190px,1fr)); gap:12px; }
-  .to-tp-card{ background:var(--cream); border:1px solid var(--border); border-radius:12px; padding:14px; cursor:pointer; transition:transform .2s var(--bounce), border-color .2s; }
+  .to-tp-card{ background:var(--cream); border:1px solid var(--border); border-radius:12px; padding:14px; cursor:pointer; transition:transform .2s var(--bounce), border-color .2s; position:relative; }
   .to-tp-card:hover{ transform:translateY(-2px); border-color:var(--gold); }
   .to-tp-card.active{ border-color:var(--gold); background:#fdf6e8; }
-  .to-tp-card .proj-name{ font-weight:800; font-size:13.5px; margin-bottom:8px; }
+  .to-tp-card .proj-name{ font-weight:800; font-size:13.5px; margin-bottom:8px; padding-left:18px; }
+  .to-tp-card .to-tp-remove{ position:absolute; top:8px; left:8px; width:20px; height:20px; border-radius:50%; border:1px solid var(--border); background:#fff; color:var(--muted); font-size:12px; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .to-tp-card .to-tp-remove:hover{ background:var(--red); color:#fff; border-color:var(--red); }
+  .to-tp-card.to-tp-add{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; border-style:dashed; color:var(--gold-dim); font-weight:800; min-height:80px; text-align:center; }
+  .to-tp-card.to-tp-add:hover{ background:#fdf6e8; }
+  .to-tp-card.to-tp-add .add-ic{ font-size:20px; line-height:1; }
+  .to-tp-picker{ margin-top:10px; padding:10px; border:1px dashed var(--border); border-radius:10px; display:flex; flex-wrap:wrap; gap:8px; }
+  .to-tp-pick-item{ background:var(--cream); border:1px solid var(--border); border-radius:20px; padding:7px 14px; font-size:12.5px; font-weight:700; cursor:pointer; }
+  .to-tp-pick-item:hover{ border-color:var(--gold); background:#fdf6e8; }
   .to-tp-progress-bar{ background:#e7e0d4; border-radius:20px; height:7px; overflow:hidden; margin-bottom:6px; }
   .to-tp-progress-fill{ height:100%; background:var(--green); border-radius:20px; }
   .to-tp-card .stats{ font-size:11.5px; color:var(--muted); display:flex; justify-content:space-between; }
@@ -9629,9 +9637,24 @@ function toRenderWeekDetail() {
 
 /* ===================== تاب 3: تايم بلاننج (بيستخدم نفس شيت "بنود ناقصة") ===================== */
 let TO_PLAN_PROJECT = '';
+// ⚠️ إضافة 2026-08-24: مش كل المشاريع تتعرض في كروت "تايم بلاننج" تلقائي —
+// بس اللي المستخدم "ضافه" بنفسه بزرار "+ إضافة مشروع". اللستة دي بتتحفظ في
+// localStorage (خاصة بالجهاز/المتصفح، مش شيت) عشان تفضل زي ما هي لما ترجع تاني.
+const TO_TL_PINNED_KEY = 'lm_tl_pinned_projects_v1';
+function tlGetPinned() {
+  try { const arr = JSON.parse(localStorage.getItem(TO_TL_PINNED_KEY) || '[]'); return Array.isArray(arr) ? arr : []; }
+  catch (e) { return []; }
+}
+function tlSetPinned(arr) { try { localStorage.setItem(TO_TL_PINNED_KEY, JSON.stringify(arr)); } catch (e) {} }
+function tlAddPinned(p) { const cur = tlGetPinned(); if (!cur.includes(p)) { cur.push(p); tlSetPinned(cur); } }
+function tlRemovePinned(p) { tlSetPinned(tlGetPinned().filter(x => x !== p)); }
+let TO_TL_SHOW_PICKER = false; // فاتح لوحة اختيار مشروع جديد ولا لأ — حالة عرض بس، مش محفوظة
 async function toLoadPlanTab(token, opts) {
   opts = opts || {};
-  if (!TO_PLAN_PROJECT && TO_STATE.projects.length) TO_PLAN_PROJECT = TO_STATE.projects[0];
+  if (!TO_PLAN_PROJECT) {
+    const pinned = tlGetPinned().filter(p => TO_STATE.projects.includes(p));
+    if (pinned.length) TO_PLAN_PROJECT = pinned[0];
+  }
   const box = document.getElementById('to-tab-content'); if (!box) return;
   const cached = TO_STATE.planCache[TO_PLAN_PROJECT];
   if (cached && !opts.force) {
@@ -9640,10 +9663,15 @@ async function toLoadPlanTab(token, opts) {
   }
   if (!cached) box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
-    const [{ items }, summaryRes] = await Promise.all([
-      apiGet('listMissingItems', { filters: TO_PLAN_PROJECT ? { project: TO_PLAN_PROJECT } : {} }),
+    // ⚠️ 2026-08-24: من غير مشروع محدد (TO_PLAN_PROJECT فاضي) مبقاش بنجيب بنود كل
+    // المشاريع مجمّعة — بنجيب بس الملخص (لأزرار الكروت لو اتضافوا)، ولوحة البنود
+    // بتفضل فاضية لحد ما يتضاف مشروع فعليًا. ده يطابق إن الكروت نفسها بقت مش بتظهر
+    // إلا بعد الإضافة.
+    const [itemsRes, summaryRes] = await Promise.all([
+      TO_PLAN_PROJECT ? apiGet('listMissingItems', { filters: { project: TO_PLAN_PROJECT } }) : Promise.resolve({ items: [] }),
       apiGet('getMissingItemsSummary')
     ]);
+    const items = itemsRes.items;
     if (isStaleNav(token)) return;
     TO_STATE.missingSummary = summaryRes.summary || [];
     TO_STATE.planCache[TO_PLAN_PROJECT] = items || [];
@@ -9657,20 +9685,31 @@ function toRenderPlanBody(items) {
   TO_STATE.missingSummary.forEach(s => { summaryMap[s.project] = s; });
   const doneCount = (items || []).filter(i => i.done).length;
   const pct = items && items.length ? Math.round(doneCount / items.length * 100) : 0;
+  const pinnedProjects = tlGetPinned().filter(p => TO_STATE.projects.includes(p));
+  const availableProjects = TO_STATE.projects.filter(p => !pinnedProjects.includes(p));
   box.innerHTML = `
     <div class="panel">
       <h3>تايم بلاننج — بنود المشاريع <span class="sub">كل بند لكل مشروع، وحالته</span></h3>
       <div class="to-tp-cards">
-        ${TO_STATE.projects.map(p => {
+        ${pinnedProjects.map(p => {
           const s = summaryMap[p] || { total:0, done:0, pending:0 };
           const pp = s.total ? Math.round(s.done / s.total * 100) : 0;
           return `<div class="to-tp-card ${p===TO_PLAN_PROJECT?'active':''}" data-proj="${qEsc(p)}">
+            <span class="to-tp-remove" data-removeproj="${qEsc(p)}" title="شيل المشروع ده من هنا">&#10005;</span>
             <div class="proj-name">${qEsc(p)}</div>
             <div class="to-tp-progress-bar"><div class="to-tp-progress-fill" style="width:${pp}%;"></div></div>
             <div class="stats"><span class="pending">${s.pending||0} ناقص</span><span>${s.done||0}/${s.total||0} خلص</span></div>
           </div>`;
         }).join('')}
+        <button type="button" class="to-tp-card to-tp-add" id="toTpAddBtn">
+          <div class="add-ic">&#43;</div>
+          <div>إضافة مشروع</div>
+        </button>
       </div>
+      ${TO_TL_SHOW_PICKER ? `<div class="to-tp-picker">
+        ${availableProjects.length ? availableProjects.map(p => `<button type="button" class="to-tp-pick-item" data-addproj="${qEsc(p)}">${qEsc(p)}</button>`).join('') : `<div class="empty">كل المشاريع مضافة بالفعل</div>`}
+      </div>` : ''}
+      ${!pinnedProjects.length && !TO_TL_SHOW_PICKER ? `<div class="empty" style="margin-top:10px;">مفيش مشاريع مضافة هنا لسه — دوس "إضافة مشروع" عشان تبدأ</div>` : ''}
     </div>
     <div class="grid2">
       <div class="panel">
@@ -9681,7 +9720,7 @@ function toRenderPlanBody(items) {
         <div id="to-mi-addbox"></div>
       </div>
       <div class="panel">
-        <h3>بنود مشروع: ${qEsc(TO_PLAN_PROJECT)} <span class="sub">${doneCount}/${(items||[]).length} اتوفر (${pct}%)</span></h3>
+        <h3>${TO_PLAN_PROJECT ? `بنود مشروع: ${qEsc(TO_PLAN_PROJECT)}` : 'بنود المشروع'} <span class="sub">${doneCount}/${(items||[]).length} اتوفر (${pct}%)</span></h3>
         <div class="mi-progress-bar"><div class="mi-progress-fill" style="width:${pct}%;"></div></div>
         <div class="tbl-wrap" style="margin-top:12px;">
           ${items && items.length ? `<table>
@@ -9690,14 +9729,46 @@ function toRenderPlanBody(items) {
               <td><input type="checkbox" class="mi-check" ${i.done?'checked':''} data-miid="${i.id}"></td>
               <td>${qEsc(i.name)}</td><td>${qEsc(i.size)}</td><td>${qEsc(i.qty)}</td>
             </tr>`).join('')}</tbody>
-          </table>` : `<div class="empty">مفيش بنود مسجلة للمشروع ده</div>`}
+          </table>` : `<div class="empty">${TO_PLAN_PROJECT ? 'مفيش بنود مسجلة للمشروع ده' : 'ضيف مشروع من فوق عشان تشوف بنوده'}</div>`}
         </div>
       </div>
     </div>
   `;
   // تبديل المشروع: هيبان فورًا لو اتشاف قبل كده (كاش)، وهيفيتش تاني بس أول مرة
-  document.querySelectorAll('.to-tp-card').forEach(c => {
-    c.addEventListener('click', () => { TO_PLAN_PROJECT = c.dataset.proj; toLoadPlanTab(); });
+  document.querySelectorAll('.to-tp-card[data-proj]').forEach(c => {
+    c.addEventListener('click', e => {
+      if (e.target.closest('[data-removeproj]')) return; // دوسة على الـ × ملهاش علاقة بفتح الكارت
+      TO_PLAN_PROJECT = c.dataset.proj; toLoadPlanTab();
+    });
+  });
+  // شيل مشروع من الكروت — بس شيل من اللستة المحلية، مش من الشيت خالص
+  document.querySelectorAll('[data-removeproj]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const p = btn.dataset.removeproj;
+      tlRemovePinned(p);
+      if (TO_PLAN_PROJECT === p) {
+        const remaining = tlGetPinned().filter(x => TO_STATE.projects.includes(x));
+        TO_PLAN_PROJECT = remaining.length ? remaining[0] : '';
+        toLoadPlanTab();
+      } else {
+        toRenderPlanBody(TO_STATE.planCache[TO_PLAN_PROJECT] || []);
+      }
+    });
+  });
+  const addBtn = document.getElementById('toTpAddBtn');
+  if (addBtn) addBtn.addEventListener('click', () => {
+    TO_TL_SHOW_PICKER = !TO_TL_SHOW_PICKER;
+    toRenderPlanBody(TO_STATE.planCache[TO_PLAN_PROJECT] || []);
+  });
+  document.querySelectorAll('[data-addproj]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = btn.dataset.addproj;
+      tlAddPinned(p);
+      TO_TL_SHOW_PICKER = false;
+      TO_PLAN_PROJECT = p;
+      toLoadPlanTab();
+    });
   });
   const sel = document.getElementById('to_mi_project');
   if (sel) sel.addEventListener('change', e => { TO_PLAN_PROJECT = e.target.value; toLoadPlanTab(); });
