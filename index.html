@@ -226,7 +226,7 @@
   .to-status-btn.blocked-active .ic{ background:var(--red); }
   .to-status-btn.blocked-active .lbl{ color:var(--red); }
   .to-status-btn.done-active{ background:#e6f4ea; border-color:var(--green); }
-  .to-status-btn.done-active .ic{ background:var(--dark); }
+  .to-status-btn.done-active .ic{ background:var(--green); }
   .to-status-btn.done-active .lbl{ color:var(--green); }
   .to-blocked-note{ margin-top:8px; }
   .to-blocked-note input{ border-color:#f0c9c9; }
@@ -769,7 +769,7 @@
   .q-side-col{ display:flex; flex-direction:column; gap:10px; align-items:flex-start; }
 
   .q-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; margin-bottom:14px; }
-  table.q-tbl{ width:100%; border-collapse:collapse; font-size:15px; min-width:980px; table-layout:fixed; }
+  table.q-tbl{ width:100%; border-collapse:collapse; font-size:15px; min-width:1300px; table-layout:fixed; }
   .q-tbl thead tr{ background:var(--green); color:#fff; }
   .q-tbl thead th{ padding:13px 12px; font-weight:600; text-align:right; white-space:nowrap; font-size:14px; }
   .q-tbl tbody tr{ border-bottom:1px solid var(--border); }
@@ -781,7 +781,13 @@
   .ltr-num{ direction:ltr; text-align:left; }
   .q-tbl td input:focus, .q-tbl td textarea:focus{ border-color:var(--gold); box-shadow:0 0 0 3px rgba(184,151,90,.14); }
   .q-tbl td textarea{ resize:vertical; min-height:150px; line-height:1.7; }
-  .q-tbl th:nth-child(4){ min-width:300px; }
+  /* ⚠️ إصلاح: عمود "المطلوب تنفيذه" (الوصف) كان من غير width صريح على الـ<th>،
+     وباقي الأعمدة كلها width صريح بالبكسل — في table-layout:fixed، أي عمود من
+     غيره width صريح بياخد بس الباقي من عرض الجدول بعد ما باقي الأعمدة تاخد
+     نصيبها (min-width هنا مكنش بيتحسب أصلاً)، فكان أحيانًا بياخد مساحة ضئيلة
+     جدًا وبيتلف كل حرف في سطر لوحده. دلوقتي عنده width صريح كبير زي باقي
+     الأعمدة، ومضمون ياخد مساحة كافية دايمًا. */
+  .q-tbl th:nth-child(4){ width:340px; min-width:340px; }
   .q-tbl td.num-cell{ font-weight:700; white-space:nowrap; direction:ltr; text-align:left; font-size:15px; }
   /* ⚠️ إضافة: الحقول (النموذج/الوحدة) كانت ضيقة جدًا (110px/130px) فالنص بيتقص
      من غير ما تبان — عرض عريض أكتر وسطر بديل للنص الطويل بدل ما يتقص. */
@@ -7775,7 +7781,7 @@ function qRenderEditor(){
         <table class="q-tbl">
           <thead><tr>
             <th style="width:34px;">#</th><th style="width:150px;">النموذج</th><th style="width:160px;">الوحدة</th>
-            <th>المطلوب تنفيذه</th><th style="width:100px;">عدد</th><th style="width:110px;">السعر</th>
+            <th style="width:340px;">المطلوب تنفيذه</th><th style="width:100px;">عدد</th><th style="width:110px;">السعر</th>
             <th style="width:120px;">الإجمالي</th><th style="width:170px;">ملاحظات</th><th style="width:110px;"></th>
           </tr></thead>
           <tbody id="q-body"></tbody>
@@ -8982,6 +8988,8 @@ let TO_STATE = {
   selectedCell: null,    // { emp, date } في التاب الاسبوعي
   missingSummary: [],    // من getMissingItemsSummary — لعداد "بنود لسه ناقصة" في الشريط
   formDate: todayStr(),
+  wwDate: todayStr(),    // فلتر تاريخ منفصل لبانل "مين فين" — دفولت النهاردة، مستقل عن formDate بتاع فورم التسجيل
+  wwEntries: [],         // شغل يوم wwDate (بانل "مين فين" بس)
   qCraftsman: '',
   csOpen: false,
   moreOpen: false,
@@ -9155,6 +9163,7 @@ async function toLoadDailyTab(token, opts) {
   const cached = TO_STATE.dailyCache[date];
   if (cached && !opts.force) {
     TO_STATE.todayEntries = cached;
+    if (TO_STATE.wwDate === date) TO_STATE.wwEntries = cached;
     toRenderDailyForm(); // فوري من الكاش، من غير أي طلب سيرفر
     return;
   }
@@ -9164,15 +9173,34 @@ async function toLoadDailyTab(token, opts) {
     if (isStaleNav(token)) return;
     TO_STATE.todayEntries = entries || [];
     TO_STATE.dailyCache[date] = TO_STATE.todayEntries;
+    if (TO_STATE.wwDate === date) TO_STATE.wwEntries = TO_STATE.todayEntries;
     toRenderDailyForm();
   } catch (err) { box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
+}
+
+// تحميل بانل "مين فين" لتاريخ TO_STATE.wwDate — مستقل تمامًا عن فورم التسجيل (to_date/formDate)،
+// عشان تقدر تتصفح "مين فين" في أي يوم من غير ما تغيّر تاريخ السطر اللي هتسجله. بيستخدم نفس
+// كاش الأيام (dailyCache) بتاع تاب "شغل يومي"، فلو اليوم ده اتشاف قبل كده (من أي مكان) هيبان فورًا.
+async function toLoadWhoWhere(token, opts) {
+  opts = opts || {};
+  const date = TO_STATE.wwDate;
+  const body = document.getElementById('to-ww-body');
+  const cached = TO_STATE.dailyCache[date];
+  if (cached && !opts.force) { TO_STATE.wwEntries = cached; toRenderWhoWhereBlock(); return; }
+  if (body) body.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  try {
+    const { entries } = await apiGet('listWorkflowEntries', { filters: { date } });
+    if (isStaleNav(token)) return;
+    TO_STATE.wwEntries = entries || [];
+    TO_STATE.dailyCache[date] = TO_STATE.wwEntries;
+    toRenderWhoWhereBlock();
+  } catch (err) { if (body) body.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
 }
 
 // رندر بس — من غير أي فيتش — بيتستخدم لأي تفاعل UI محلي (فتح/قفل الليستة، اختيار صنيعي،
 // فتح الحقول الإضافية، تحديث حالة بند...) عشان مفيش داعي نكلم السيرفر ولا نمسح الشاشة كل ما نضغط حاجة.
 function toRenderDailyForm() {
   const box = document.getElementById('to-tab-content'); if (!box) return;
-  const grouped = TO_STATE.craftsmen.map(name => ({ name, items: TO_STATE.todayEntries.filter(e => e.craftsman === name) })).filter(g => g.items.length);
   box.innerHTML = `
     <div class="panel">
       <h3>تسجيل شغل <span class="sub">هيتسجل في شيت "سجل الشغل اليومي" مباشرة</span></h3>
@@ -9231,20 +9259,46 @@ function toRenderDailyForm() {
       </div>
     </div>
 
-    <div class="panel">
-      <h3>شغل ${toDateQuickLabel(TO_STATE.formDate)} — مين فين <span class="sub">${TO_STATE.formDate}</span></h3>
-      ${grouped.map(g => `
-        <div class="wf-card ${g.items.length?'':'empty-card'}" style="${g.items.length?'':'opacity:.6;'}">
-          <div class="wf-card-head">
-            <span class="wf-craftsman-name">${qEsc(g.name)}</span>
-            <span style="font-size:11.5px;color:var(--muted);">${g.items.length} بند</span>
-          </div>
-          ${g.items.length ? g.items.map(it => toItemHTML(it)).join('') : `<div class="wf-empty-day">لسه معملش تسجيل في اليوم ده</div>`}
+    <div class="panel" id="to-ww-panel">
+      <div class="to-week-toolbar" style="margin-bottom:10px;">
+        <h3 style="margin:0;">مين فين</h3>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <input type="date" class="d-input" id="ww_date" style="max-width:170px;" value="${TO_STATE.wwDate}">
+          <button type="button" class="btn btn-outline btn-sm" id="wwTodayBtn">النهاردة</button>
         </div>
-      `).join('')}
+      </div>
+      <div id="to-ww-body"></div>
     </div>
   `;
   toWireDailyTab();
+  toRenderWhoWhereBlock();
+}
+
+// رسم بانل "مين فين" بس (id=to-ww-body) — من غير ما يلمس فورم التسجيل فوقه، عشان
+// تغيير فلتر التاريخ هنا ميمسحش أي حاجة المستخدم كاتبها في فورم "تسجيل شغل".
+function toRenderWhoWhereBlock() {
+  const body = document.getElementById('to-ww-body'); if (!body) return;
+  const wwGrouped = TO_STATE.craftsmen.map(name => ({ name, items: TO_STATE.wwEntries.filter(e => e.craftsman === name) })).filter(g => g.items.length);
+  body.innerHTML = `
+    <div class="sub" style="margin-bottom:8px;">شغل ${toDateQuickLabel(TO_STATE.wwDate)} <span style="color:var(--muted);">(${TO_STATE.wwDate})</span></div>
+    ${wwGrouped.length ? wwGrouped.map(g => `
+      <div class="wf-card">
+        <div class="wf-card-head">
+          <span class="wf-craftsman-name">${qEsc(g.name)}</span>
+          <span style="font-size:11.5px;color:var(--muted);">${g.items.length} بند</span>
+        </div>
+        ${g.items.map(it => toItemHTML(it)).join('')}
+      </div>
+    `).join('') : `<div class="wf-empty-day">لسه معملش تسجيل في اليوم ده</div>`}
+  `;
+  // ⚠️ لازم نعيد ربط أزرار الحالة (تم/متعطل) بعد كل رندر للبانل ده، لأنه بيتحدّث لوحده
+  // منفصل عن toWireDailyTab (اللي بيتنادى مرة واحدة بس وقت رسم الصفحة كلها)
+  document.querySelectorAll('#to-ww-body [data-statusid]').forEach(btn => {
+    btn.addEventListener('click', () => toSetItemStatus(btn.dataset.statusid, btn.dataset.status));
+  });
+  document.querySelectorAll('#to-ww-body [data-blockednote]').forEach(inp => {
+    inp.addEventListener('change', () => toSaveBlockedNote(inp.dataset.blockednote, inp.value));
+  });
 }
 
 // شكل بند شغل واحد (مستخدم في تاب "شغل يومي" وتفاصيل خلية تاب "اسبوعي")
@@ -9304,6 +9358,16 @@ function toWireDailyTab() {
   });
   const saveBtn = document.getElementById('toSaveEntryBtn');
   if (saveBtn) saveBtn.addEventListener('click', toSaveEntry);
+
+  // فلتر تاريخ بانل "مين فين" — منفصل عن تاريخ فورم التسجيل، دفولته النهاردة
+  const wwDateInput = document.getElementById('ww_date');
+  if (wwDateInput) wwDateInput.addEventListener('change', e => { TO_STATE.wwDate = e.target.value || todayStr(); toLoadWhoWhere(); });
+  const wwTodayBtn = document.getElementById('wwTodayBtn');
+  if (wwTodayBtn) wwTodayBtn.addEventListener('click', () => {
+    TO_STATE.wwDate = todayStr();
+    if (wwDateInput) wwDateInput.value = TO_STATE.wwDate;
+    toLoadWhoWhere();
+  });
 }
 
 async function toSaveEntry() {
@@ -9341,7 +9405,7 @@ async function toSaveEntry() {
 // تحديث "تفاؤلي": بنغيّر الحالة في الشاشة فورًا من غير ما نستنى السيرفر ولا نعمل أي فيتش،
 // ولو السيرفر رفض بنرجّع الحالة القديمة تاني ونطلع رسالة خطأ.
 async function toSetItemStatus(id, status) {
-  const findIn = TO_STATE.todayEntries.concat(TO_STATE.weekEntries);
+  const findIn = TO_STATE.todayEntries.concat(TO_STATE.weekEntries, TO_STATE.wwEntries);
   const cur = findIn.find(x => String(x.id) === String(id));
   const newStatus = (cur && cur.status === status) ? 'working' : status;
   const prevStatus = cur ? cur.status : null;
@@ -9404,9 +9468,9 @@ function toRenderWeekGrid(dates, from, to) {
       <div class="to-week-toolbar">
         <span class="to-week-label">أسبوع ${weekLabel}</span>
         <div class="to-week-nav">
-          <button class="wn-arrow" id="toPrevWeek">&#8250;</button>
+          <button class="wn-arrow" id="toPrevWeek">&#8249;</button>
           <button class="btn btn-outline btn-sm" id="toThisWeekBtn">الأسبوع الحالي</button>
-          <button class="wn-arrow" id="toNextWeek">&#8249;</button>
+          <button class="wn-arrow" id="toNextWeek">&#8250;</button>
         </div>
       </div>
       <div class="to-grid-wrap">
@@ -10288,7 +10352,14 @@ async function miSaveAllPending() {
 const MATSTATE = { tab: 'active', materials: [], projects: [], detailsOpen: {} };
 
 async function renderMaterials(token){
-  document.getElementById('content').innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  // ⚠️ إضافة: مفيش داعي نمسح الشاشة ونعرض "جاري التحميل" في كل مرة تفتح فيها الصفحة —
+  // apiGet أصلاً بيحتفظ بآخر نسخة معروفة في localStorage (كاش دائم، شوف LS_CACHE_PREFIX
+  // فوق) ويرجعها فورًا حتى لو السيرفر لسه بيرد، وبيحدّث في الخلفية بهدوء. فبنعرض اللودر
+  // بس أول مرة فعلاً (مفيش أي كاش خالص، لا في الذاكرة ولا في localStorage) — أي زيارة
+  // بعد كده بتفتح فورًا من آخر بيانات معروفة، وتتحدّث تلقائي من غير فلاشة "تحميل" زيادة.
+  const hasCache = MATSTATE.materials.length > 0 || MATSTATE.projects.length > 0
+    || !!_apiCache.get(_apiCacheKey('listMaterials', {})) || !!_lsGet(_apiCacheKey('listMaterials', {}));
+  if (!hasCache) document.getElementById('content').innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
     const [{ materials }, { projects }] = await Promise.all([
       apiGet('listMaterials'), apiGet('listMiProjects')
@@ -10361,17 +10432,18 @@ function matCardHtml_(m){
             <span class="et-left">
               <span class="et-icon">${detailsOpen?'−':'+'}</span>
               <span class="et-text">تفاصيل الاستخدام</span>
-              <span class="et-hint">(الوصف، المشروع، التاريخ)</span>
+              <span class="et-hint" style="color:var(--red);">مطلوبة (الوصف، المشروع)</span>
             </span>
             <span class="et-chev">&#9662;</span>
           </button>
           <div class="to-extra-body ${detailsOpen?'open':''}" id="mat-details-body-${idSuffix}">
-            <div class="field"><label>ليه (الوصف)</label><input type="text" class="d-input" id="mat-use-desc-${idSuffix}" placeholder="مثال: دهان غرفة النوم"></div>
-            <div class="field"><label>المشروع</label><input type="text" class="d-input" list="mat-proj-list" id="mat-use-proj-${idSuffix}" placeholder="اختار أو اكتب مشروع"></div>
+            <div class="field"><label>ليه (الوصف) *</label><input type="text" class="d-input" id="mat-use-desc-${idSuffix}" placeholder="مثال: دهان غرفة النوم" required></div>
+            <div class="field"><label>المشروع *</label><input type="text" class="d-input" list="mat-proj-list" id="mat-use-proj-${idSuffix}" placeholder="اختار أو اكتب مشروع" required></div>
             <div class="field"><label>التاريخ</label><input type="date" class="d-input" id="mat-use-date-${idSuffix}" autocomplete="off" value="${todayStr()}"></div>
           </div>
 
           <button type="button" class="btn btn-outline btn-sm" style="margin-top:8px;" id="mat-use-btn-${idSuffix}" onclick="matLogUsage('${qEscJs(m.id)}')">تسجيل استخدام</button>
+          <button type="button" class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="matShowHistory('${qEscJs(m.id)}','${qEscJs(m.name)}')">📜 عرض تفاصيل الاستخدام المسجلة</button>
         </div>
         <div class="msg" id="mat-use-msg-${idSuffix}"></div>
       ` : `
@@ -10433,12 +10505,22 @@ async function matLogUsage(materialId){
   const msg = document.getElementById('mat-use-msg-' + idSuffix);
   const btn = document.getElementById('mat-use-btn-' + idSuffix);
   const amount = amtEl.value.trim();
+  const description = descEl.value.trim();
+  const project = projEl.value.trim();
   if (!amount || Number(amount) <= 0) { msg.className = 'msg err'; msg.textContent = 'اكتب كمية أكبر من صفر'; return; }
+  // ⚠️ الوصف والمشروع بقوا مطلوبين — لو ناقصين، افتح بلوك "تفاصيل الاستخدام" (لو مقفول) وبيّن الخطأ
+  if (!description || !project) {
+    if (!MATSTATE.detailsOpen[materialId]) matToggleDetails(materialId);
+    msg.className = 'msg err';
+    msg.textContent = !description ? 'لازم تكتب وصف/سبب الاستخدام (ليه)' : 'لازم تختار أو تكتب المشروع';
+    (!description ? descEl : projEl).focus();
+    return;
+  }
   if (btn && btn.disabled) return; // منع الدوس المتكرر لحد ما الطلب اللي قبله يخلص
   msg.className = 'msg'; msg.textContent = '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري التسجيل...'; }
   try {
-    const res = await apiPost('logMaterialUsage', { usage: { materialId, amount, description: descEl.value.trim(), project: projEl.value.trim(), date: (dateEl && dateEl.value) ? dateEl.value : todayStr() } });
+    const res = await apiPost('logMaterialUsage', { usage: { materialId, amount, description, project, date: (dateEl && dateEl.value) ? dateEl.value : todayStr() } });
     if (!res.success) { msg.className = 'msg err'; msg.textContent = res.error || 'حصل خطأ'; return; }
     msg.className = 'msg ok';
     msg.textContent = res.finished ? '✅ اتسجل — والخامة خلصت، نقلناها لتبويب "خلصت"' : `✅ اتسجل — الباقي ${fmt(res.remainingQty)}`;
