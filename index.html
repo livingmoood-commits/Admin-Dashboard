@@ -278,16 +278,21 @@
   .to-tp-card .stats{ font-size:11.5px; color:var(--muted); display:flex; justify-content:space-between; }
   .to-tp-card .stats .pending{ color:var(--red); font-weight:700; }
   /* ⚠️ إضافة: كارت "+ إضافة مشروع" جوه تاب "تايم بلاننج" — نفس شكل باقي الكروت
-     بس بحواف متقطعة (dashed) وأيقونة + في النص، وبيتحول لفورم صغير (اسم + حفظ/إلغاء)
-     أول ما تدوس عليه. */
-  .to-tp-add-card{ cursor:pointer; background:var(--white); border:2px dashed var(--border); border-radius:12px;
+     بس بحواف متقطعة (dashed) وأيقونة + في النص. الدوس عليه بيفتح "دروب داون"
+     (بوكس صغير عايم فوق باقي الكروت من غير ما يزحلق شكل الشبكة) فيه خانة الاسم
+     وزرار حفظ/إلغاء — بنفس فكرة .to-cs-list المستخدمة في اختيار الصنيعي فوق. */
+  .to-tp-add-card{ position:relative; cursor:pointer; background:var(--white); border:2px dashed var(--border); border-radius:12px;
     padding:14px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px;
     transition:border-color .2s, background .2s, transform .2s var(--bounce); min-height:70px; }
-  .to-tp-add-card:hover{ border-color:var(--gold); background:#fdf6e8; transform:translateY(-2px); }
-  .to-tp-add-card.open{ cursor:default; align-items:stretch; }
-  .to-tp-add-card.open:hover{ transform:none; }
+  .to-tp-add-card:hover, .to-tp-add-card.open{ border-color:var(--gold); background:#fdf6e8; }
+  .to-tp-add-card:hover{ transform:translateY(-2px); }
   .to-tp-add-icon{ font-size:20px; font-weight:800; color:var(--gold-dim); line-height:1; }
   .to-tp-add-label{ font-size:12.5px; font-weight:700; color:var(--muted); }
+  .to-tp-add-pop{ position:absolute; top:calc(100% + 8px); right:0; min-width:230px; max-width:270px;
+    background:var(--white); border:1.5px solid var(--gold); border-radius:10px;
+    box-shadow:0 12px 30px rgba(30,26,21,.16); padding:12px; z-index:40; display:none; cursor:default; text-align:right; }
+  .to-tp-add-pop.open{ display:block; animation:toCsIn .16s var(--bounce); }
+  .to-tp-add-pop .msg{ margin-top:8px; }
   @media(max-width:460px){ .wf-form-grid{ grid-template-columns:1fr; } }
 
   /* فورم "إضافة بند" — كام بند مكتوبين تحت بعض، والمقاس مقفول جوه تفاصيل */
@@ -9605,19 +9610,19 @@ async function toLoadPlanTab(token, opts) {
 let TO_ADDPROJ_OPEN = false;
 
 function toAddProjCardHtml() {
-  if (!TO_ADDPROJ_OPEN) {
-    return `<div class="to-tp-add-card" id="toAddProjCard">
-      <div class="to-tp-add-icon">+</div>
-      <div class="to-tp-add-label">إضافة مشروع</div>
-    </div>`;
-  }
-  return `<div class="to-tp-add-card open" id="toAddProjCard">
-    <input type="text" id="toNewProjInput" class="d-input" placeholder="اسم المشروع..." autocomplete="off">
-    <div style="display:flex;gap:6px;margin-top:8px;">
-      <button type="button" class="btn btn-primary btn-sm" id="toNewProjSave">إضافة</button>
-      <button type="button" class="btn btn-outline btn-sm" id="toNewProjCancel">إلغاء</button>
+  return `<div class="to-tp-add-card ${TO_ADDPROJ_OPEN ? 'open' : ''}" id="toAddProjCard">
+    <div class="to-tp-add-icon">+</div>
+    <div class="to-tp-add-label">إضافة مشروع</div>
+    <div class="to-tp-add-pop ${TO_ADDPROJ_OPEN ? 'open' : ''}" id="toAddProjPop">
+      <div class="field" style="margin-bottom:8px;">
+        <input type="text" id="toNewProjInput" class="d-input" placeholder="اسم المشروع..." autocomplete="off">
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button type="button" class="btn btn-primary btn-sm" id="toNewProjSave">إضافة</button>
+        <button type="button" class="btn btn-outline btn-sm" id="toNewProjCancel">إلغاء</button>
+      </div>
+      <div class="msg" id="toNewProjMsg"></div>
     </div>
-    <div class="msg" id="toNewProjMsg"></div>
   </div>`;
 }
 
@@ -9699,12 +9704,17 @@ function toRenderPlanBody(items) {
   document.querySelectorAll('.to-tp-card').forEach(c => {
     c.addEventListener('click', () => { TO_PLAN_PROJECT = c.dataset.proj; toLoadPlanTab(); });
   });
-  // كارت "+ إضافة مشروع" — لو مقفول، الدوس عليه بيفتح الفورم الصغير جواه؛ لو مفتوح، بنربط الحفظ/الإلغاء
+  // كارت "+ إضافة مشروع" — دروب داون عايم (زي اختيار الصنيعي فوق): الدوس على الكارت
+  // بيفتح/يقفل البوب أب، والدوس جوه البوب أب نفسه (الإنبوت/الأزرار) ما يقفلوش الدروب داون
   const addProjCard = document.getElementById('toAddProjCard');
   if (addProjCard) {
-    if (!TO_ADDPROJ_OPEN) {
-      addProjCard.addEventListener('click', () => { TO_ADDPROJ_OPEN = true; toRenderPlanBody(items); });
-    } else {
+    addProjCard.addEventListener('click', e => {
+      e.stopPropagation();
+      if (e.target.closest('#toAddProjPop')) return; // دوس جوه البوب أب — سيبه لأزرار/إنبوت البوب أب نفسها
+      TO_ADDPROJ_OPEN = !TO_ADDPROJ_OPEN;
+      toRenderPlanBody(items);
+    });
+    if (TO_ADDPROJ_OPEN) {
       const newProjInput = document.getElementById('toNewProjInput');
       if (newProjInput) {
         newProjInput.focus();
@@ -9843,6 +9853,8 @@ async function toMiSubmitAll() {
 document.addEventListener('click', () => {
   // قفل ليستة اختيار الصنيعي: تفاعل UI بحت — من غير فيتش ولا مسح الشاشة
   if (TO_STATE.csOpen && TO_STATE.activeTab === 'daily') { TO_STATE.csOpen = false; toRenderDailyForm(); }
+  // قفل دروب داون "+ إضافة مشروع" لو المستخدم دوس بره الكارت
+  if (TO_ADDPROJ_OPEN && TO_STATE.activeTab === 'plan') { TO_ADDPROJ_OPEN = false; toRenderPlanBody(TO_STATE.planCache[TO_PLAN_PROJECT] || []); }
 });
 
 /* ═══ تقرير يومي / اسبوعي — كانوا صفحة منفصلة "تقرير يومي بالصنايعية"،
