@@ -9758,16 +9758,48 @@ function toReportCraftsmanHtml_(c){
   `;
 }
 
-// تقرير اسبوعي: بيلم شغل الأسبوع المعروض حاليًا في تاب "اسبوعي" (نفس الـ anchor)
-// ويجمعه لكل صنيعي بدل ما يبقى شبكة أيام×صنايعية، عشان يبقى تقرير سهل يتقرا مرة واحدة
+// تقرير اسبوعي: بيلم شغل أي أسبوع تختاره (مش بس الأسبوع المفتوح حاليًا في تاب
+// "اسبوعي") ويجمعه لكل صنيعي بدل ما يبقى شبكة أيام×صنايعية، عشان يبقى تقرير
+// سهل يتقرا مرة واحدة. ⚠️ إضافة: فلتر أسابيع (‹ السابق / التالي › + "الأسبوع
+// الحالي" + اختيار أي تاريخ) جوه المودال نفسه — عشان تقدر تشوف أي أسبوع
+// عايزه من غير ما تخرج من المودال وتغيّر أسبوع تاب "اسبوعي" الأساسي.
+let TO_REPORT_WEEK_ANCHOR = new Date();
 async function toOpenWeeklyReport(){
-  const dates = toGetWeekDates(TO_STATE.weekAnchor);
+  TO_REPORT_WEEK_ANCHOR = new Date(TO_STATE.weekAnchor);
+  await toRenderWeeklyReportModal_();
+}
+async function toRenderWeeklyReportModal_(){
+  const dates = toGetWeekDates(TO_REPORT_WEEK_ANCHOR);
   const from = toISO(dates[0]), to = toISO(dates[6]);
+  const weekLabel = toFmtDayDate(dates[0]) + ' — ' + toFmtDayDate(dates[6]);
   openCardModal(`
-    <div class="cd-head"><h3>📅 تقرير اسبوعي <span class="sub" style="font-size:12px;font-weight:600;color:var(--muted);">${qEsc(from)} → ${qEsc(to)}</span></h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div class="cd-head"><h3>📅 تقرير اسبوعي</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div class="to-week-toolbar" style="margin-bottom:10px;">
+      <span class="to-week-label">أسبوع ${qEsc(weekLabel)}</span>
+      <div class="to-week-nav">
+        <button class="wn-arrow" id="wrpPrevWeek" title="الأسبوع اللي قبله">&#8250;</button>
+        <button class="btn btn-outline btn-sm" id="wrpThisWeek">الأسبوع الحالي</button>
+        <button class="wn-arrow" id="wrpNextWeek" title="الأسبوع اللي بعده">&#8249;</button>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+      <label style="font-size:12.5px;font-weight:700;color:var(--muted);">أو اختار أي يوم جوه الأسبوع اللي عايزه:</label>
+      <input type="date" class="d-input" id="wrpDatePick" style="width:170px;" value="${from}">
+    </div>
     <div id="to-week-report-box"><div class="loading-row">جاري التحميل...</div></div>
   `);
-  const box = document.getElementById('to-week-report-box');
+  document.getElementById('wrpPrevWeek').addEventListener('click', () => { TO_REPORT_WEEK_ANCHOR.setDate(TO_REPORT_WEEK_ANCHOR.getDate()-7); toRenderWeeklyReportModal_(); });
+  document.getElementById('wrpNextWeek').addEventListener('click', () => { TO_REPORT_WEEK_ANCHOR.setDate(TO_REPORT_WEEK_ANCHOR.getDate()+7); toRenderWeeklyReportModal_(); });
+  document.getElementById('wrpThisWeek').addEventListener('click', () => { TO_REPORT_WEEK_ANCHOR = new Date(); toRenderWeeklyReportModal_(); });
+  document.getElementById('wrpDatePick').addEventListener('change', e => {
+    if (!e.target.value) return;
+    TO_REPORT_WEEK_ANCHOR = new Date(e.target.value + 'T00:00:00');
+    toRenderWeeklyReportModal_();
+  });
+  await toLoadWeeklyReportBox_(from, to);
+}
+async function toLoadWeeklyReportBox_(from, to){
+  const box = document.getElementById('to-week-report-box'); if (!box) return;
   try {
     const key = from + '_' + to;
     let entries = TO_STATE.weekCache[key];
