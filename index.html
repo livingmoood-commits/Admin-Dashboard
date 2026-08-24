@@ -1189,8 +1189,6 @@
   </div>
   <div class="q-steps p-filter-tabs" id="wfSwitchTabs" style="display:none;margin-bottom:16px;">
     <div class="step" id="wf-tab-taskOrganize" data-page="taskOrganize"><span class="icon" style="margin-inline-end:6px;">&#128221;</span>تنظيم المهام</div>
-    <div class="step" id="wf-tab-workflowReport" data-page="workflowReport"><span class="icon" style="margin-inline-end:6px;">&#128203;</span>تقرير يومي بالصنايعية</div>
-    <div class="step" id="wf-tab-missingItems" data-page="missingItems"><span class="icon" style="margin-inline-end:6px;">&#128230;</span>بنود المشاريع</div>
     <div class="step" id="wf-tab-materials" data-page="materials"><span class="icon" style="margin-inline-end:6px;">&#129514;</span>الخامات</div>
   </div>
   <div id="content"><div class="loading-row">جاري التحميل...</div></div>
@@ -1736,8 +1734,11 @@ const QP_GROUP_PAGES = ['quotation', 'debtors'];
 // صفحتين "مصاريف يومية" و"المصاريف الثابتة" بقوا مجمّعين تحت زرار واحد في القائمة
 // الجانبية (data-exp-group) بنفس فكرة QP_GROUP_PAGES فوق بالظبط.
 const EXP_GROUP_PAGES = ['dailyExpenses', 'fixedExp'];
-// نفس الفكرة لصفحات Work Flow التلاتة تحت زرار واحد (data-wf-group)
-const WF_GROUP_PAGES = ['taskOrganize', 'workflowReport', 'missingItems', 'materials'];
+// نفس الفكرة لصفحات Work Flow — بقيت صفحتين بس (تنظيم المهام والخامات)؛ "تقرير يومي
+// بالصنايعية" و"بنود المشاريع" اتشالوا كصفحات مستقلة لأن نفس الوظيفة موجودة بالظبط
+// جوه تابات "تنظيم المهام" (تاب "شغل يومي"/"اسبوعي" فيهم زرار تقرير، وتاب "تايم بلاننج"
+// هو نفسه بنود المشاريع) — شوف تعليق renderTaskOrganize تحت لتفاصيل أكتر
+const WF_GROUP_PAGES = ['taskOrganize', 'materials'];
 const PAGES = {
   dashboard:    { title:'نظرة عامة', sub:'ملخص شامل لكل حاجة في المصنع', render: renderDashboard },
   payroll:      { title:'مرتبات', sub:'كشف حضور الشهر بالظبط زي الشيت — عدّل أي خلية وهتتسجل في الشيت الحقيقي مباشرة', render: renderPayroll },
@@ -1749,9 +1750,7 @@ const PAGES = {
   debtors:      { title:'Payment Statements', sub:'متابعة تحصيل الدفعات من العملاء — كل حاجة عن المستحق والمتبقي', render: renderDebtors },
   debts:        { title:'ديون', sub:'المبالغ اللي المصنع مديون بيها لجهات تانية ومتابعة سدادها', render: renderDebts },
   partnerWithdrawals: { title:'مسحوبات شركاء', sub:'مسحوبات الشركاء التلاتة — عمود لكل واحد، وإجمالي تحت كل عمود + إجمالي كلي', render: renderPartnerWithdrawals },
-  taskOrganize:   { title:'تنظيم المهام', sub:'شغل الصنايعية اليومي، خريطة الأسبوع، وتايم بلاننج المشاريع — في صفحة واحدة', render: renderTaskOrganize },
-  workflowReport: { title:'تقرير يومي بالصنايعية', sub:'كل صنيعي فين وشغال ع ايه، بالفيد باك', render: renderWorkflowReport },
-  missingItems:   { title:'بنود المشاريع', sub:'كل بند لكل مشروع — علّم عليه لما يتم توفيره، واكتب فيد باك/ملاحظة في أي وقت', render: renderMissingItems },
+  taskOrganize:   { title:'تنظيم المهام', sub:'شغل الصنايعية اليومي، خريطة الأسبوع، تايم بلاننج المشاريع، وتقرير يومي/اسبوعي — في صفحة واحدة', render: renderTaskOrganize },
   materials:      { title:'الخامات', sub:'مخزون كل خامة وكل استخدام منها — لأي مشروع وليه', render: renderMaterials }
 };
 
@@ -1831,15 +1830,13 @@ function expSyncTabsBar(page){
   document.getElementById('exp-tab-daily').classList.toggle('active', page === 'dailyExpenses');
   document.getElementById('exp-tab-fixed').classList.toggle('active', page === 'fixedExp');
 }
-// نفس الفكرة لتابات صفحات Work Flow التلاتة
+// نفس الفكرة لتابات صفحات Work Flow (بقيت 2 بس: تنظيم المهام + الخامات)
 function wfSyncTabsBar(page){
   const bar = document.getElementById('wfSwitchTabs');
   const show = WF_GROUP_PAGES.includes(page);
   bar.style.display = show ? '' : 'none';
   if (!show) return;
   document.getElementById('wf-tab-taskOrganize').classList.toggle('active', page === 'taskOrganize');
-  document.getElementById('wf-tab-workflowReport').classList.toggle('active', page === 'workflowReport');
-  document.getElementById('wf-tab-missingItems').classList.toggle('active', page === 'missingItems');
   document.getElementById('wf-tab-materials').classList.toggle('active', page === 'materials');
 }
 // كل مرة ندخل صفحة، بيتزود التوكن ده. أي صفحة قديمة لسه بتحمّل (fetch) بتتاكد قبل
@@ -1847,7 +1844,7 @@ function wfSyncTabsBar(page){
 // قبل ما تخلص، بتلاقي التوكن اتغير فبتلغي نفسها من غير ما تكتب حاجة فوق الصفحة الجديدة
 let _navToken = 0;
 // صفحات Work Flow — المستخدمين اللي مش Role=Lead بيشوفوا دول بس (شوف applyRoleAccess تحت)
-const WORKFLOW_ONLY_PAGES = ['taskOrganize', 'workflowReport', 'missingItems', 'materials'];
+const WORKFLOW_ONLY_PAGES = ['taskOrganize', 'materials'];
 function _isLeadRole(){ return sessionStorage.getItem('lm_userRole') === 'Lead'; }
 function goTo(page, costTab) {
   if (!PAGES[page]) page = 'dashboard';
@@ -9002,6 +8999,10 @@ async function renderTaskOrganize(token) {
         <button data-t="week"><span class="ico">&#128197;</span>اسبوعي</button>
         <button data-t="plan"><span class="ico">&#128230;</span>تايم بلاننج</button>
       </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 4px;">
+        <button type="button" class="btn btn-outline btn-sm" id="toOpenDailyReportBtn">📋 تقرير يومي</button>
+        <button type="button" class="btn btn-outline btn-sm" id="toOpenWeeklyReportBtn">📅 تقرير اسبوعي</button>
+      </div>
       <div id="to-tab-content"><div class="loading-row">جاري التحميل...</div></div>
     `;
     const [{ projects }, craftsmenRes, { summary }] = await Promise.all([
@@ -9021,6 +9022,8 @@ async function renderTaskOrganize(token) {
       document.querySelectorAll('#toTabs button').forEach(b => b.classList.toggle('active', b===btn));
       toRenderActiveTab();
     });
+    document.getElementById('toOpenDailyReportBtn').addEventListener('click', toOpenDailyReport);
+    document.getElementById('toOpenWeeklyReportBtn').addEventListener('click', toOpenWeeklyReport);
 
     await toRenderActiveTab(token);
     toRenderStatStrip();
@@ -9672,61 +9675,117 @@ document.addEventListener('click', () => {
   if (TO_STATE.csOpen && TO_STATE.activeTab === 'daily') { TO_STATE.csOpen = false; toRenderDailyForm(); }
 });
 
-let WFR_DATE = todayStr();
-async function renderWorkflowReport(token) {
-  document.getElementById('content').innerHTML = `
-    <div class="panel">
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <label style="font-weight:700;font-size:13px;">اليوم:</label>
-        <input type="date" class="d-input" id="wfr-date" style="width:160px;" value="${WFR_DATE}">
-        <button type="button" class="btn btn-outline btn-sm" id="wfr-today">النهاردة</button>
-        <button type="button" class="btn btn-outline btn-sm" id="wfr-yesterday">إمبارح</button>
-      </div>
+/* ═══ تقرير يومي / اسبوعي — كانوا صفحة منفصلة "تقرير يومي بالصنايعية"،
+   دلوقتي بقوا زرارين بيفتحوا مودال (بنفس شكل كارت "سجل الاستخدام" بتاع
+   الخامات) من جوه "تنظيم المهام" مباشرة، عشان كل حاجة في مكان واحد. ═══ */
+let TO_REPORT_DATE = todayStr();
+async function toOpenDailyReport(){
+  TO_REPORT_DATE = TO_STATE.formDate || todayStr();
+  openCardModal(`
+    <div class="cd-head"><h3>📋 تقرير يومي</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+      <label style="font-weight:700;font-size:13px;">اليوم:</label>
+      <input type="date" class="d-input" id="to-report-date" style="width:160px;" value="${TO_REPORT_DATE}">
+      <button type="button" class="btn btn-outline btn-sm" id="to-report-today">النهاردة</button>
+      <button type="button" class="btn btn-outline btn-sm" id="to-report-yesterday">إمبارح</button>
     </div>
-    <div id="wfr-box"><div class="loading-row">جاري التحميل...</div></div>
-  `;
-  document.getElementById('wfr-date').addEventListener('change', e => { WFR_DATE = e.target.value; wfrLoad(); });
-  document.getElementById('wfr-today').addEventListener('click', () => { WFR_DATE = todayStr(); document.getElementById('wfr-date').value = WFR_DATE; wfrLoad(); });
-  document.getElementById('wfr-yesterday').addEventListener('click', () => { WFR_DATE = yesterdayStr(); document.getElementById('wfr-date').value = WFR_DATE; wfrLoad(); });
-  wfrLoad(token);
+    <div id="to-report-box"><div class="loading-row">جاري التحميل...</div></div>
+  `);
+  document.getElementById('to-report-date').addEventListener('change', e => { TO_REPORT_DATE = e.target.value || TO_REPORT_DATE; toLoadDailyReport(); });
+  document.getElementById('to-report-today').addEventListener('click', () => { TO_REPORT_DATE = todayStr(); document.getElementById('to-report-date').value = TO_REPORT_DATE; toLoadDailyReport(); });
+  document.getElementById('to-report-yesterday').addEventListener('click', () => { TO_REPORT_DATE = yesterdayStr(); document.getElementById('to-report-date').value = TO_REPORT_DATE; toLoadDailyReport(); });
+  toLoadDailyReport();
 }
-async function wfrLoad(token) {
-  const box = document.getElementById('wfr-box');
+async function toLoadDailyReport(){
+  const box = document.getElementById('to-report-box'); if (!box) return;
   box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
-    const data = await apiGet('getWorkflowDailyReport', { date: WFR_DATE });
-    if (isStaleNav(token)) return;
-    if (!data.craftsmen.length) { box.innerHTML = `<div class="panel wf-empty-day">مفيش أي شغل متسجل في يوم ${WFR_DATE}</div>`; return; }
-    box.innerHTML = data.craftsmen.map(c => `
-      <div class="wf-card">
-        <div class="wf-card-head">
-          <div><span class="wf-craftsman-name">${qEsc(c.craftsman)}</span>${c.specialty ? `<span class="wf-specialty-pill">${qEsc(c.specialty)}</span>` : ''}</div>
-          <div style="font-size:12px;color:var(--muted);">${c.items.length} بند</div>
-        </div>
-        ${c.items.map(it => `
-          <div class="wf-item">
-            <div class="wf-item-row">
-              <span><b>المشروع:</b> ${qEsc(it.project)}</span>
-              ${it.location ? `<span><b>العنوان:</b> ${qEsc(it.location)}</span>` : ''}
-              ${it.attendance ? `<span><b>الحضور:</b> ${qEsc(it.attendance)}</span>` : ''}
-              ${it.supervision ? `<span><b>الإشراف:</b> ${qEsc(it.supervision)}</span>` : ''}
-            </div>
-            ${it.title ? `<div style="font-weight:700;font-size:13.5px;margin-bottom:3px;">${qEsc(it.title)}</div>` : ''}
-            ${it.details ? `<div style="font-size:12.5px;color:var(--muted);margin-bottom:3px;">${qEsc(it.details)}</div>` : ''}
-            <div class="wf-item-row">
-              ${it.sizes ? `<span><b>المقاسات:</b> ${qEsc(it.sizes)}</span>` : ''}
-              ${it.qty ? `<span><b>الكمية:</b> ${qEsc(it.qty)}</span>` : ''}
-            </div>
-            ${it.notes ? `<div style="font-size:12.5px;color:var(--muted);">📝 ${qEsc(it.notes)}</div>` : ''}
-            ${it.feedback ? `<div class="wf-feedback">💬 ${qEsc(it.feedback)}</div>` : ''}
-          </div>
-        `).join('')}
+    const data = await apiGet('getWorkflowDailyReport', { date: TO_REPORT_DATE });
+    if (!box.isConnected) return; // المودال ممكن يكون اتقفل قبل ما الطلب يخلص
+    if (!data.craftsmen.length) { box.innerHTML = `<div class="wf-empty-day">مفيش أي شغل متسجل في يوم ${qEsc(TO_REPORT_DATE)}</div>`; return; }
+    box.innerHTML = data.craftsmen.map(c => toReportCraftsmanHtml_(c)).join('');
+  } catch (err) { box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
+}
+function toReportCraftsmanHtml_(c){
+  return `
+    <div class="wf-card">
+      <div class="wf-card-head">
+        <div><span class="wf-craftsman-name">${qEsc(c.craftsman)}</span>${c.specialty ? `<span class="wf-specialty-pill">${qEsc(c.specialty)}</span>` : ''}</div>
+        <div style="font-size:12px;color:var(--muted);">${c.items.length} بند</div>
       </div>
-    `).join('');
-  } catch (err) { box.innerHTML = `<div class="panel"><div class="msg err" style="display:block;">خطأ: ${err.message || err}</div></div>`; }
+      ${c.items.map(it => `
+        <div class="wf-item">
+          <div class="wf-item-row">
+            <span><b>المشروع:</b> ${qEsc(it.project)}</span>
+            ${it.location ? `<span><b>العنوان:</b> ${qEsc(it.location)}</span>` : ''}
+            ${it.attendance ? `<span><b>الحضور:</b> ${qEsc(it.attendance)}</span>` : ''}
+            ${it.supervision ? `<span><b>الإشراف:</b> ${qEsc(it.supervision)}</span>` : ''}
+          </div>
+          ${it.title ? `<div style="font-weight:700;font-size:13.5px;margin-bottom:3px;">${qEsc(it.title)}</div>` : ''}
+          ${it.details ? `<div style="font-size:12.5px;color:var(--muted);margin-bottom:3px;">${qEsc(it.details)}</div>` : ''}
+          <div class="wf-item-row">
+            ${it.sizes ? `<span><b>المقاسات:</b> ${qEsc(it.sizes)}</span>` : ''}
+            ${it.qty ? `<span><b>الكمية:</b> ${qEsc(it.qty)}</span>` : ''}
+          </div>
+          ${it.notes ? `<div style="font-size:12.5px;color:var(--muted);">📝 ${qEsc(it.notes)}</div>` : ''}
+          ${it.feedback ? `<div class="wf-feedback">💬 ${qEsc(it.feedback)}</div>` : ''}
+        </div>
+      `).join('')}
+    </div>
+  `;
 }
 
-/* ══════════════ 4.3) بنود المشاريع (تصميم كروت + ثريد ملاحظات لكل بند) ══════════════ */
+// تقرير اسبوعي: بيلم شغل الأسبوع المعروض حاليًا في تاب "اسبوعي" (نفس الـ anchor)
+// ويجمعه لكل صنيعي بدل ما يبقى شبكة أيام×صنايعية، عشان يبقى تقرير سهل يتقرا مرة واحدة
+async function toOpenWeeklyReport(){
+  const dates = toGetWeekDates(TO_STATE.weekAnchor);
+  const from = toISO(dates[0]), to = toISO(dates[6]);
+  openCardModal(`
+    <div class="cd-head"><h3>📅 تقرير اسبوعي <span class="sub" style="font-size:12px;font-weight:600;color:var(--muted);">${qEsc(from)} → ${qEsc(to)}</span></h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div id="to-week-report-box"><div class="loading-row">جاري التحميل...</div></div>
+  `);
+  const box = document.getElementById('to-week-report-box');
+  try {
+    const key = from + '_' + to;
+    let entries = TO_STATE.weekCache[key];
+    if (!entries) {
+      const res = await apiGet('getWorkflowWeek', { from, to });
+      entries = res.entries || [];
+      TO_STATE.weekCache[key] = entries;
+    }
+    if (!box.isConnected) return;
+    if (!entries.length) { box.innerHTML = `<div class="wf-empty-day">مفيش أي شغل متسجل الأسبوع ده</div>`; return; }
+    const byCraftsman = {};
+    entries.forEach(e => { (byCraftsman[e.craftsman] = byCraftsman[e.craftsman] || []).push(e); });
+    box.innerHTML = Object.keys(byCraftsman).map(name => {
+      const items = byCraftsman[name].slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      return `
+        <div class="wf-card">
+          <div class="wf-card-head">
+            <span class="wf-craftsman-name">${qEsc(name)}</span>
+            <div style="font-size:12px;color:var(--muted);">${items.length} بند</div>
+          </div>
+          ${items.map(it => `
+            <div class="wf-item">
+              <div class="wf-item-row">
+                <span><b>التاريخ:</b> ${qEsc(it.date)} (${qEsc(toDateQuickLabel(it.date))})</span>
+                <span><b>المشروع:</b> ${qEsc(it.project)}</span>
+                ${it.location ? `<span><b>العنوان:</b> ${qEsc(it.location)}</span>` : ''}
+              </div>
+              ${it.title ? `<div style="font-weight:700;font-size:13.5px;margin-bottom:3px;">${qEsc(it.title)}</div>` : ''}
+              ${it.feedback ? `<div class="wf-feedback">💬 ${qEsc(it.feedback)}</div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }).join('');
+  } catch (err) { box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
+}
+
+/* ══════════════ 4.3) بنود المشاريع (تصميم كروت + ثريد ملاحظات لكل بند) ══════════════
+ * ⚠️ الصفحة المستقلة "بنود المشاريع" اتشالت من الـnav (نفس الوظيفة موجودة في تاب
+ * "تايم بلاننج" جوه "تنظيم المهام") — الدوال دي فاضلة هنا بس مش متوصلة بأي زرار
+ * حاليًا؛ لو احتجناها تاني بنربطها بسهولة. */
 let MISTATE = { projects: [], project: '', items: [], summary: [], filter: 'all', openNotes: new Set(), pending: [], finishedProjects: [], showFinished: false };
 const WORKFLOW_UNITS_JS = ['قطعة', 'متر طولي', 'متر مربع', 'متر مكعب', 'كجم', 'يوم', 'دفعة'];
 
@@ -10171,7 +10230,7 @@ async function miSaveAllPending() {
  * ⚠️ إضافة 2026-08-24. تبويبين: "شغالة" (فيها فورم تسجيل استخدام لكل خامة)
  * و"خلصت" (أرشيف — الخامة والاستخدامات بتاعتها بيفضلوا محفوظين، بس متحركش
  * فيهم؛ تقدر تدوس عليها تشوف سجل الاستخدام بالكامل). */
-const MATSTATE = { tab: 'active', materials: [], projects: [] };
+const MATSTATE = { tab: 'active', materials: [], projects: [], detailsOpen: {} };
 
 async function renderMaterials(token){
   document.getElementById('content').innerHTML = '<div class="loading-row">جاري التحميل...</div>';
@@ -10182,14 +10241,16 @@ async function renderMaterials(token){
     if (isStaleNav(token)) return;
     MATSTATE.materials = materials || [];
     MATSTATE.projects = projects || [];
+    const matProjectOptions = MATSTATE.projects.map(p => `<option value="${qEsc(p)}">${qEsc(p)}</option>`).join('');
     document.getElementById('content').innerHTML = `
       <div class="panel" style="margin-bottom:14px;">
         <h3 style="margin-bottom:10px;">➕ إضافة خامة جديدة</h3>
-        <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:10px;align-items:end;">
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:10px;align-items:end;">
           <div class="field"><label>اسم الخامة</label><input type="text" class="d-input" id="mat-new-name" placeholder="مثال: بويه أبيض"></div>
           <div class="field"><label>الوحدة</label><input type="text" class="d-input" id="mat-new-unit" placeholder="مثال: لتر"></div>
           <div class="field"><label>الكمية</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="mat-new-qty" placeholder="مثال: 10" onkeypress="return /[0-9.]/.test(event.key)"></div>
-          <button type="button" class="btn btn-primary" onclick="matAddMaterial()">حفظ</button>
+          <div class="field"><label>تاريخ الشراء</label><input type="date" class="d-input" id="mat-new-pdate" autocomplete="off" value="${todayStr()}"></div>
+          <button type="button" class="btn btn-primary" id="mat-add-btn" onclick="matAddMaterial()">حفظ</button>
         </div>
         <div class="msg" id="mat-add-msg"></div>
       </div>
@@ -10198,6 +10259,7 @@ async function renderMaterials(token){
         <div class="step ${MATSTATE.tab==='finished'?'active':''}" onclick="matSwitchTab('finished')">خلصت</div>
       </div>
       <div id="mat-grid" class="mat-grid"></div>
+      <datalist id="mat-proj-list">${matProjectOptions}</datalist>
     `;
     matRenderGrid();
   } catch(err){ showError(err); }
@@ -10221,7 +10283,8 @@ function matRenderGrid(){
 
 function matCardHtml_(m){
   const pctColor = m.usedPct >= 90 ? 'var(--red)' : m.usedPct >= 60 ? '#b8860b' : 'var(--green)';
-  const projectOptions = MATSTATE.projects.map(p => `<option value="${qEsc(p)}">${qEsc(p)}</option>`).join('');
+  const idSuffix = qId2_(m.id);
+  const detailsOpen = !!MATSTATE.detailsOpen[m.id];
   return `
     <div class="panel mat-card" data-mat-id="${qEsc(m.id)}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
@@ -10231,22 +10294,51 @@ function matCardHtml_(m){
       <div style="font-size:12.5px;color:var(--muted);margin:6px 0 4px;">
         المتبقي: <b style="color:var(--dark);">${fmt(m.remainingQty)} ${qEsc(m.unit)}</b> من أصل <b>${fmt(m.originalQty)} ${qEsc(m.unit)}</b>
       </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">تاريخ الشراء: ${qEsc(m.addedDate)}</div>
       <div class="mat-progress"><div class="mat-progress-fill" style="width:${m.usedPct}%;background:${pctColor};"></div></div>
       <div style="font-size:11px;color:var(--muted);margin-top:3px;">استُخدم ${m.usedPct}%</div>
 
       ${m.status !== 'خلصت' ? `
         <div class="mat-usage-form">
-          <div class="field"><label>الكمية المستخدمة</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="mat-use-amt-${qId2_(m.id)}" placeholder="مثال: 2" onkeypress="return /[0-9.]/.test(event.key)"></div>
-          <div class="field"><label>ليه (الوصف)</label><input type="text" class="d-input" id="mat-use-desc-${qId2_(m.id)}" placeholder="مثال: دهان غرفة النوم"></div>
-          <div class="field"><label>المشروع</label><input type="text" class="d-input" list="mat-proj-list" id="mat-use-proj-${qId2_(m.id)}" placeholder="اختار أو اكتب مشروع"></div>
-          <button type="button" class="btn btn-outline btn-sm" onclick="matLogUsage('${qEscJs(m.id)}')">تسجيل استخدام</button>
+          <div class="field"><label>الكمية المستخدمة</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="mat-use-amt-${idSuffix}" placeholder="مثال: 2" onkeypress="return /[0-9.]/.test(event.key)"></div>
+
+          <button type="button" class="to-extra-toggle ${detailsOpen?'open':''}" id="mat-details-toggle-${idSuffix}" onclick="matToggleDetails('${qEscJs(m.id)}')" aria-expanded="${detailsOpen?'true':'false'}">
+            <span class="et-left">
+              <span class="et-icon">${detailsOpen?'−':'+'}</span>
+              <span class="et-text">تفاصيل الاستخدام</span>
+              <span class="et-hint">(الوصف، المشروع، التاريخ)</span>
+            </span>
+            <span class="et-chev">&#9662;</span>
+          </button>
+          <div class="to-extra-body ${detailsOpen?'open':''}" id="mat-details-body-${idSuffix}">
+            <div class="field"><label>ليه (الوصف)</label><input type="text" class="d-input" id="mat-use-desc-${idSuffix}" placeholder="مثال: دهان غرفة النوم"></div>
+            <div class="field"><label>المشروع</label><input type="text" class="d-input" list="mat-proj-list" id="mat-use-proj-${idSuffix}" placeholder="اختار أو اكتب مشروع"></div>
+            <div class="field"><label>التاريخ</label><input type="date" class="d-input" id="mat-use-date-${idSuffix}" autocomplete="off" value="${todayStr()}"></div>
+          </div>
+
+          <button type="button" class="btn btn-outline btn-sm" style="margin-top:8px;" id="mat-use-btn-${idSuffix}" onclick="matLogUsage('${qEscJs(m.id)}')">تسجيل استخدام</button>
         </div>
-        <div class="msg" id="mat-use-msg-${qId2_(m.id)}"></div>
+        <div class="msg" id="mat-use-msg-${idSuffix}"></div>
       ` : `
         <button type="button" class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="matShowHistory('${qEscJs(m.id)}','${qEscJs(m.name)}')">📜 عرض سجل الاستخدام</button>
       `}
-      <datalist id="mat-proj-list">${projectOptions}</datalist>
     </div>`;
+}
+
+// فتح/قفل بلوك "تفاصيل الاستخدام" — بيبدّل الكلاسات في الـDOM مباشرة من غير
+// إعادة رسم الكارت كله، عشان لو المستخدم كاتب حاجة في "الكمية المستخدمة"
+// قبل ما يفتح التفاصيل، الكتابة متتمسحش.
+function matToggleDetails(id){
+  const idSuffix = qId2_(id);
+  const btn = document.getElementById('mat-details-toggle-' + idSuffix);
+  const body = document.getElementById('mat-details-body-' + idSuffix);
+  if (!btn || !body) return;
+  const isOpen = body.classList.toggle('open');
+  btn.classList.toggle('open', isOpen);
+  btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  const icon = btn.querySelector('.et-icon');
+  if (icon) icon.textContent = isOpen ? '−' : '+';
+  MATSTATE.detailsOpen[id] = isOpen;
 }
 
 // معرّف HTML-safe من id الخامة (زي qId بتاعة مسحوبات الشركاء بس أعم)
@@ -10256,19 +10348,25 @@ async function matAddMaterial(){
   const nameEl = document.getElementById('mat-new-name');
   const unitEl = document.getElementById('mat-new-unit');
   const qtyEl = document.getElementById('mat-new-qty');
+  const pdateEl = document.getElementById('mat-new-pdate');
   const msg = document.getElementById('mat-add-msg');
+  const btn = document.getElementById('mat-add-btn');
   const name = nameEl.value.trim(), unit = unitEl.value.trim(), qty = qtyEl.value.trim();
+  const purchaseDate = (pdateEl && pdateEl.value) ? pdateEl.value : todayStr();
   if (!name || !unit || !qty) { msg.className = 'msg err'; msg.textContent = 'محتاج تملأ اسم الخامة والوحدة والكمية'; return; }
+  if (btn && btn.disabled) return; // منع الدوس المتكرر لحد ما الطلب اللي قبله يخلص
   msg.className = 'msg'; msg.textContent = '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...'; }
   try {
-    const res = await apiPost('addMaterial', { item: { name, unit, qty } });
+    const res = await apiPost('addMaterial', { item: { name, unit, qty, purchaseDate } });
     if (!res.success) { msg.className = 'msg err'; msg.textContent = res.error || 'حصل خطأ'; return; }
-    nameEl.value = ''; unitEl.value = ''; qtyEl.value = '';
+    nameEl.value = ''; unitEl.value = ''; qtyEl.value = ''; if (pdateEl) pdateEl.value = todayStr();
     msg.className = 'msg ok'; msg.textContent = '✅ اتضافت';
     const { materials } = await apiGet('listMaterials');
     MATSTATE.materials = materials || [];
     matRenderGrid();
   } catch (err) { msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = 'حفظ'; } }
 }
 
 async function matLogUsage(materialId){
@@ -10276,12 +10374,16 @@ async function matLogUsage(materialId){
   const amtEl = document.getElementById('mat-use-amt-' + idSuffix);
   const descEl = document.getElementById('mat-use-desc-' + idSuffix);
   const projEl = document.getElementById('mat-use-proj-' + idSuffix);
+  const dateEl = document.getElementById('mat-use-date-' + idSuffix);
   const msg = document.getElementById('mat-use-msg-' + idSuffix);
+  const btn = document.getElementById('mat-use-btn-' + idSuffix);
   const amount = amtEl.value.trim();
   if (!amount || Number(amount) <= 0) { msg.className = 'msg err'; msg.textContent = 'اكتب كمية أكبر من صفر'; return; }
+  if (btn && btn.disabled) return; // منع الدوس المتكرر لحد ما الطلب اللي قبله يخلص
   msg.className = 'msg'; msg.textContent = '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري التسجيل...'; }
   try {
-    const res = await apiPost('logMaterialUsage', { usage: { materialId, amount, description: descEl.value.trim(), project: projEl.value.trim() } });
+    const res = await apiPost('logMaterialUsage', { usage: { materialId, amount, description: descEl.value.trim(), project: projEl.value.trim(), date: (dateEl && dateEl.value) ? dateEl.value : todayStr() } });
     if (!res.success) { msg.className = 'msg err'; msg.textContent = res.error || 'حصل خطأ'; return; }
     msg.className = 'msg ok';
     msg.textContent = res.finished ? '✅ اتسجل — والخامة خلصت، نقلناها لتبويب "خلصت"' : `✅ اتسجل — الباقي ${fmt(res.remainingQty)}`;
@@ -10289,6 +10391,7 @@ async function matLogUsage(materialId){
     MATSTATE.materials = materials || [];
     setTimeout(matRenderGrid, res.finished ? 900 : 0);
   } catch (err) { msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = 'تسجيل استخدام'; } }
 }
 
 async function matShowHistory(materialId, materialName){
@@ -10318,4 +10421,4 @@ async function matShowHistory(materialId, materialName){
 
 </script>
 </body>
-</html>
+</html>س
