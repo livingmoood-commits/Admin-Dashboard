@@ -277,31 +277,23 @@
   .to-tp-progress-fill{ height:100%; background:var(--green); border-radius:20px; }
   .to-tp-card .stats{ font-size:11.5px; color:var(--muted); display:flex; justify-content:space-between; }
   .to-tp-card .stats .pending{ color:var(--red); font-weight:700; }
+  /* ⚠️ إضافة: كارت "+ إضافة مشروع" جوه تاب "تايم بلاننج" — نفس شكل باقي الكروت
+     بس بحواف متقطعة (dashed) وأيقونة + في النص. الدوس عليه بيفتح "دروب داون"
+     (بوكس صغير عايم فوق باقي الكروت من غير ما يزحلق شكل الشبكة) فيه خانة الاسم
+     وزرار حفظ/إلغاء — بنفس فكرة .to-cs-list المستخدمة في اختيار الصنيعي فوق. */
+  .to-tp-add-card{ position:relative; cursor:pointer; background:var(--white); border:2px dashed var(--border); border-radius:12px;
+    padding:14px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px;
+    transition:border-color .2s, background .2s, transform .2s var(--bounce); min-height:70px; }
+  .to-tp-add-card:hover, .to-tp-add-card.open{ border-color:var(--gold); background:#fdf6e8; }
+  .to-tp-add-card:hover{ transform:translateY(-2px); }
+  .to-tp-add-icon{ font-size:20px; font-weight:800; color:var(--gold-dim); line-height:1; }
+  .to-tp-add-label{ font-size:12.5px; font-weight:700; color:var(--muted); }
+  .to-tp-add-pop{ position:absolute; top:calc(100% + 8px); right:0; min-width:230px; max-width:270px;
+    background:var(--white); border:1.5px solid var(--gold); border-radius:10px;
+    box-shadow:0 12px 30px rgba(30,26,21,.16); padding:12px; z-index:40; display:none; cursor:default; text-align:right; }
+  .to-tp-add-pop.open{ display:block; animation:toCsIn .16s var(--bounce); }
+  .to-tp-add-pop .msg{ margin-top:8px; }
   @media(max-width:460px){ .wf-form-grid{ grid-template-columns:1fr; } }
-
-  /* ⚠️ إضافة: كارت "+ إضافة مشروع" جوه شبكة كروت تايم بلاننج نفسها — بنفس
-     مقاس/شكل كارت المشروع العادي بس بستايل "dashed" يوضح إنه فعل إضافة مش مشروع */
-  .to-tp-card.to-tp-addcard{ display:flex; align-items:center; justify-content:center; gap:6px;
-    border:1.5px dashed var(--border); background:transparent; color:var(--muted); font-weight:800; font-size:13.5px; min-height:76px; }
-  .to-tp-card.to-tp-addcard:hover{ border-color:var(--gold); color:var(--gold-dim); background:#fdf6e8; }
-  .to-tp-card.to-tp-addcard .plus{ font-size:16px; line-height:1; }
-
-  /* ⚠️ إضافة: بلوك "المشاريع" في تايم بلاننج بقى قابل للطي (accordion) — يبدأ
-     مقفول افتراضيًا عشان الصفحة تبان أنضف، وكارت "+ إضافة مشروع" بيفضل جوه نفس
-     البلوك مع باقي الكروت. */
-  .to-tp-toggle{ all:unset; box-sizing:border-box; width:100%; display:flex; align-items:center; justify-content:space-between;
-    cursor:pointer; padding:2px 0; }
-  .to-tp-toggle h3{ margin:0; }
-  .to-tp-toggle .to-tp-chev{ color:var(--gold-dim); font-size:13px; transition:transform .25s var(--bounce); flex-shrink:0; }
-  .to-tp-toggle.open .to-tp-chev{ transform:rotate(180deg); }
-  .to-tp-body{ display:grid; grid-template-rows:0fr; transition:grid-template-rows .25s var(--bounce); margin-top:0; }
-  .to-tp-body.open{ grid-template-rows:1fr; margin-top:12px; }
-  .to-tp-body > div{ overflow:hidden; min-height:0; }
-
-  /* ⚠️ إضافة: 4 خانات المقاس (طول/عرض/ارتفاع/عمق) بدل خانة "المقاس" الواحدة —
-     مستخدمة في "حقول إضافية" بشغل يومي وفورم "إضافة بند" بتايم بلاننج، كلها اختيارية */
-  .to-dims-grid{ display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; }
-  @media(max-width:520px){ .to-dims-grid{ grid-template-columns:repeat(2, 1fr); } }
 
   /* فورم "إضافة بند" — كام بند مكتوبين تحت بعض، والمقاس مقفول جوه تفاصيل */
   .to-mi-rows{ display:flex; flex-direction:column; gap:10px; margin-bottom:10px; }
@@ -9010,7 +9002,6 @@ let TO_STATE = {
   activeTab: 'daily',
   projects: [],
   craftsmen: [],
-  planCardsOpen: false, // بلوك كروت "المشاريع" في تايم بلاننج — مقفول افتراضيًا (accordion)
   todayEntries: [],      // شغل يوم formDate بس (تاب شغل يومي)
   weekEntries: [],       // كل شغل الأسبوع المعروض (تاب اسبوعي)
   weekAnchor: new Date(),
@@ -9614,6 +9605,56 @@ async function toLoadPlanTab(token, opts) {
   } catch (err) { box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
 }
 
+// ⚠️ إضافة: حالة فتح/قفل فورم "+ إضافة مشروع" الصغير جوه تاب "تايم بلاننج" —
+// متغيّر مستقل برّه الفانكشن عشان يفضل فاتح لو الصفحة اتعاد رسمها (re-render)
+let TO_ADDPROJ_OPEN = false;
+
+function toAddProjCardHtml() {
+  return `<div class="to-tp-add-card ${TO_ADDPROJ_OPEN ? 'open' : ''}" id="toAddProjCard">
+    <div class="to-tp-add-icon">+</div>
+    <div class="to-tp-add-label">إضافة مشروع</div>
+    <div class="to-tp-add-pop ${TO_ADDPROJ_OPEN ? 'open' : ''}" id="toAddProjPop">
+      <div class="field" style="margin-bottom:8px;">
+        <input type="text" id="toNewProjInput" class="d-input" placeholder="اسم المشروع..." autocomplete="off">
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button type="button" class="btn btn-primary btn-sm" id="toNewProjSave">إضافة</button>
+        <button type="button" class="btn btn-outline btn-sm" id="toNewProjCancel">إلغاء</button>
+      </div>
+      <div class="msg" id="toNewProjMsg"></div>
+    </div>
+  </div>`;
+}
+
+// بيضيف المشروع فعليًا (نفس createProject المستخدمة في صفحة "متابعة صرف المشاريع" —
+// بتعمل شيت مشروع حقيقي، فالمشروع الجديد يظهر تلقائي في كل صفحات النظام التانية).
+async function toSubmitAddProject() {
+  const input = document.getElementById('toNewProjInput');
+  const saveBtn = document.getElementById('toNewProjSave');
+  const msg = document.getElementById('toNewProjMsg');
+  if (!input) return;
+  const name = input.value.trim();
+  if (!name) { input.focus(); return; }
+  if (TO_STATE.projects.includes(name)) {
+    if (msg) { msg.className = 'msg err'; msg.textContent = 'المشروع ده موجود بالفعل'; }
+    return;
+  }
+  if (saveBtn) saveBtn.disabled = true;
+  if (msg) { msg.className = 'msg'; msg.innerHTML = '<span class="spinner"></span>جاري الإضافة...'; }
+  try {
+    await apiPost('createProject', { name });
+    TO_STATE.projects = Array.from(new Set([...TO_STATE.projects, name]));
+    TO_STATE.planCache[name] = [];
+    TO_PLAN_PROJECT = name;
+    TO_ADDPROJ_OPEN = false;
+    showToast('✅ اتضاف المشروع: ' + name, 'success');
+    toRenderPlanBody(TO_STATE.planCache[name]);
+  } catch (err) {
+    if (msg) { msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
 function toRenderPlanBody(items) {
   const box = document.getElementById('to-tab-content'); if (!box) return;
   const summaryMap = {};
@@ -9622,24 +9663,19 @@ function toRenderPlanBody(items) {
   const pct = items && items.length ? Math.round(doneCount / items.length * 100) : 0;
   box.innerHTML = `
     <div class="panel">
-      <button type="button" class="to-tp-toggle ${TO_STATE.planCardsOpen?'open':''}" id="toTpToggleBtn" aria-expanded="${TO_STATE.planCardsOpen?'true':'false'}">
-        <h3>تايم بلاننج — بنود المشاريع <span class="sub">كل بند لكل مشروع، وحالته</span></h3>
-        <span class="to-tp-chev">&#9662;</span>
-      </button>
-      <div class="to-tp-body ${TO_STATE.planCardsOpen?'open':''}" id="toTpBody"><div>
-        <div class="to-tp-cards">
-          ${TO_STATE.projects.map(p => {
-            const s = summaryMap[p] || { total:0, done:0, pending:0 };
-            const pp = s.total ? Math.round(s.done / s.total * 100) : 0;
-            return `<div class="to-tp-card ${p===TO_PLAN_PROJECT?'active':''}" data-proj="${qEsc(p)}">
-              <div class="proj-name">${qEsc(p)}</div>
-              <div class="to-tp-progress-bar"><div class="to-tp-progress-fill" style="width:${pp}%;"></div></div>
-              <div class="stats"><span class="pending">${s.pending||0} ناقص</span><span>${s.done||0}/${s.total||0} خلص</span></div>
-            </div>`;
-          }).join('')}
-          <div class="to-tp-card to-tp-addcard" id="toTpAddProjectCard"><span class="plus">+</span><span>إضافة مشروع</span></div>
-        </div>
-      </div></div>
+      <h3>تايم بلاننج — بنود المشاريع <span class="sub">كل بند لكل مشروع، وحالته</span></h3>
+      <div class="to-tp-cards">
+        ${toAddProjCardHtml()}
+        ${TO_STATE.projects.map(p => {
+          const s = summaryMap[p] || { total:0, done:0, pending:0 };
+          const pp = s.total ? Math.round(s.done / s.total * 100) : 0;
+          return `<div class="to-tp-card ${p===TO_PLAN_PROJECT?'active':''}" data-proj="${qEsc(p)}">
+            <div class="proj-name">${qEsc(p)}</div>
+            <div class="to-tp-progress-bar"><div class="to-tp-progress-fill" style="width:${pp}%;"></div></div>
+            <div class="stats"><span class="pending">${s.pending||0} ناقص</span><span>${s.done||0}/${s.total||0} خلص</span></div>
+          </div>`;
+        }).join('')}
+      </div>
     </div>
     <div class="grid2">
       <div class="panel">
@@ -9668,6 +9704,28 @@ function toRenderPlanBody(items) {
   document.querySelectorAll('.to-tp-card').forEach(c => {
     c.addEventListener('click', () => { TO_PLAN_PROJECT = c.dataset.proj; toLoadPlanTab(); });
   });
+  // كارت "+ إضافة مشروع" — دروب داون عايم (زي اختيار الصنيعي فوق): الدوس على الكارت
+  // بيفتح/يقفل البوب أب، والدوس جوه البوب أب نفسه (الإنبوت/الأزرار) ما يقفلوش الدروب داون
+  const addProjCard = document.getElementById('toAddProjCard');
+  if (addProjCard) {
+    addProjCard.addEventListener('click', e => {
+      e.stopPropagation();
+      if (e.target.closest('#toAddProjPop')) return; // دوس جوه البوب أب — سيبه لأزرار/إنبوت البوب أب نفسها
+      TO_ADDPROJ_OPEN = !TO_ADDPROJ_OPEN;
+      toRenderPlanBody(items);
+    });
+    if (TO_ADDPROJ_OPEN) {
+      const newProjInput = document.getElementById('toNewProjInput');
+      if (newProjInput) {
+        newProjInput.focus();
+        newProjInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); toSubmitAddProject(); } });
+      }
+      const saveProjBtn = document.getElementById('toNewProjSave');
+      if (saveProjBtn) saveProjBtn.addEventListener('click', toSubmitAddProject);
+      const cancelProjBtn = document.getElementById('toNewProjCancel');
+      if (cancelProjBtn) cancelProjBtn.addEventListener('click', () => { TO_ADDPROJ_OPEN = false; toRenderPlanBody(items); });
+    }
+  }
   const sel = document.getElementById('to_mi_project');
   if (sel) sel.addEventListener('change', e => { TO_PLAN_PROJECT = e.target.value; toLoadPlanTab(); });
   toRenderMiAddBox(); // فورم إضافة البنود (كتابة كام بند مع بعض) — منفصل عشان الكتابة فيه ما تمسحش الشاشة
@@ -9795,6 +9853,8 @@ async function toMiSubmitAll() {
 document.addEventListener('click', () => {
   // قفل ليستة اختيار الصنيعي: تفاعل UI بحت — من غير فيتش ولا مسح الشاشة
   if (TO_STATE.csOpen && TO_STATE.activeTab === 'daily') { TO_STATE.csOpen = false; toRenderDailyForm(); }
+  // قفل دروب داون "+ إضافة مشروع" لو المستخدم دوس بره الكارت
+  if (TO_ADDPROJ_OPEN && TO_STATE.activeTab === 'plan') { TO_ADDPROJ_OPEN = false; toRenderPlanBody(TO_STATE.planCache[TO_PLAN_PROJECT] || []); }
 });
 
 /* ═══ تقرير يومي / اسبوعي — كانوا صفحة منفصلة "تقرير يومي بالصنايعية"،
