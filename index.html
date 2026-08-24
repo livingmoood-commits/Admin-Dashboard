@@ -1150,7 +1150,7 @@
       <div class="field"><label>اسم المستخدم</label><input id="l_name" required autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
       <div class="field"><label>كلمة المرور</label>
         <div class="pw-wrap">
-          <input type="password" id="l_pass" required autocomplete="off" data-lpignore="true" data-1p-ignore="true" autocapitalize="off" autocorrect="off" spellcheck="false">
+          <input type="password" id="l_pass" required autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false">
           <button type="button" class="pw-eye" onclick="pwToggle(this)" tabindex="-1" aria-label="إظهار/إخفاء كلمة السر"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg></button>
         </div>
       </div>
@@ -1323,7 +1323,10 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbzstJuI5EKdabQmOIechewi
 // كاش بسيط في الذاكرة لطلبات GET (نفس الـ action+params بيرجع من الكاش لو لسه طازة)
 // بيسرّع التنقل بين الصفحات وبيقلل عدد الطلبات لسيرفر الـ Apps Script (اللي بطيء أصلًا في الـ cold start)
 const _apiCache = new Map();
-const API_CACHE_TTL_MS = 20000; // 20 ثانية — كفاية تقلل التكرار من غير ما تعرض بيانات قديمة كتير
+const API_CACHE_TTL_MS = 45000; // ⚠️ إضافة 2026-08-24: كانت 20 ثانية — زودناها لـ 45 ثانية عشان التنقل
+// بين الصفحات (رجوع لصفحة كنت فاتحها من ثواني) يبقى فوري من غير أي طلب شبكة خالص.
+// أي عملية save/delete برضه بتعمل apiCacheClear() فورًا زي الأول، فالـ TTL الأطول
+// مبيأثرش على دقة البيانات بعد أي تعديل — بس بيقلل الطلبات الزيادة وقت التصفح العادي.
 // ⚠️ إضافة: طلبات GET شغالة دلوقتي (لسه مردودش) — مفتاحها action+params. لو
 // اتنين مكان مختلفين في نفس الصفحة طلبوا نفس الـ action+params في نفس اللحظة
 // (زي ما بيحصل وقت تحميل صفحة فيها كذا component بيقروا نفس البيانات)، التاني
@@ -1353,7 +1356,7 @@ function _lsClearAll() {
     Object.keys(localStorage).filter(k => k.indexOf(LS_CACHE_PREFIX) === 0).forEach(k => localStorage.removeItem(k));
   } catch (e) { /* تجاهل */ }
 }
-function apiCacheClear() { _apiCache.clear(); _lsClearAll(); } // بتتنادى بعد أي عملية save/delete عشان القراءة الجاية تكون طازة
+function apiCacheClear() { _apiCache.clear(); _lsClearAll(); if (typeof _prefetchedPages !== 'undefined') _prefetchedPages.clear(); } // بتتنادى بعد أي عملية save/delete عشان القراءة الجاية تكون طازة (وبتسمح بإعادة التسخين المسبق تاني)
 
 // بيتحدّث في goTo() بالصفحة الحالية — مستخدم عشان نعرف لو التحديث الصامت في الخلفية
 // لسه يستاهل يترسم على الشاشة، أو المستخدم خرج من الصفحة دي خلاص
@@ -1830,6 +1833,28 @@ document.getElementById('nav').addEventListener('click', e => {
 document.getElementById('bottomNav').addEventListener('click', e => {
   const btn = e.target.closest('button[data-page]'); if (!btn) return; goTo(btn.dataset.page);
 });
+// ⚠️ إضافة 2026-08-24: تسريع فتح الصفحات — بمجرد ما الماوس يمر على زرار صفحة في
+// القائمة (أو يلمسها على الموبايل)، بنسخّن بيانات الصفحة دي في الكاش *في الخلفية*
+// من غير ما نرسم أي حاجة على الشاشة (بنستخدم توكن (-999) ثابت مش هيتساوي أبدًا
+// مع _navToken الحقيقي، فكل PAGES[x].render بتوقف قبل الكتابة في الـ DOM بالظبط
+// زي ما بتعمل مع أي تنقل قديم — نفس منطق isStaleNav المستخدم في كل الصفحات).
+// النتيجة: لو فعلاً دُست على الصفحة بعد كده، البيانات تبقى غالبًا جاهزة في الكاش
+// وتتفتح فورًا من غير ما تستنى Apps Script. ده تسريع بحت للقراءة (GET) وملوش أي
+// علاقة بمنطق الحفظ (POST) اللي فضل زي ما هو تمامًا.
+const _prefetchedPages = new Set();
+function _prefetchPage(page){
+  if (!page || !PAGES[page] || page === _currentPage || _prefetchedPages.has(page)) return;
+  _prefetchedPages.add(page);
+  try { PAGES[page].render(-999); } catch (e) { /* أي فشل هنا مش حرج — تجاهل، هيتحمل عادي وقت الدخول الفعلي */ }
+}
+function _attachPrefetch(navId){
+  const el = document.getElementById(navId); if (!el) return;
+  const handler = e => { const btn = e.target.closest('button[data-page]'); if (btn) _prefetchPage(btn.dataset.page); };
+  el.addEventListener('mouseenter', handler, true);
+  el.addEventListener('touchstart', handler, { passive: true, capture: true });
+}
+_attachPrefetch('nav');
+_attachPrefetch('bottomNav');
 // تابات "Quotations" / "Payment Statements" فوق المحتوى — بيديو نفس شكل تابات
 // "الموظفين الشهريين/الاسبوعيين" في صفحة مرتبات بالظبط (q-steps p-filter-tabs)
 document.getElementById('qpSwitchTabs').addEventListener('click', e => {
@@ -7782,7 +7807,7 @@ function qRenderEditor(){
         <table class="q-tbl">
           <thead><tr>
             <th style="width:34px;">#</th><th style="width:150px;">النموذج</th><th style="width:160px;">الوحدة</th>
-            <th style="width:340px;">المطلوب تنفيذه</th><th style="width:100px;">عدد</th><th style="width:110px;">السعر</th>
+            <th style="width:340px;">المطلوب تنفيذه</th><th style="width:150px;">عدد</th><th style="width:110px;">السعر</th>
             <th style="width:120px;">الإجمالي</th><th style="width:170px;">ملاحظات</th><th style="width:110px;"></th>
           </tr></thead>
           <tbody id="q-body"></tbody>
