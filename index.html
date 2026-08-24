@@ -649,6 +649,11 @@
   .wr-fc-ded b, .wr-fc-wd b{ color:#8a6408; }
   .wr-fc-net{ background:var(--dark); }
   .wr-fc-net span, .wr-fc-net b{ color:#D4B483; font-size:14px; font-weight:700; }
+  /* ⚠️ إضافة 2026-08-21 (تاني): عمود القيمة بقى سطرين — قيمة الصف نفسه فوق،
+     و"الناتج التراكمي" لحد الصف ده تحتها بخط أصغر وأخف */
+  .wr-fc-vals{ display:flex; flex-direction:column; align-items:flex-end; gap:1px; direction:ltr; }
+  .wr-fc-vals b{ font-size:13px; }
+  .wr-fc-vals small{ color:var(--muted); font-weight:400; font-size:10.5px; }
   td.mc-ded{ color:var(--red); font-weight:700; }
   td.mc-add{ color:var(--green); font-weight:700; }
   td.mc-draw{ color:#8a6408; font-weight:700; }
@@ -3184,6 +3189,26 @@ function _wrGrandTotalsTableHtml_(employees, forPrint){
     </div>`;
 }
 
+// ⚠️ إضافة 2026-08-21: صفوف "الناتج بعد كل خطوة" — مشتركة بين التقرير
+// الأسبوعي والشهري (مودال + PDF) عشان نفس الحساب بالظبط في كل مكان. كل صف
+// بيرجع قيمته لوحدها + "الناتج" التراكمي لحد الصف ده (يعني لو طبّقت كل
+// الصفوف اللي فوقه بالترتيب هتوصل للرقم ده بالظبط) — آخر صف (الصافي) الناتج
+// بتاعه هو نفسه القيمة، فبيتعرض مرة واحدة بس مش مكرر.
+function _payrollFinalCalcRunningRows_(daysLabel, dayWages, additions, deductions, withdrawals){
+  let running = dayWages;
+  const rows = [{ label: daysLabel, val: fmt(dayWages) + ' ج', running, cls: '' }];
+  running += additions;
+  rows.push({ label: '+ الإضافات والسهرات', val: fmt(additions) + ' ج', running, cls: 'add' });
+  if (deductions) {
+    running -= deductions;
+    rows.push({ label: '− خصومات', val: fmt(deductions) + ' ج', running, cls: 'wd' });
+  }
+  running -= withdrawals;
+  rows.push({ label: '− المسحوبات', val: fmt(withdrawals) + ' ج', running, cls: 'wd' });
+  rows.push({ label: '= الصافي', val: fmt(running) + ' ج', running, cls: 'net', isNet: true });
+  return rows;
+}
+
 // ⚠️ إضافة 2026-08-21: حساب "أيام الشغل" المطلوب في آخر كل موظف في التقرير
 // الأسبوعي — الأساس 6 أيام شغل في الأسبوع (يومية × 6)، بينقص منها كل يوم
 // غياب كامل، وبيزيد يوم واحد لو الموظف اشتغل يوم الجمعة في الأسبوع ده (يبقى
@@ -3252,23 +3277,21 @@ function renderWeeklyReportModal_(data){
     // ⚠️ إضافة 2026-08-21: ملخص "أيام الشغل" النهائي — بالترتيب المطلوب بالظبط:
     // عدد أيام الشغل (6 − غياب + جمعة) × اليومية، تحتيها + الإضافات والسهرات،
     // تحتيها − المسحوبات، وفي الآخر = الصافي. بتظهر بعد تفاصيل الأيام مباشرة.
+    // ⚠️ إضافة 2026-08-21 (تاني): كل صف بقى معاه "الناتج" التراكمي جنبه (مش بس
+    // قيمته لوحدها) — يعني تقدر تشوف وانت نازل السطور القيمة بتتجمع/تتخصم إزاي
+    // خطوة خطوة لحد ما توصل للصافي في الآخر.
     const fc = _wrEmployeeFinalCalc_(e);
+    const daysLabel = `عدد أيام الشغل (6${fc.absenceDays ? ` − ${fc.absenceDays} غياب` : ''}${fc.workedFriday ? ' + 1 جمعة' : ''} = ${fc.workDays} يوم) × ${fmt(fc.dailyRate)}`;
+    const fcRows = _payrollFinalCalcRunningRows_(daysLabel, fc.dayWages, fc.additions, fc.deductions, fc.withdrawals);
     const finalCalcHtml = `
       <div class="wr-final-calc">
-        <div class="wr-final-calc-row">
-          <span>عدد أيام الشغل (6${fc.absenceDays ? ` − ${fc.absenceDays} غياب` : ''}${fc.workedFriday ? ' + 1 جمعة' : ''} = ${fc.workDays} يوم)</span>
-          <b>${fc.workDays} × ${fmt(fc.dailyRate)} = ${fmt(fc.dayWages)} ج</b>
-        </div>
-        <div class="wr-final-calc-row wr-fc-add">
-          <span>+ الإضافات والسهرات</span><b>${fmt(fc.additions)} ج</b>
-        </div>
-        ${fc.deductions ? `<div class="wr-final-calc-row wr-fc-ded"><span>− خصومات</span><b>${fmt(fc.deductions)} ج</b></div>` : ''}
-        <div class="wr-final-calc-row wr-fc-wd">
-          <span>− المسحوبات</span><b>${fmt(fc.withdrawals)} ج</b>
-        </div>
-        <div class="wr-final-calc-row wr-fc-net">
-          <span>= الصافي</span><b>${fmt(fc.net)} ج</b>
-        </div>
+        ${fcRows.map(r => `
+          <div class="wr-final-calc-row ${r.cls === 'add' ? 'wr-fc-add' : r.cls === 'wd' ? 'wr-fc-wd' : r.cls === 'net' ? 'wr-fc-net' : ''}">
+            <span>${qEsc(r.label)}</span>
+            ${r.isNet
+              ? `<b>${qEsc(r.val)}</b>`
+              : `<span class="wr-fc-vals"><b>${qEsc(r.val)}</b><small>الناتج حتى هنا: ${fmt(r.running)} ج</small></span>`}
+          </div>`).join('')}
       </div>`;
 
     return `<div class="panel" style="margin-bottom:12px;">
@@ -3331,22 +3354,19 @@ function payrollBuildWeeklyReportPdfHtml_(data){
     const weekSummaryTxt = (e.weekSummary && e.weekSummary.length) ? e.weekSummary.map(s => `${qEsc(s.label)}: ${qEsc(s.value)}`).join(' &nbsp;|&nbsp; ') : '';
     // ⚠️ إضافة 2026-08-21: نفس ملخص "أيام الشغل" بتاع المودال بالظبط، بنفس
     // دالة الحساب المشتركة (_wrEmployeeFinalCalc_) عشان الرقم يتطابق دايمًا
-    // بين المودال والـ PDF.
+    // بين المودال والـ PDF. ⚠️ إضافة 2026-08-21 (تاني): عمود تالت "الناتج
+    // حتى هنا" بيوضح الرصيد التراكمي بعد كل صف.
     const fc = _wrEmployeeFinalCalc_(e);
-    const finalCalcRowsPdf = [
-      [`عدد أيام الشغل (6${fc.absenceDays ? ` − ${fc.absenceDays} غياب` : ''}${fc.workedFriday ? ' + 1 جمعة' : ''} = ${fc.workDays} يوم)`, `${fc.workDays} × ${fmt(fc.dailyRate)} = ${fmt(fc.dayWages)} ج`],
-      ['+ الإضافات والسهرات', fmt(fc.additions) + ' ج'],
-      ...(fc.deductions ? [['− خصومات', fmt(fc.deductions) + ' ج']] : []),
-      ['− المسحوبات', fmt(fc.withdrawals) + ' ج'],
-      ['= الصافي', fmt(fc.net) + ' ج'],
-    ];
+    const daysLabelPdf = `عدد أيام الشغل (6${fc.absenceDays ? ` − ${fc.absenceDays} غياب` : ''}${fc.workedFriday ? ' + 1 جمعة' : ''} = ${fc.workDays} يوم) × ${fmt(fc.dailyRate)}`;
+    const fcRowsPdf = _payrollFinalCalcRunningRows_(daysLabelPdf, fc.dayWages, fc.additions, fc.deductions, fc.withdrawals);
     const finalCalcHtmlPdf = `
       <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:8px;">
         <tbody>
-          ${finalCalcRowsPdf.map(([label, val], ri) => {
-            const isNet = ri === finalCalcRowsPdf.length - 1;
-            const styleTd = isNet ? 'background:#1E1A15;color:#D4B483;font-weight:700;font-size:12px;' : 'color:#6B5E4E;';
-            return `<tr><td style="padding:5px 8px;${styleTd}">${qEsc(label)}</td><td style="padding:5px 8px;text-align:left;direction:ltr;${isNet?'background:#1E1A15;color:#D4B483;font-weight:700;':'font-weight:700;'}">${qEsc(val)}</td></tr>`;
+          ${fcRowsPdf.map(r => {
+            const styleTd = r.isNet ? 'background:#1E1A15;color:#D4B483;font-weight:700;font-size:12px;' : 'color:#6B5E4E;';
+            const styleValTd = r.isNet ? 'background:#1E1A15;color:#D4B483;font-weight:700;' : 'font-weight:700;';
+            const runningCell = r.isNet ? `<td style="padding:5px 8px;background:#1E1A15;"></td>` : `<td style="padding:5px 8px;text-align:left;direction:ltr;color:#8a7a5f;font-size:10px;">الناتج: ${fmt(r.running)} ج</td>`;
+            return `<tr><td style="padding:5px 8px;${styleTd}">${qEsc(r.label)}</td><td style="padding:5px 8px;text-align:left;direction:ltr;${styleValTd}">${qEsc(r.val)}</td>${runningCell}</tr>`;
           }).join('')}
         </tbody>
       </table>`;
@@ -3450,13 +3470,11 @@ function _mrActionDayLineHtml_(d){
 
 // صف إجمالي واحد لكل موظف — نفس الترتيب المطلوب بالظبط (أيام الشغل، إضافات،
 // خصومات لو موجودة، مسحوبات، صافي) — بيتشارك بين المودال والـ PDF.
+// ⚠️ إضافة 2026-08-21 (تاني): بقت بتستخدم نفس دالة الصفوف التراكمية المشتركة
+// (_payrollFinalCalcRunningRows_) عشان "الناتج حتى هنا" يظهر جنب كل صف هنا
+// كمان بنفس أسلوب التقرير الأسبوعي بالظبط.
 function _mrFinalCalcRows_(e){
-  const rows = [[`عدد أيام الشغل (الشهر كله)`, `${e.totalWorkDays} يوم = ${fmt(e.totalDayWages)} ج`]];
-  rows.push(['+ الإضافات والسهرات', fmt(e.totalAdditions) + ' ج']);
-  if (e.totalDeductions) rows.push(['− خصومات', fmt(e.totalDeductions) + ' ج']);
-  rows.push(['− المسحوبات', fmt(e.totalWithdrawals) + ' ج']);
-  rows.push(['= الصافي', fmt(e.net) + ' ج']);
-  return rows;
+  return _payrollFinalCalcRunningRows_(`عدد أيام الشغل (الشهر كله = ${e.totalWorkDays} يوم)`, e.totalDayWages, e.totalAdditions, e.totalDeductions, e.totalWithdrawals);
 }
 
 function _mrGrandTotalsTableHtml_(employees, forPrint){
@@ -3498,7 +3516,16 @@ function renderMonthlyReportModal_(data){
       ? e.actionDays.map(_mrActionDayLineHtml_).join('')
       : '<div class="empty" style="padding:6px 0;font-size:12.5px;">مفيش أي أكشن مسجل الشهر ده — حضور عادي طول الشهر</div>';
     const rows = _mrFinalCalcRows_(e);
-    const finalCalcHtml = `<div class="wr-final-calc">${rows.map(([label,val],ri) => `<div class="wr-final-calc-row ${ri===rows.length-1?'wr-fc-net':(label.startsWith('+')?'wr-fc-add':(label.startsWith('−')?'wr-fc-wd':''))}"><span>${qEsc(label)}</span><b>${qEsc(val)}</b></div>`).join('')}</div>`;
+    const finalCalcHtml = `
+      <div class="wr-final-calc">
+        ${rows.map(r => `
+          <div class="wr-final-calc-row ${r.cls === 'add' ? 'wr-fc-add' : r.cls === 'wd' ? 'wr-fc-wd' : r.cls === 'net' ? 'wr-fc-net' : ''}">
+            <span>${qEsc(r.label)}</span>
+            ${r.isNet
+              ? `<b>${qEsc(r.val)}</b>`
+              : `<span class="wr-fc-vals"><b>${qEsc(r.val)}</b><small>الناتج حتى هنا: ${fmt(r.running)} ج</small></span>`}
+          </div>`).join('')}
+      </div>`;
     return `<div class="panel" style="margin-bottom:12px;">
       <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">اليومية: <b style="color:var(--dark);">${fmt(e.dailyRate||0)} ج</b> &nbsp;•&nbsp; ${e.absenceDaysCount||0} يوم غياب في ${e.weeksCount||0} أسبوع</div>
       <h4 style="margin-bottom:8px;">${qEsc(e.name)}</h4>
@@ -3552,10 +3579,11 @@ function payrollBuildMonthlyReportPdfHtml_(data){
     const finalCalcHtmlPdf = `
       <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:8px;">
         <tbody>
-          ${rows.map(([label, val], ri) => {
-            const isNet = ri === rows.length - 1;
-            const styleTd = isNet ? 'background:#1E1A15;color:#D4B483;font-weight:700;font-size:12px;' : 'color:#6B5E4E;';
-            return `<tr><td style="padding:5px 8px;${styleTd}">${qEsc(label)}</td><td style="padding:5px 8px;text-align:left;direction:ltr;${isNet?'background:#1E1A15;color:#D4B483;font-weight:700;':'font-weight:700;'}">${qEsc(val)}</td></tr>`;
+          ${rows.map(r => {
+            const styleTd = r.isNet ? 'background:#1E1A15;color:#D4B483;font-weight:700;font-size:12px;' : 'color:#6B5E4E;';
+            const styleValTd = r.isNet ? 'background:#1E1A15;color:#D4B483;font-weight:700;' : 'font-weight:700;';
+            const runningCell = r.isNet ? `<td style="padding:5px 8px;background:#1E1A15;"></td>` : `<td style="padding:5px 8px;text-align:left;direction:ltr;color:#8a7a5f;font-size:10px;">الناتج: ${fmt(r.running)} ج</td>`;
+            return `<tr><td style="padding:5px 8px;${styleTd}">${qEsc(r.label)}</td><td style="padding:5px 8px;text-align:left;direction:ltr;${styleValTd}">${qEsc(r.val)}</td>${runningCell}</tr>`;
           }).join('')}
         </tbody>
       </table>`;
@@ -6958,7 +6986,7 @@ async function renderPartnerWithdrawals(token){
         </div>
         <div style="font-weight:800;font-size:18px;">إجمالي الشركاء الثلاثة: <span id="pw-grand-total" style="color:var(--red);">${fmt(data.grandTotal)} ج</span></div>
       </div>
-      <div id="pw-grid" style="display:grid;grid-template-columns:1fr;gap:16px;align-items:start;max-width:760px;margin:0 auto;">
+      <div id="pw-grid" style="display:flex;flex-direction:column;gap:16px;">
         ${data.partners.map(p => pwColumnShellHtml(p)).join('')}
       </div>
     `;
@@ -6975,8 +7003,9 @@ function pwColumnShellHtml(p){
       </div>
       <div style="font-weight:800;font-size:15px;margin-bottom:10px;">إجمالي: <span id="pw-total-${qId(p.name)}" style="color:var(--red);">${fmt(p.total)}</span> ج</div>
       <div class="tbl-wrap tbl-wrap-scroll" style="max-height:260px;">
-        <table>
-          <thead><tr><th style="width:26px;">#</th><th style="width:96px;">تاريخ</th><th>البند</th><th style="width:90px;">المبلغ</th><th style="width:30px;"></th></tr></thead>
+        <table style="min-width:420px;table-layout:fixed;">
+          <colgroup><col style="width:26px;"><col style="width:96px;"><col><col style="width:100px;"><col style="width:30px;"></colgroup>
+          <thead><tr><th>#</th><th>تاريخ</th><th>البند</th><th>المبلغ</th><th></th></tr></thead>
           <tbody id="pw-saved-${qId(p.name)}"></tbody>
         </table>
       </div>
