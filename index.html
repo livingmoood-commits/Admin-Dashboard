@@ -9287,7 +9287,28 @@ function toRenderDailyForm() {
         <div class="to-bs-grid">
           <div class="field"><label>التخصص</label><input class="d-input" id="to_specialty" list="to-dl-spec" placeholder="التخصص"><datalist id="to-dl-spec">${WORKFLOW_SPECIALTIES_FALLBACK.map(s => `<option value="${qEsc(s)}">`).join('')}</datalist></div>
           <div class="field"><label>الحضور</label><input class="d-input" id="to_attendance" placeholder="8ص"></div>
-          <div class="field"><label>المقاسات</label><input class="d-input" id="to_sizes" placeholder="المقاسات"></div>
+          <div class="field to-size-field">
+            <label>المقاسات</label>
+            <table class="to-size-tbl">
+              <tbody>
+                <tr>
+                  <td class="to-size-lbl">الطول</td>
+                  <td><input class="d-input ltr-num" inputmode="decimal" id="to_size_length" placeholder="مثال: 4"></td>
+                  <td class="to-size-unit">سم</td>
+                </tr>
+                <tr>
+                  <td class="to-size-lbl">العرض</td>
+                  <td><input class="d-input ltr-num" inputmode="decimal" id="to_size_width" placeholder="مثال: 3"></td>
+                  <td class="to-size-unit">سم</td>
+                </tr>
+                <tr>
+                  <td class="to-size-lbl">الارتفاع</td>
+                  <td><input class="d-input ltr-num" inputmode="decimal" id="to_size_height" placeholder="مثال: 2"></td>
+                  <td class="to-size-unit">سم</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <div class="field"><label>الكمية</label><input class="d-input" id="to_qty" placeholder="الكمية"></div>
           <div class="field"><label>اشراف</label><input class="d-input" id="to_supervision" placeholder="اشراف"></div>
           <div class="field"><label>ملاحظات</label><input class="d-input" id="to_notes" placeholder="ملاحظات"></div>
@@ -9424,7 +9445,11 @@ async function toSaveEntry() {
     feedback: document.getElementById('to_feedback').value.trim(),
     specialty: document.getElementById('to_specialty')?.value.trim() || '',
     attendance: document.getElementById('to_attendance')?.value.trim() || '',
-    sizes: document.getElementById('to_sizes')?.value.trim() || '',
+    sizes: toComposeSize({
+      length: document.getElementById('to_size_length')?.value || '',
+      width: document.getElementById('to_size_width')?.value || '',
+      height: document.getElementById('to_size_height')?.value || '',
+    }),
     qty: document.getElementById('to_qty')?.value.trim() || '',
     supervision: document.getElementById('to_supervision')?.value.trim() || '',
     notes: document.getElementById('to_notes')?.value.trim() || '',
