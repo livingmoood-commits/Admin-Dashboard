@@ -7705,6 +7705,7 @@ function qRefreshTotals(){
 function qRenderRows(){
   const tb = document.getElementById('q-body'); if (!tb) return;
   const n = QSTATE.rows.length;
+  const countEl = document.getElementById('q-items-count'); if (countEl) countEl.textContent = n;
   tb.innerHTML = QSTATE.rows.map((r,i) => `
     <tr data-qrow="${r._id}">
       <td data-label="#" style="text-align:center;color:var(--muted);font-size:11px;">${i+1}</td>
@@ -7787,9 +7788,12 @@ function qRenderEditor(){
           <tbody id="q-body"></tbody>
         </table>
       </div>
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:18px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
         <button class="btn btn-outline btn-sm" onclick="qAddRow(document.getElementById('q-add-count').value)">+ إضافة سطر</button>
         <input autocomplete="off" type="number" id="q-add-count" value="1" min="1" class="d-input" style="width:56px;" title="عدد الأسطر اللي عايز تضيفهم مرة واحدة">
+      </div>
+      <div style="margin-bottom:18px;font-size:13px;color:var(--muted);font-weight:700;">
+        عدد البنود: <span id="q-items-count" style="color:var(--dark);font-family:'IBM Plex Mono',monospace;">0</span>
       </div>
       <div class="q-scroll-fab">
         <button type="button" onclick="qScrollTableTop()" title="روح لأول الجدول">↑</button>
