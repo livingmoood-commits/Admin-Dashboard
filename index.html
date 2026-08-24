@@ -226,7 +226,7 @@
   .to-status-btn.blocked-active .ic{ background:var(--red); }
   .to-status-btn.blocked-active .lbl{ color:var(--red); }
   .to-status-btn.done-active{ background:#e6f4ea; border-color:var(--green); }
-  .to-status-btn.done-active .ic{ background:var(--green); }
+  .to-status-btn.done-active .ic{ background:var(--dark); }
   .to-status-btn.done-active .lbl{ color:var(--green); }
   .to-blocked-note{ margin-top:8px; }
   .to-blocked-note input{ border-color:#f0c9c9; }
@@ -769,29 +769,20 @@
   .q-side-col{ display:flex; flex-direction:column; gap:10px; align-items:flex-start; }
 
   .q-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; margin-bottom:14px; }
-  table.q-tbl{ width:100%; border-collapse:collapse; font-size:15px; min-width:1300px; table-layout:fixed; }
+  table.q-tbl{ width:100%; border-collapse:collapse; font-size:15px; min-width:760px; }
   .q-tbl thead tr{ background:var(--green); color:#fff; }
-  .q-tbl thead th{ padding:13px 12px; font-weight:600; text-align:right; white-space:nowrap; font-size:14px; }
+  .q-tbl thead th{ padding:12px 10px; font-weight:600; text-align:right; white-space:nowrap; font-size:14px; }
   .q-tbl tbody tr{ border-bottom:1px solid var(--border); }
   .q-tbl tbody tr:hover{ background:#faf7f3; }
-  .q-tbl td{ padding:12px 10px; vertical-align:middle; }
+  .q-tbl td{ padding:10px 8px; vertical-align:middle; }
   .q-tbl td:has(textarea){ vertical-align:top; }
-  .q-tbl td input, .q-tbl td textarea{ background:#fff; border:1.5px solid var(--border); border-radius:8px; font-family:inherit; font-size:15.5px; color:var(--dark); width:100%; box-sizing:border-box; padding:11px 13px; outline:none; direction:rtl; text-align:right; min-height:48px; line-height:1.5; }
+  .q-tbl td input, .q-tbl td textarea{ background:#fff; border:1.5px solid var(--border); border-radius:6px; font-family:inherit; font-size:15px; color:var(--dark); width:100%; padding:9px 11px; outline:none; direction:rtl; text-align:right; min-height:42px; }
   .q-tbl td input.ltr-num{ direction:ltr; text-align:left; }
   .ltr-num{ direction:ltr; text-align:left; }
-  .q-tbl td input:focus, .q-tbl td textarea:focus{ border-color:var(--gold); box-shadow:0 0 0 3px rgba(184,151,90,.14); }
-  .q-tbl td textarea{ resize:vertical; min-height:150px; line-height:1.7; }
-  /* ⚠️ إصلاح: عمود "المطلوب تنفيذه" (الوصف) كان من غير width صريح على الـ<th>،
-     وباقي الأعمدة كلها width صريح بالبكسل — في table-layout:fixed، أي عمود من
-     غيره width صريح بياخد بس الباقي من عرض الجدول بعد ما باقي الأعمدة تاخد
-     نصيبها (min-width هنا مكنش بيتحسب أصلاً)، فكان أحيانًا بياخد مساحة ضئيلة
-     جدًا وبيتلف كل حرف في سطر لوحده. دلوقتي عنده width صريح كبير زي باقي
-     الأعمدة، ومضمون ياخد مساحة كافية دايمًا. */
-  .q-tbl th:nth-child(4){ width:340px; min-width:340px; }
+  .q-tbl td input:focus, .q-tbl td textarea:focus{ border-color:var(--gold); }
+  .q-tbl td textarea{ resize:vertical; min-height:130px; line-height:1.6; }
+  .q-tbl th:nth-child(4){ min-width:260px; }
   .q-tbl td.num-cell{ font-weight:700; white-space:nowrap; direction:ltr; text-align:left; font-size:15px; }
-  /* ⚠️ إضافة: الحقول (النموذج/الوحدة) كانت ضيقة جدًا (110px/130px) فالنص بيتقص
-     من غير ما تبان — عرض عريض أكتر وسطر بديل للنص الطويل بدل ما يتقص. */
-  .q-tbl td input{ white-space:normal; }
 
   .q-discount-card{ background:var(--cream); border:1px solid var(--border); border-radius:6px; padding:14px 16px; margin:16px 0; }
   .q-discount-card .dc-title{ font-size:12px; font-weight:700; color:var(--muted); letter-spacing:.5px; margin-bottom:10px; }
@@ -866,26 +857,6 @@
   .q-confirm-btns{ display:flex; gap:10px; justify-content:center; }
 
   @media(max-width:760px){ .q-banner{ flex-direction:column; align-items:stretch; } }
-
-  /* ⚠️ إضافة: جدول بنود الكوتيشن على الموبايل — بدل ما يفضل جدول ضيق بيتعمله
-     سكرول أفقي (أعمدة زي "النموذج"/"الوحدة" بتبقى مضغوطة جدًا والنص بيتقص)،
-     كل صف بند بيتحول لكارت واحد تحت التاني وكل حقل بياخد عرض الشاشة الكامل
-     مع اسم الحقل فوقه — يعني كل خانة بتاخد "راحتها" في الكتابة. */
-  @media(max-width:900px){
-    .q-wrap{ overflow-x:visible; }
-    table.q-tbl{ min-width:0; table-layout:auto; }
-    .q-tbl thead{ display:none; }
-    .q-tbl tbody tr{ display:block; border:1px solid var(--border); border-radius:12px; padding:12px; margin-bottom:14px; background:#fff; box-shadow:0 2px 10px rgba(30,26,21,.05); }
-    .q-tbl tbody tr:hover{ background:#fff; }
-    .q-tbl td{ display:block; width:100%; padding:8px 2px; }
-    .q-tbl td:first-child{ display:flex; justify-content:space-between; align-items:center; color:var(--gold-dim); font-weight:800; font-size:13px; padding-bottom:6px; border-bottom:1px dashed var(--border); margin-bottom:4px; }
-    .q-tbl td:first-child::before{ content:"بند رقم"; color:var(--muted); font-weight:600; font-size:11px; }
-    .q-tbl td[data-label]:not([data-label=""])::before{ content:attr(data-label); display:block; font-size:11.5px; font-weight:700; color:var(--muted); margin-bottom:5px; }
-    .q-tbl td:last-child{ display:flex; justify-content:flex-end; gap:8px; padding-top:6px; border-top:1px dashed var(--border); margin-top:4px; }
-    .q-tbl td.num-cell{ font-size:17px; direction:ltr; text-align:right; }
-    .q-tbl td input, .q-tbl td textarea{ font-size:16px; min-height:46px; }
-    .q-tbl td textarea{ min-height:90px; }
-  }
 
   /* ===== Debtors / Payment Statement — extras shared with q-* classes above ===== */
   .q-clist .ci-progress{ font-size:11px; color:var(--muted); margin-top:4px; display:flex; gap:10px; flex-wrap:wrap; }
@@ -1218,6 +1189,8 @@
   </div>
   <div class="q-steps p-filter-tabs" id="wfSwitchTabs" style="display:none;margin-bottom:16px;">
     <div class="step" id="wf-tab-taskOrganize" data-page="taskOrganize"><span class="icon" style="margin-inline-end:6px;">&#128221;</span>تنظيم المهام</div>
+    <div class="step" id="wf-tab-workflowReport" data-page="workflowReport"><span class="icon" style="margin-inline-end:6px;">&#128203;</span>تقرير يومي بالصنايعية</div>
+    <div class="step" id="wf-tab-missingItems" data-page="missingItems"><span class="icon" style="margin-inline-end:6px;">&#128230;</span>بنود المشاريع</div>
     <div class="step" id="wf-tab-materials" data-page="materials"><span class="icon" style="margin-inline-end:6px;">&#129514;</span>الخامات</div>
   </div>
   <div id="content"><div class="loading-row">جاري التحميل...</div></div>
@@ -1763,11 +1736,8 @@ const QP_GROUP_PAGES = ['quotation', 'debtors'];
 // صفحتين "مصاريف يومية" و"المصاريف الثابتة" بقوا مجمّعين تحت زرار واحد في القائمة
 // الجانبية (data-exp-group) بنفس فكرة QP_GROUP_PAGES فوق بالظبط.
 const EXP_GROUP_PAGES = ['dailyExpenses', 'fixedExp'];
-// نفس الفكرة لصفحات Work Flow — بقيت صفحتين بس (تنظيم المهام والخامات)؛ "تقرير يومي
-// بالصنايعية" و"بنود المشاريع" اتشالوا كصفحات مستقلة لأن نفس الوظيفة موجودة بالظبط
-// جوه تابات "تنظيم المهام" (تاب "شغل يومي"/"اسبوعي" فيهم زرار تقرير، وتاب "تايم بلاننج"
-// هو نفسه بنود المشاريع) — شوف تعليق renderTaskOrganize تحت لتفاصيل أكتر
-const WF_GROUP_PAGES = ['taskOrganize', 'materials'];
+// نفس الفكرة لصفحات Work Flow التلاتة تحت زرار واحد (data-wf-group)
+const WF_GROUP_PAGES = ['taskOrganize', 'workflowReport', 'missingItems', 'materials'];
 const PAGES = {
   dashboard:    { title:'نظرة عامة', sub:'ملخص شامل لكل حاجة في المصنع', render: renderDashboard },
   payroll:      { title:'مرتبات', sub:'كشف حضور الشهر بالظبط زي الشيت — عدّل أي خلية وهتتسجل في الشيت الحقيقي مباشرة', render: renderPayroll },
@@ -1779,7 +1749,9 @@ const PAGES = {
   debtors:      { title:'Payment Statements', sub:'متابعة تحصيل الدفعات من العملاء — كل حاجة عن المستحق والمتبقي', render: renderDebtors },
   debts:        { title:'ديون', sub:'المبالغ اللي المصنع مديون بيها لجهات تانية ومتابعة سدادها', render: renderDebts },
   partnerWithdrawals: { title:'مسحوبات شركاء', sub:'مسحوبات الشركاء التلاتة — عمود لكل واحد، وإجمالي تحت كل عمود + إجمالي كلي', render: renderPartnerWithdrawals },
-  taskOrganize:   { title:'تنظيم المهام', sub:'شغل الصنايعية اليومي، خريطة الأسبوع، تايم بلاننج المشاريع، وتقرير يومي/اسبوعي — في صفحة واحدة', render: renderTaskOrganize },
+  taskOrganize:   { title:'تنظيم المهام', sub:'شغل الصنايعية اليومي، خريطة الأسبوع، وتايم بلاننج المشاريع — في صفحة واحدة', render: renderTaskOrganize },
+  workflowReport: { title:'تقرير يومي بالصنايعية', sub:'كل صنيعي فين وشغال ع ايه، بالفيد باك', render: renderWorkflowReport },
+  missingItems:   { title:'بنود المشاريع', sub:'كل بند لكل مشروع — علّم عليه لما يتم توفيره، واكتب فيد باك/ملاحظة في أي وقت', render: renderMissingItems },
   materials:      { title:'الخامات', sub:'مخزون كل خامة وكل استخدام منها — لأي مشروع وليه', render: renderMaterials }
 };
 
@@ -1859,13 +1831,15 @@ function expSyncTabsBar(page){
   document.getElementById('exp-tab-daily').classList.toggle('active', page === 'dailyExpenses');
   document.getElementById('exp-tab-fixed').classList.toggle('active', page === 'fixedExp');
 }
-// نفس الفكرة لتابات صفحات Work Flow (بقيت 2 بس: تنظيم المهام + الخامات)
+// نفس الفكرة لتابات صفحات Work Flow التلاتة
 function wfSyncTabsBar(page){
   const bar = document.getElementById('wfSwitchTabs');
   const show = WF_GROUP_PAGES.includes(page);
   bar.style.display = show ? '' : 'none';
   if (!show) return;
   document.getElementById('wf-tab-taskOrganize').classList.toggle('active', page === 'taskOrganize');
+  document.getElementById('wf-tab-workflowReport').classList.toggle('active', page === 'workflowReport');
+  document.getElementById('wf-tab-missingItems').classList.toggle('active', page === 'missingItems');
   document.getElementById('wf-tab-materials').classList.toggle('active', page === 'materials');
 }
 // كل مرة ندخل صفحة، بيتزود التوكن ده. أي صفحة قديمة لسه بتحمّل (fetch) بتتاكد قبل
@@ -1873,7 +1847,7 @@ function wfSyncTabsBar(page){
 // قبل ما تخلص، بتلاقي التوكن اتغير فبتلغي نفسها من غير ما تكتب حاجة فوق الصفحة الجديدة
 let _navToken = 0;
 // صفحات Work Flow — المستخدمين اللي مش Role=Lead بيشوفوا دول بس (شوف applyRoleAccess تحت)
-const WORKFLOW_ONLY_PAGES = ['taskOrganize', 'materials'];
+const WORKFLOW_ONLY_PAGES = ['taskOrganize', 'workflowReport', 'missingItems', 'materials'];
 function _isLeadRole(){ return sessionStorage.getItem('lm_userRole') === 'Lead'; }
 function goTo(page, costTab) {
   if (!PAGES[page]) page = 'dashboard';
@@ -7705,25 +7679,24 @@ function qRefreshTotals(){
 function qRenderRows(){
   const tb = document.getElementById('q-body'); if (!tb) return;
   const n = QSTATE.rows.length;
-  const countEl = document.getElementById('q-items-count'); if (countEl) countEl.textContent = n;
   tb.innerHTML = QSTATE.rows.map((r,i) => `
     <tr data-qrow="${r._id}">
-      <td data-label="#" style="text-align:center;color:var(--muted);font-size:11px;">${i+1}</td>
-      <td data-label="النموذج"><input autocomplete="off" type="text" list="q-cat-list" value="${qEsc(r.category)}" placeholder="DOORS"
+      <td style="text-align:center;color:var(--muted);font-size:11px;">${i+1}</td>
+      <td><input autocomplete="off" type="text" list="q-cat-list" value="${qEsc(r.category)}" placeholder="DOORS"
         oninput="qSetField(${r._id},'category',this.value)"></td>
-      <td data-label="الوحدة"><input autocomplete="off" type="text" value="${qEsc(r.unit)}" placeholder="الوحده" oninput="qSetField(${r._id},'unit',this.value)"></td>
-      <td data-label="المطلوب تنفيذه"><textarea placeholder="اكتب وصف العمل هنا..." oninput="qSetField(${r._id},'description',this.value)">${qEsc(r.description)}</textarea></td>
-      <td data-label="عدد" style="white-space:nowrap;">
-        <div style="display:flex;align-items:center;gap:6px;">
-          <button type="button" class="btn btn-sm" title="نقص 1" onmousedown="event.preventDefault();" onclick="qStepQty(${r._id},-1)" style="padding:6px 11px;">−</button>
-          <input autocomplete="off" type="text" class="ltr-num" data-qty-input="${r._id}" inputmode="numeric" value="${r.qty}" oninput="qSetNumField(${r._id},'qty',this.value)" onkeypress="return /[0-9.]/.test(event.key)" style="width:56px;text-align:center;">
-          <button type="button" class="btn btn-sm" title="زود 1" onmousedown="event.preventDefault();" onclick="qStepQty(${r._id},1)" style="padding:6px 11px;">+</button>
+      <td><input autocomplete="off" type="text" value="${qEsc(r.unit)}" placeholder="الوحده" oninput="qSetField(${r._id},'unit',this.value)"></td>
+      <td><textarea placeholder="اكتب وصف العمل هنا..." oninput="qSetField(${r._id},'description',this.value)">${qEsc(r.description)}</textarea></td>
+      <td style="white-space:nowrap;">
+        <div style="display:flex;align-items:center;gap:2px;">
+          <button type="button" class="btn btn-sm" title="نقص 1" onmousedown="event.preventDefault();" onclick="qStepQty(${r._id},-1)" style="padding:2px 7px;">−</button>
+          <input autocomplete="off" type="text" class="ltr-num" data-qty-input="${r._id}" inputmode="numeric" value="${r.qty}" oninput="qSetNumField(${r._id},'qty',this.value)" onkeypress="return /[0-9.]/.test(event.key)" style="width:48px;text-align:center;">
+          <button type="button" class="btn btn-sm" title="زود 1" onmousedown="event.preventDefault();" onclick="qStepQty(${r._id},1)" style="padding:2px 7px;">+</button>
         </div>
       </td>
-      <td data-label="السعر"><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" value="${r.price}" oninput="qSetNumField(${r._id},'price',this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
-      <td data-label="الإجمالي" class="num-cell" data-qty-total="${r._id}">${fmt(qTot(r))}</td>
-      <td data-label="ملاحظات"><textarea placeholder="ملاحظة..." oninput="qSetField(${r._id},'notes',this.value)">${qEsc(r.notes)}</textarea></td>
-      <td data-label="" style="white-space:nowrap;">
+      <td><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" value="${r.price}" oninput="qSetNumField(${r._id},'price',this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
+      <td class="num-cell" data-qty-total="${r._id}">${fmt(qTot(r))}</td>
+      <td><textarea placeholder="ملاحظة..." oninput="qSetField(${r._id},'notes',this.value)">${qEsc(r.notes)}</textarea></td>
+      <td style="white-space:nowrap;">
         <button type="button" class="btn btn-sm" title="نقل لفوق" ${i===0?'disabled':''} onmousedown="event.preventDefault();" onclick="qMoveRow(${r._id},'up')">▲</button>
         <button type="button" class="btn btn-sm" title="نقل لتحت" ${i===n-1?'disabled':''} onmousedown="event.preventDefault();" onclick="qMoveRow(${r._id},'down')">▼</button>
         <button type="button" class="btn btn-sm btn-danger" onmousedown="event.preventDefault(); qDelRow(${r._id});">✕</button>
@@ -7781,19 +7754,16 @@ function qRenderEditor(){
       <div class="q-wrap">
         <table class="q-tbl">
           <thead><tr>
-            <th style="width:34px;">#</th><th style="width:150px;">النموذج</th><th style="width:160px;">الوحدة</th>
-            <th style="width:340px;">المطلوب تنفيذه</th><th style="width:100px;">عدد</th><th style="width:110px;">السعر</th>
-            <th style="width:120px;">الإجمالي</th><th style="width:170px;">ملاحظات</th><th style="width:110px;"></th>
+            <th style="width:30px;">#</th><th style="width:110px;">النموذج</th><th style="width:130px;">الوحدة</th>
+            <th>المطلوب تنفيذه</th><th style="width:60px;">عدد</th><th style="width:90px;">السعر</th>
+            <th style="width:100px;">الإجمالي</th><th style="width:130px;">ملاحظات</th><th style="width:100px;"></th>
           </tr></thead>
           <tbody id="q-body"></tbody>
         </table>
       </div>
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:18px;flex-wrap:wrap;">
         <button class="btn btn-outline btn-sm" onclick="qAddRow(document.getElementById('q-add-count').value)">+ إضافة سطر</button>
         <input autocomplete="off" type="number" id="q-add-count" value="1" min="1" class="d-input" style="width:56px;" title="عدد الأسطر اللي عايز تضيفهم مرة واحدة">
-      </div>
-      <div style="margin-bottom:18px;font-size:13px;color:var(--muted);font-weight:700;">
-        عدد البنود: <span id="q-items-count" style="color:var(--dark);font-family:'IBM Plex Mono',monospace;">0</span>
       </div>
       <div class="q-scroll-fab">
         <button type="button" onclick="qScrollTableTop()" title="روح لأول الجدول">↑</button>
@@ -8992,8 +8962,6 @@ let TO_STATE = {
   selectedCell: null,    // { emp, date } في التاب الاسبوعي
   missingSummary: [],    // من getMissingItemsSummary — لعداد "بنود لسه ناقصة" في الشريط
   formDate: todayStr(),
-  wwDate: todayStr(),    // فلتر تاريخ منفصل لبانل "مين فين" — دفولت النهاردة، مستقل عن formDate بتاع فورم التسجيل
-  wwEntries: [],         // شغل يوم wwDate (بانل "مين فين" بس)
   qCraftsman: '',
   csOpen: false,
   moreOpen: false,
@@ -9034,10 +9002,6 @@ async function renderTaskOrganize(token) {
         <button data-t="week"><span class="ico">&#128197;</span>اسبوعي</button>
         <button data-t="plan"><span class="ico">&#128230;</span>تايم بلاننج</button>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 4px;">
-        <button type="button" class="btn btn-outline btn-sm" id="toOpenDailyReportBtn">📋 تقرير يومي</button>
-        <button type="button" class="btn btn-outline btn-sm" id="toOpenWeeklyReportBtn">📅 تقرير اسبوعي</button>
-      </div>
       <div id="to-tab-content"><div class="loading-row">جاري التحميل...</div></div>
     `;
     const [{ projects }, craftsmenRes, { summary }] = await Promise.all([
@@ -9057,8 +9021,6 @@ async function renderTaskOrganize(token) {
       document.querySelectorAll('#toTabs button').forEach(b => b.classList.toggle('active', b===btn));
       toRenderActiveTab();
     });
-    document.getElementById('toOpenDailyReportBtn').addEventListener('click', toOpenDailyReport);
-    document.getElementById('toOpenWeeklyReportBtn').addEventListener('click', toOpenWeeklyReport);
 
     await toRenderActiveTab(token);
     toRenderStatStrip();
@@ -9167,7 +9129,6 @@ async function toLoadDailyTab(token, opts) {
   const cached = TO_STATE.dailyCache[date];
   if (cached && !opts.force) {
     TO_STATE.todayEntries = cached;
-    if (TO_STATE.wwDate === date) TO_STATE.wwEntries = cached;
     toRenderDailyForm(); // فوري من الكاش، من غير أي طلب سيرفر
     return;
   }
@@ -9177,34 +9138,15 @@ async function toLoadDailyTab(token, opts) {
     if (isStaleNav(token)) return;
     TO_STATE.todayEntries = entries || [];
     TO_STATE.dailyCache[date] = TO_STATE.todayEntries;
-    if (TO_STATE.wwDate === date) TO_STATE.wwEntries = TO_STATE.todayEntries;
     toRenderDailyForm();
   } catch (err) { box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
-}
-
-// تحميل بانل "مين فين" لتاريخ TO_STATE.wwDate — مستقل تمامًا عن فورم التسجيل (to_date/formDate)،
-// عشان تقدر تتصفح "مين فين" في أي يوم من غير ما تغيّر تاريخ السطر اللي هتسجله. بيستخدم نفس
-// كاش الأيام (dailyCache) بتاع تاب "شغل يومي"، فلو اليوم ده اتشاف قبل كده (من أي مكان) هيبان فورًا.
-async function toLoadWhoWhere(token, opts) {
-  opts = opts || {};
-  const date = TO_STATE.wwDate;
-  const body = document.getElementById('to-ww-body');
-  const cached = TO_STATE.dailyCache[date];
-  if (cached && !opts.force) { TO_STATE.wwEntries = cached; toRenderWhoWhereBlock(); return; }
-  if (body) body.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
-  try {
-    const { entries } = await apiGet('listWorkflowEntries', { filters: { date } });
-    if (isStaleNav(token)) return;
-    TO_STATE.wwEntries = entries || [];
-    TO_STATE.dailyCache[date] = TO_STATE.wwEntries;
-    toRenderWhoWhereBlock();
-  } catch (err) { if (body) body.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
 }
 
 // رندر بس — من غير أي فيتش — بيتستخدم لأي تفاعل UI محلي (فتح/قفل الليستة، اختيار صنيعي،
 // فتح الحقول الإضافية، تحديث حالة بند...) عشان مفيش داعي نكلم السيرفر ولا نمسح الشاشة كل ما نضغط حاجة.
 function toRenderDailyForm() {
   const box = document.getElementById('to-tab-content'); if (!box) return;
+  const grouped = TO_STATE.craftsmen.map(name => ({ name, items: TO_STATE.todayEntries.filter(e => e.craftsman === name) })).filter(g => g.items.length);
   box.innerHTML = `
     <div class="panel">
       <h3>تسجيل شغل <span class="sub">هيتسجل في شيت "سجل الشغل اليومي" مباشرة</span></h3>
@@ -9263,46 +9205,20 @@ function toRenderDailyForm() {
       </div>
     </div>
 
-    <div class="panel" id="to-ww-panel">
-      <div class="to-week-toolbar" style="margin-bottom:10px;">
-        <h3 style="margin:0;">مين فين</h3>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <input type="date" class="d-input" id="ww_date" style="max-width:170px;" value="${TO_STATE.wwDate}">
-          <button type="button" class="btn btn-outline btn-sm" id="wwTodayBtn">النهاردة</button>
+    <div class="panel">
+      <h3>شغل ${toDateQuickLabel(TO_STATE.formDate)} — مين فين <span class="sub">${TO_STATE.formDate}</span></h3>
+      ${grouped.map(g => `
+        <div class="wf-card ${g.items.length?'':'empty-card'}" style="${g.items.length?'':'opacity:.6;'}">
+          <div class="wf-card-head">
+            <span class="wf-craftsman-name">${qEsc(g.name)}</span>
+            <span style="font-size:11.5px;color:var(--muted);">${g.items.length} بند</span>
+          </div>
+          ${g.items.length ? g.items.map(it => toItemHTML(it)).join('') : `<div class="wf-empty-day">لسه معملش تسجيل في اليوم ده</div>`}
         </div>
-      </div>
-      <div id="to-ww-body"></div>
+      `).join('')}
     </div>
   `;
   toWireDailyTab();
-  toRenderWhoWhereBlock();
-}
-
-// رسم بانل "مين فين" بس (id=to-ww-body) — من غير ما يلمس فورم التسجيل فوقه، عشان
-// تغيير فلتر التاريخ هنا ميمسحش أي حاجة المستخدم كاتبها في فورم "تسجيل شغل".
-function toRenderWhoWhereBlock() {
-  const body = document.getElementById('to-ww-body'); if (!body) return;
-  const wwGrouped = TO_STATE.craftsmen.map(name => ({ name, items: TO_STATE.wwEntries.filter(e => e.craftsman === name) })).filter(g => g.items.length);
-  body.innerHTML = `
-    <div class="sub" style="margin-bottom:8px;">شغل ${toDateQuickLabel(TO_STATE.wwDate)} <span style="color:var(--muted);">(${TO_STATE.wwDate})</span></div>
-    ${wwGrouped.length ? wwGrouped.map(g => `
-      <div class="wf-card">
-        <div class="wf-card-head">
-          <span class="wf-craftsman-name">${qEsc(g.name)}</span>
-          <span style="font-size:11.5px;color:var(--muted);">${g.items.length} بند</span>
-        </div>
-        ${g.items.map(it => toItemHTML(it)).join('')}
-      </div>
-    `).join('') : `<div class="wf-empty-day">لسه معملش تسجيل في اليوم ده</div>`}
-  `;
-  // ⚠️ لازم نعيد ربط أزرار الحالة (تم/متعطل) بعد كل رندر للبانل ده، لأنه بيتحدّث لوحده
-  // منفصل عن toWireDailyTab (اللي بيتنادى مرة واحدة بس وقت رسم الصفحة كلها)
-  document.querySelectorAll('#to-ww-body [data-statusid]').forEach(btn => {
-    btn.addEventListener('click', () => toSetItemStatus(btn.dataset.statusid, btn.dataset.status));
-  });
-  document.querySelectorAll('#to-ww-body [data-blockednote]').forEach(inp => {
-    inp.addEventListener('change', () => toSaveBlockedNote(inp.dataset.blockednote, inp.value));
-  });
 }
 
 // شكل بند شغل واحد (مستخدم في تاب "شغل يومي" وتفاصيل خلية تاب "اسبوعي")
@@ -9362,16 +9278,6 @@ function toWireDailyTab() {
   });
   const saveBtn = document.getElementById('toSaveEntryBtn');
   if (saveBtn) saveBtn.addEventListener('click', toSaveEntry);
-
-  // فلتر تاريخ بانل "مين فين" — منفصل عن تاريخ فورم التسجيل، دفولته النهاردة
-  const wwDateInput = document.getElementById('ww_date');
-  if (wwDateInput) wwDateInput.addEventListener('change', e => { TO_STATE.wwDate = e.target.value || todayStr(); toLoadWhoWhere(); });
-  const wwTodayBtn = document.getElementById('wwTodayBtn');
-  if (wwTodayBtn) wwTodayBtn.addEventListener('click', () => {
-    TO_STATE.wwDate = todayStr();
-    if (wwDateInput) wwDateInput.value = TO_STATE.wwDate;
-    toLoadWhoWhere();
-  });
 }
 
 async function toSaveEntry() {
@@ -9409,7 +9315,7 @@ async function toSaveEntry() {
 // تحديث "تفاؤلي": بنغيّر الحالة في الشاشة فورًا من غير ما نستنى السيرفر ولا نعمل أي فيتش،
 // ولو السيرفر رفض بنرجّع الحالة القديمة تاني ونطلع رسالة خطأ.
 async function toSetItemStatus(id, status) {
-  const findIn = TO_STATE.todayEntries.concat(TO_STATE.weekEntries, TO_STATE.wwEntries);
+  const findIn = TO_STATE.todayEntries.concat(TO_STATE.weekEntries);
   const cur = findIn.find(x => String(x.id) === String(id));
   const newStatus = (cur && cur.status === status) ? 'working' : status;
   const prevStatus = cur ? cur.status : null;
@@ -9472,9 +9378,9 @@ function toRenderWeekGrid(dates, from, to) {
       <div class="to-week-toolbar">
         <span class="to-week-label">أسبوع ${weekLabel}</span>
         <div class="to-week-nav">
-          <button class="wn-arrow" id="toPrevWeek">&#8249;</button>
+          <button class="wn-arrow" id="toPrevWeek">&#8250;</button>
           <button class="btn btn-outline btn-sm" id="toThisWeekBtn">الأسبوع الحالي</button>
-          <button class="wn-arrow" id="toNextWeek">&#8250;</button>
+          <button class="wn-arrow" id="toNextWeek">&#8249;</button>
         </div>
       </div>
       <div class="to-grid-wrap">
@@ -9766,149 +9672,61 @@ document.addEventListener('click', () => {
   if (TO_STATE.csOpen && TO_STATE.activeTab === 'daily') { TO_STATE.csOpen = false; toRenderDailyForm(); }
 });
 
-/* ═══ تقرير يومي / اسبوعي — كانوا صفحة منفصلة "تقرير يومي بالصنايعية"،
-   دلوقتي بقوا زرارين بيفتحوا مودال (بنفس شكل كارت "سجل الاستخدام" بتاع
-   الخامات) من جوه "تنظيم المهام" مباشرة، عشان كل حاجة في مكان واحد. ═══ */
-let TO_REPORT_DATE = todayStr();
-async function toOpenDailyReport(){
-  TO_REPORT_DATE = TO_STATE.formDate || todayStr();
-  openCardModal(`
-    <div class="cd-head"><h3>📋 تقرير يومي</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
-    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
-      <label style="font-weight:700;font-size:13px;">اليوم:</label>
-      <input type="date" class="d-input" id="to-report-date" style="width:160px;" value="${TO_REPORT_DATE}">
-      <button type="button" class="btn btn-outline btn-sm" id="to-report-today">النهاردة</button>
-      <button type="button" class="btn btn-outline btn-sm" id="to-report-yesterday">إمبارح</button>
+let WFR_DATE = todayStr();
+async function renderWorkflowReport(token) {
+  document.getElementById('content').innerHTML = `
+    <div class="panel">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <label style="font-weight:700;font-size:13px;">اليوم:</label>
+        <input type="date" class="d-input" id="wfr-date" style="width:160px;" value="${WFR_DATE}">
+        <button type="button" class="btn btn-outline btn-sm" id="wfr-today">النهاردة</button>
+        <button type="button" class="btn btn-outline btn-sm" id="wfr-yesterday">إمبارح</button>
+      </div>
     </div>
-    <div id="to-report-box"><div class="loading-row">جاري التحميل...</div></div>
-  `);
-  document.getElementById('to-report-date').addEventListener('change', e => { TO_REPORT_DATE = e.target.value || TO_REPORT_DATE; toLoadDailyReport(); });
-  document.getElementById('to-report-today').addEventListener('click', () => { TO_REPORT_DATE = todayStr(); document.getElementById('to-report-date').value = TO_REPORT_DATE; toLoadDailyReport(); });
-  document.getElementById('to-report-yesterday').addEventListener('click', () => { TO_REPORT_DATE = yesterdayStr(); document.getElementById('to-report-date').value = TO_REPORT_DATE; toLoadDailyReport(); });
-  toLoadDailyReport();
+    <div id="wfr-box"><div class="loading-row">جاري التحميل...</div></div>
+  `;
+  document.getElementById('wfr-date').addEventListener('change', e => { WFR_DATE = e.target.value; wfrLoad(); });
+  document.getElementById('wfr-today').addEventListener('click', () => { WFR_DATE = todayStr(); document.getElementById('wfr-date').value = WFR_DATE; wfrLoad(); });
+  document.getElementById('wfr-yesterday').addEventListener('click', () => { WFR_DATE = yesterdayStr(); document.getElementById('wfr-date').value = WFR_DATE; wfrLoad(); });
+  wfrLoad(token);
 }
-async function toLoadDailyReport(){
-  const box = document.getElementById('to-report-box'); if (!box) return;
+async function wfrLoad(token) {
+  const box = document.getElementById('wfr-box');
   box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
-    const data = await apiGet('getWorkflowDailyReport', { date: TO_REPORT_DATE });
-    if (!box.isConnected) return; // المودال ممكن يكون اتقفل قبل ما الطلب يخلص
-    if (!data.craftsmen.length) { box.innerHTML = `<div class="wf-empty-day">مفيش أي شغل متسجل في يوم ${qEsc(TO_REPORT_DATE)}</div>`; return; }
-    box.innerHTML = data.craftsmen.map(c => toReportCraftsmanHtml_(c)).join('');
-  } catch (err) { box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
-}
-function toReportCraftsmanHtml_(c){
-  return `
-    <div class="wf-card">
-      <div class="wf-card-head">
-        <div><span class="wf-craftsman-name">${qEsc(c.craftsman)}</span>${c.specialty ? `<span class="wf-specialty-pill">${qEsc(c.specialty)}</span>` : ''}</div>
-        <div style="font-size:12px;color:var(--muted);">${c.items.length} بند</div>
-      </div>
-      ${c.items.map(it => `
-        <div class="wf-item">
-          <div class="wf-item-row">
-            <span><b>المشروع:</b> ${qEsc(it.project)}</span>
-            ${it.location ? `<span><b>العنوان:</b> ${qEsc(it.location)}</span>` : ''}
-            ${it.attendance ? `<span><b>الحضور:</b> ${qEsc(it.attendance)}</span>` : ''}
-            ${it.supervision ? `<span><b>الإشراف:</b> ${qEsc(it.supervision)}</span>` : ''}
-          </div>
-          ${it.title ? `<div style="font-weight:700;font-size:13.5px;margin-bottom:3px;">${qEsc(it.title)}</div>` : ''}
-          ${it.details ? `<div style="font-size:12.5px;color:var(--muted);margin-bottom:3px;">${qEsc(it.details)}</div>` : ''}
-          <div class="wf-item-row">
-            ${it.sizes ? `<span><b>المقاسات:</b> ${qEsc(it.sizes)}</span>` : ''}
-            ${it.qty ? `<span><b>الكمية:</b> ${qEsc(it.qty)}</span>` : ''}
-          </div>
-          ${it.notes ? `<div style="font-size:12.5px;color:var(--muted);">📝 ${qEsc(it.notes)}</div>` : ''}
-          ${it.feedback ? `<div class="wf-feedback">💬 ${qEsc(it.feedback)}</div>` : ''}
+    const data = await apiGet('getWorkflowDailyReport', { date: WFR_DATE });
+    if (isStaleNav(token)) return;
+    if (!data.craftsmen.length) { box.innerHTML = `<div class="panel wf-empty-day">مفيش أي شغل متسجل في يوم ${WFR_DATE}</div>`; return; }
+    box.innerHTML = data.craftsmen.map(c => `
+      <div class="wf-card">
+        <div class="wf-card-head">
+          <div><span class="wf-craftsman-name">${qEsc(c.craftsman)}</span>${c.specialty ? `<span class="wf-specialty-pill">${qEsc(c.specialty)}</span>` : ''}</div>
+          <div style="font-size:12px;color:var(--muted);">${c.items.length} بند</div>
         </div>
-      `).join('')}
-    </div>
-  `;
-}
-
-// تقرير اسبوعي: بيلم شغل أي أسبوع تختاره (مش بس الأسبوع المفتوح حاليًا في تاب
-// "اسبوعي") ويجمعه لكل صنيعي بدل ما يبقى شبكة أيام×صنايعية، عشان يبقى تقرير
-// سهل يتقرا مرة واحدة. ⚠️ إضافة: فلتر أسابيع (‹ السابق / التالي › + "الأسبوع
-// الحالي" + اختيار أي تاريخ) جوه المودال نفسه — عشان تقدر تشوف أي أسبوع
-// عايزه من غير ما تخرج من المودال وتغيّر أسبوع تاب "اسبوعي" الأساسي.
-let TO_REPORT_WEEK_ANCHOR = new Date();
-async function toOpenWeeklyReport(){
-  TO_REPORT_WEEK_ANCHOR = new Date(TO_STATE.weekAnchor);
-  await toRenderWeeklyReportModal_();
-}
-async function toRenderWeeklyReportModal_(){
-  const dates = toGetWeekDates(TO_REPORT_WEEK_ANCHOR);
-  const from = toISO(dates[0]), to = toISO(dates[6]);
-  const weekLabel = toFmtDayDate(dates[0]) + ' — ' + toFmtDayDate(dates[6]);
-  openCardModal(`
-    <div class="cd-head"><h3>📅 تقرير اسبوعي</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
-    <div class="to-week-toolbar" style="margin-bottom:10px;">
-      <span class="to-week-label">أسبوع ${qEsc(weekLabel)}</span>
-      <div class="to-week-nav">
-        <button class="wn-arrow" id="wrpPrevWeek" title="الأسبوع اللي قبله">&#8250;</button>
-        <button class="btn btn-outline btn-sm" id="wrpThisWeek">الأسبوع الحالي</button>
-        <button class="wn-arrow" id="wrpNextWeek" title="الأسبوع اللي بعده">&#8249;</button>
-      </div>
-    </div>
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
-      <label style="font-size:12.5px;font-weight:700;color:var(--muted);">أو اختار أي يوم جوه الأسبوع اللي عايزه:</label>
-      <input type="date" class="d-input" id="wrpDatePick" style="width:170px;" value="${from}">
-    </div>
-    <div id="to-week-report-box"><div class="loading-row">جاري التحميل...</div></div>
-  `);
-  document.getElementById('wrpPrevWeek').addEventListener('click', () => { TO_REPORT_WEEK_ANCHOR.setDate(TO_REPORT_WEEK_ANCHOR.getDate()-7); toRenderWeeklyReportModal_(); });
-  document.getElementById('wrpNextWeek').addEventListener('click', () => { TO_REPORT_WEEK_ANCHOR.setDate(TO_REPORT_WEEK_ANCHOR.getDate()+7); toRenderWeeklyReportModal_(); });
-  document.getElementById('wrpThisWeek').addEventListener('click', () => { TO_REPORT_WEEK_ANCHOR = new Date(); toRenderWeeklyReportModal_(); });
-  document.getElementById('wrpDatePick').addEventListener('change', e => {
-    if (!e.target.value) return;
-    TO_REPORT_WEEK_ANCHOR = new Date(e.target.value + 'T00:00:00');
-    toRenderWeeklyReportModal_();
-  });
-  await toLoadWeeklyReportBox_(from, to);
-}
-async function toLoadWeeklyReportBox_(from, to){
-  const box = document.getElementById('to-week-report-box'); if (!box) return;
-  try {
-    const key = from + '_' + to;
-    let entries = TO_STATE.weekCache[key];
-    if (!entries) {
-      const res = await apiGet('getWorkflowWeek', { from, to });
-      entries = res.entries || [];
-      TO_STATE.weekCache[key] = entries;
-    }
-    if (!box.isConnected) return;
-    if (!entries.length) { box.innerHTML = `<div class="wf-empty-day">مفيش أي شغل متسجل الأسبوع ده</div>`; return; }
-    const byCraftsman = {};
-    entries.forEach(e => { (byCraftsman[e.craftsman] = byCraftsman[e.craftsman] || []).push(e); });
-    box.innerHTML = Object.keys(byCraftsman).map(name => {
-      const items = byCraftsman[name].slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-      return `
-        <div class="wf-card">
-          <div class="wf-card-head">
-            <span class="wf-craftsman-name">${qEsc(name)}</span>
-            <div style="font-size:12px;color:var(--muted);">${items.length} بند</div>
-          </div>
-          ${items.map(it => `
-            <div class="wf-item">
-              <div class="wf-item-row">
-                <span><b>التاريخ:</b> ${qEsc(it.date)} (${qEsc(toDateQuickLabel(it.date))})</span>
-                <span><b>المشروع:</b> ${qEsc(it.project)}</span>
-                ${it.location ? `<span><b>العنوان:</b> ${qEsc(it.location)}</span>` : ''}
-              </div>
-              ${it.title ? `<div style="font-weight:700;font-size:13.5px;margin-bottom:3px;">${qEsc(it.title)}</div>` : ''}
-              ${it.feedback ? `<div class="wf-feedback">💬 ${qEsc(it.feedback)}</div>` : ''}
+        ${c.items.map(it => `
+          <div class="wf-item">
+            <div class="wf-item-row">
+              <span><b>المشروع:</b> ${qEsc(it.project)}</span>
+              ${it.location ? `<span><b>العنوان:</b> ${qEsc(it.location)}</span>` : ''}
+              ${it.attendance ? `<span><b>الحضور:</b> ${qEsc(it.attendance)}</span>` : ''}
+              ${it.supervision ? `<span><b>الإشراف:</b> ${qEsc(it.supervision)}</span>` : ''}
             </div>
-          `).join('')}
-        </div>
-      `;
-    }).join('');
-  } catch (err) { box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
+            ${it.title ? `<div style="font-weight:700;font-size:13.5px;margin-bottom:3px;">${qEsc(it.title)}</div>` : ''}
+            ${it.details ? `<div style="font-size:12.5px;color:var(--muted);margin-bottom:3px;">${qEsc(it.details)}</div>` : ''}
+            <div class="wf-item-row">
+              ${it.sizes ? `<span><b>المقاسات:</b> ${qEsc(it.sizes)}</span>` : ''}
+              ${it.qty ? `<span><b>الكمية:</b> ${qEsc(it.qty)}</span>` : ''}
+            </div>
+            ${it.notes ? `<div style="font-size:12.5px;color:var(--muted);">📝 ${qEsc(it.notes)}</div>` : ''}
+            ${it.feedback ? `<div class="wf-feedback">💬 ${qEsc(it.feedback)}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `).join('');
+  } catch (err) { box.innerHTML = `<div class="panel"><div class="msg err" style="display:block;">خطأ: ${err.message || err}</div></div>`; }
 }
 
-/* ══════════════ 4.3) بنود المشاريع (تصميم كروت + ثريد ملاحظات لكل بند) ══════════════
- * ⚠️ الصفحة المستقلة "بنود المشاريع" اتشالت من الـnav (نفس الوظيفة موجودة في تاب
- * "تايم بلاننج" جوه "تنظيم المهام") — الدوال دي فاضلة هنا بس مش متوصلة بأي زرار
- * حاليًا؛ لو احتجناها تاني بنربطها بسهولة. */
+/* ══════════════ 4.3) بنود المشاريع (تصميم كروت + ثريد ملاحظات لكل بند) ══════════════ */
 let MISTATE = { projects: [], project: '', items: [], summary: [], filter: 'all', openNotes: new Set(), pending: [], finishedProjects: [], showFinished: false };
 const WORKFLOW_UNITS_JS = ['قطعة', 'متر طولي', 'متر مربع', 'متر مكعب', 'كجم', 'يوم', 'دفعة'];
 
@@ -10353,17 +10171,10 @@ async function miSaveAllPending() {
  * ⚠️ إضافة 2026-08-24. تبويبين: "شغالة" (فيها فورم تسجيل استخدام لكل خامة)
  * و"خلصت" (أرشيف — الخامة والاستخدامات بتاعتها بيفضلوا محفوظين، بس متحركش
  * فيهم؛ تقدر تدوس عليها تشوف سجل الاستخدام بالكامل). */
-const MATSTATE = { tab: 'active', materials: [], projects: [], detailsOpen: {} };
+const MATSTATE = { tab: 'active', materials: [], projects: [] };
 
 async function renderMaterials(token){
-  // ⚠️ إضافة: مفيش داعي نمسح الشاشة ونعرض "جاري التحميل" في كل مرة تفتح فيها الصفحة —
-  // apiGet أصلاً بيحتفظ بآخر نسخة معروفة في localStorage (كاش دائم، شوف LS_CACHE_PREFIX
-  // فوق) ويرجعها فورًا حتى لو السيرفر لسه بيرد، وبيحدّث في الخلفية بهدوء. فبنعرض اللودر
-  // بس أول مرة فعلاً (مفيش أي كاش خالص، لا في الذاكرة ولا في localStorage) — أي زيارة
-  // بعد كده بتفتح فورًا من آخر بيانات معروفة، وتتحدّث تلقائي من غير فلاشة "تحميل" زيادة.
-  const hasCache = MATSTATE.materials.length > 0 || MATSTATE.projects.length > 0
-    || !!_apiCache.get(_apiCacheKey('listMaterials', {})) || !!_lsGet(_apiCacheKey('listMaterials', {}));
-  if (!hasCache) document.getElementById('content').innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  document.getElementById('content').innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
     const [{ materials }, { projects }] = await Promise.all([
       apiGet('listMaterials'), apiGet('listMiProjects')
@@ -10371,16 +10182,14 @@ async function renderMaterials(token){
     if (isStaleNav(token)) return;
     MATSTATE.materials = materials || [];
     MATSTATE.projects = projects || [];
-    const matProjectOptions = MATSTATE.projects.map(p => `<option value="${qEsc(p)}">${qEsc(p)}</option>`).join('');
     document.getElementById('content').innerHTML = `
       <div class="panel" style="margin-bottom:14px;">
         <h3 style="margin-bottom:10px;">➕ إضافة خامة جديدة</h3>
-        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:10px;align-items:end;">
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:10px;align-items:end;">
           <div class="field"><label>اسم الخامة</label><input type="text" class="d-input" id="mat-new-name" placeholder="مثال: بويه أبيض"></div>
           <div class="field"><label>الوحدة</label><input type="text" class="d-input" id="mat-new-unit" placeholder="مثال: لتر"></div>
           <div class="field"><label>الكمية</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="mat-new-qty" placeholder="مثال: 10" onkeypress="return /[0-9.]/.test(event.key)"></div>
-          <div class="field"><label>تاريخ الشراء</label><input type="date" class="d-input" id="mat-new-pdate" autocomplete="off" value="${todayStr()}"></div>
-          <button type="button" class="btn btn-primary" id="mat-add-btn" onclick="matAddMaterial()">حفظ</button>
+          <button type="button" class="btn btn-primary" onclick="matAddMaterial()">حفظ</button>
         </div>
         <div class="msg" id="mat-add-msg"></div>
       </div>
@@ -10389,7 +10198,6 @@ async function renderMaterials(token){
         <div class="step ${MATSTATE.tab==='finished'?'active':''}" onclick="matSwitchTab('finished')">خلصت</div>
       </div>
       <div id="mat-grid" class="mat-grid"></div>
-      <datalist id="mat-proj-list">${matProjectOptions}</datalist>
     `;
     matRenderGrid();
   } catch(err){ showError(err); }
@@ -10413,8 +10221,7 @@ function matRenderGrid(){
 
 function matCardHtml_(m){
   const pctColor = m.usedPct >= 90 ? 'var(--red)' : m.usedPct >= 60 ? '#b8860b' : 'var(--green)';
-  const idSuffix = qId2_(m.id);
-  const detailsOpen = !!MATSTATE.detailsOpen[m.id];
+  const projectOptions = MATSTATE.projects.map(p => `<option value="${qEsc(p)}">${qEsc(p)}</option>`).join('');
   return `
     <div class="panel mat-card" data-mat-id="${qEsc(m.id)}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
@@ -10424,52 +10231,22 @@ function matCardHtml_(m){
       <div style="font-size:12.5px;color:var(--muted);margin:6px 0 4px;">
         المتبقي: <b style="color:var(--dark);">${fmt(m.remainingQty)} ${qEsc(m.unit)}</b> من أصل <b>${fmt(m.originalQty)} ${qEsc(m.unit)}</b>
       </div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">تاريخ الشراء: ${qEsc(m.addedDate)}</div>
       <div class="mat-progress"><div class="mat-progress-fill" style="width:${m.usedPct}%;background:${pctColor};"></div></div>
       <div style="font-size:11px;color:var(--muted);margin-top:3px;">استُخدم ${m.usedPct}%</div>
 
       ${m.status !== 'خلصت' ? `
         <div class="mat-usage-form">
-          <div class="field"><label>الكمية المستخدمة</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="mat-use-amt-${idSuffix}" placeholder="مثال: 2" onkeypress="return /[0-9.]/.test(event.key)"></div>
-
-          <button type="button" class="to-extra-toggle ${detailsOpen?'open':''}" id="mat-details-toggle-${idSuffix}" onclick="matToggleDetails('${qEscJs(m.id)}')" aria-expanded="${detailsOpen?'true':'false'}">
-            <span class="et-left">
-              <span class="et-icon">${detailsOpen?'−':'+'}</span>
-              <span class="et-text">تفاصيل الاستخدام</span>
-              <span class="et-hint" style="color:var(--red);">مطلوبة (الوصف، المشروع)</span>
-            </span>
-            <span class="et-chev">&#9662;</span>
-          </button>
-          <div class="to-extra-body ${detailsOpen?'open':''}" id="mat-details-body-${idSuffix}">
-            <div class="field"><label>ليه (الوصف) *</label><input type="text" class="d-input" id="mat-use-desc-${idSuffix}" placeholder="مثال: دهان غرفة النوم" required></div>
-            <div class="field"><label>المشروع *</label><input type="text" class="d-input" list="mat-proj-list" id="mat-use-proj-${idSuffix}" placeholder="اختار أو اكتب مشروع" required></div>
-            <div class="field"><label>التاريخ</label><input type="date" class="d-input" id="mat-use-date-${idSuffix}" autocomplete="off" value="${todayStr()}"></div>
-          </div>
-
-          <button type="button" class="btn btn-outline btn-sm" style="margin-top:8px;" id="mat-use-btn-${idSuffix}" onclick="matLogUsage('${qEscJs(m.id)}')">تسجيل استخدام</button>
-          <button type="button" class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="matShowHistory('${qEscJs(m.id)}','${qEscJs(m.name)}')">📜 عرض تفاصيل الاستخدام المسجلة</button>
+          <div class="field"><label>الكمية المستخدمة</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="mat-use-amt-${qId2_(m.id)}" placeholder="مثال: 2" onkeypress="return /[0-9.]/.test(event.key)"></div>
+          <div class="field"><label>ليه (الوصف)</label><input type="text" class="d-input" id="mat-use-desc-${qId2_(m.id)}" placeholder="مثال: دهان غرفة النوم"></div>
+          <div class="field"><label>المشروع</label><input type="text" class="d-input" list="mat-proj-list" id="mat-use-proj-${qId2_(m.id)}" placeholder="اختار أو اكتب مشروع"></div>
+          <button type="button" class="btn btn-outline btn-sm" onclick="matLogUsage('${qEscJs(m.id)}')">تسجيل استخدام</button>
         </div>
-        <div class="msg" id="mat-use-msg-${idSuffix}"></div>
+        <div class="msg" id="mat-use-msg-${qId2_(m.id)}"></div>
       ` : `
         <button type="button" class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="matShowHistory('${qEscJs(m.id)}','${qEscJs(m.name)}')">📜 عرض سجل الاستخدام</button>
       `}
+      <datalist id="mat-proj-list">${projectOptions}</datalist>
     </div>`;
-}
-
-// فتح/قفل بلوك "تفاصيل الاستخدام" — بيبدّل الكلاسات في الـDOM مباشرة من غير
-// إعادة رسم الكارت كله، عشان لو المستخدم كاتب حاجة في "الكمية المستخدمة"
-// قبل ما يفتح التفاصيل، الكتابة متتمسحش.
-function matToggleDetails(id){
-  const idSuffix = qId2_(id);
-  const btn = document.getElementById('mat-details-toggle-' + idSuffix);
-  const body = document.getElementById('mat-details-body-' + idSuffix);
-  if (!btn || !body) return;
-  const isOpen = body.classList.toggle('open');
-  btn.classList.toggle('open', isOpen);
-  btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-  const icon = btn.querySelector('.et-icon');
-  if (icon) icon.textContent = isOpen ? '−' : '+';
-  MATSTATE.detailsOpen[id] = isOpen;
 }
 
 // معرّف HTML-safe من id الخامة (زي qId بتاعة مسحوبات الشركاء بس أعم)
@@ -10479,25 +10256,19 @@ async function matAddMaterial(){
   const nameEl = document.getElementById('mat-new-name');
   const unitEl = document.getElementById('mat-new-unit');
   const qtyEl = document.getElementById('mat-new-qty');
-  const pdateEl = document.getElementById('mat-new-pdate');
   const msg = document.getElementById('mat-add-msg');
-  const btn = document.getElementById('mat-add-btn');
   const name = nameEl.value.trim(), unit = unitEl.value.trim(), qty = qtyEl.value.trim();
-  const purchaseDate = (pdateEl && pdateEl.value) ? pdateEl.value : todayStr();
   if (!name || !unit || !qty) { msg.className = 'msg err'; msg.textContent = 'محتاج تملأ اسم الخامة والوحدة والكمية'; return; }
-  if (btn && btn.disabled) return; // منع الدوس المتكرر لحد ما الطلب اللي قبله يخلص
   msg.className = 'msg'; msg.textContent = '';
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...'; }
   try {
-    const res = await apiPost('addMaterial', { item: { name, unit, qty, purchaseDate } });
+    const res = await apiPost('addMaterial', { item: { name, unit, qty } });
     if (!res.success) { msg.className = 'msg err'; msg.textContent = res.error || 'حصل خطأ'; return; }
-    nameEl.value = ''; unitEl.value = ''; qtyEl.value = ''; if (pdateEl) pdateEl.value = todayStr();
+    nameEl.value = ''; unitEl.value = ''; qtyEl.value = '';
     msg.className = 'msg ok'; msg.textContent = '✅ اتضافت';
     const { materials } = await apiGet('listMaterials');
     MATSTATE.materials = materials || [];
     matRenderGrid();
   } catch (err) { msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
-  finally { if (btn) { btn.disabled = false; btn.textContent = 'حفظ'; } }
 }
 
 async function matLogUsage(materialId){
@@ -10505,26 +10276,12 @@ async function matLogUsage(materialId){
   const amtEl = document.getElementById('mat-use-amt-' + idSuffix);
   const descEl = document.getElementById('mat-use-desc-' + idSuffix);
   const projEl = document.getElementById('mat-use-proj-' + idSuffix);
-  const dateEl = document.getElementById('mat-use-date-' + idSuffix);
   const msg = document.getElementById('mat-use-msg-' + idSuffix);
-  const btn = document.getElementById('mat-use-btn-' + idSuffix);
   const amount = amtEl.value.trim();
-  const description = descEl.value.trim();
-  const project = projEl.value.trim();
   if (!amount || Number(amount) <= 0) { msg.className = 'msg err'; msg.textContent = 'اكتب كمية أكبر من صفر'; return; }
-  // ⚠️ الوصف والمشروع بقوا مطلوبين — لو ناقصين، افتح بلوك "تفاصيل الاستخدام" (لو مقفول) وبيّن الخطأ
-  if (!description || !project) {
-    if (!MATSTATE.detailsOpen[materialId]) matToggleDetails(materialId);
-    msg.className = 'msg err';
-    msg.textContent = !description ? 'لازم تكتب وصف/سبب الاستخدام (ليه)' : 'لازم تختار أو تكتب المشروع';
-    (!description ? descEl : projEl).focus();
-    return;
-  }
-  if (btn && btn.disabled) return; // منع الدوس المتكرر لحد ما الطلب اللي قبله يخلص
   msg.className = 'msg'; msg.textContent = '';
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري التسجيل...'; }
   try {
-    const res = await apiPost('logMaterialUsage', { usage: { materialId, amount, description, project, date: (dateEl && dateEl.value) ? dateEl.value : todayStr() } });
+    const res = await apiPost('logMaterialUsage', { usage: { materialId, amount, description: descEl.value.trim(), project: projEl.value.trim() } });
     if (!res.success) { msg.className = 'msg err'; msg.textContent = res.error || 'حصل خطأ'; return; }
     msg.className = 'msg ok';
     msg.textContent = res.finished ? '✅ اتسجل — والخامة خلصت، نقلناها لتبويب "خلصت"' : `✅ اتسجل — الباقي ${fmt(res.remainingQty)}`;
@@ -10532,7 +10289,6 @@ async function matLogUsage(materialId){
     MATSTATE.materials = materials || [];
     setTimeout(matRenderGrid, res.finished ? 900 : 0);
   } catch (err) { msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
-  finally { if (btn) { btn.disabled = false; btn.textContent = 'تسجيل استخدام'; } }
 }
 
 async function matShowHistory(materialId, materialName){
