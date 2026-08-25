@@ -787,7 +787,7 @@
      نصيبها (min-width هنا مكنش بيتحسب أصلاً)، فكان أحيانًا بياخد مساحة ضئيلة
      جدًا وبيتلف كل حرف في سطر لوحده. دلوقتي عنده width صريح كبير زي باقي
      الأعمدة، ومضمون ياخد مساحة كافية دايمًا. */
-  .q-tbl th:nth-child(4){ width:340px; min-width:340px; }
+  .q-items-tbl th:nth-child(4){ width:340px; min-width:340px; }
   .q-tbl td.num-cell{ font-weight:700; white-space:nowrap; direction:ltr; text-align:left; font-size:15px; }
   /* ⚠️ إضافة: الحقول (النموذج/الوحدة) كانت ضيقة جدًا (110px/130px) فالنص بيتقص
      من غير ما تبان — عرض عريض أكتر وسطر بديل للنص الطويل بدل ما يتقص. */
@@ -1216,10 +1216,9 @@
     <div class="step" id="exp-tab-daily" data-page="dailyExpenses"><span class="icon" style="margin-inline-end:6px;">&#128221;</span>مصاريف يومية</div>
     <div class="step" id="exp-tab-fixed" data-page="fixedExp"><span class="icon" style="margin-inline-end:6px;">&#128203;</span>المصاريف الثابتة</div>
   </div>
-  <div class="q-steps p-filter-tabs" id="wfSwitchTabs" style="display:none;margin-bottom:16px;align-items:center;">
+  <div class="q-steps p-filter-tabs" id="wfSwitchTabs" style="display:none;margin-bottom:16px;">
     <div class="step" id="wf-tab-taskOrganize" data-page="taskOrganize"><span class="icon" style="margin-inline-end:6px;">&#128221;</span>تنظيم المهام</div>
     <div class="step" id="wf-tab-materials" data-page="materials"><span class="icon" style="margin-inline-end:6px;">&#129514;</span>الخامات</div>
-    <button type="button" class="btn-print" style="margin-inline-start:auto;" onclick="openPagePrintModal()"><span class="bp-icon">🖨</span> طباعة PDF للصفحة</button>
   </div>
   <div id="content"><div class="loading-row">جاري التحميل...</div></div>
 </div>
@@ -2331,80 +2330,6 @@ function openPrintOptionsModal(){
   `);
 }
 
-/* ================= طباعة PDF عامة لأي صفحة ================= */
-// ⚠️ إضافة 2026-08-25: زرار طباعة PDF عام لصفحات الـ Work Flow (وأي صفحة تانية
-// حابب تضيفله نفس الزرار بعدين) — بيدور على كل ".panel" ظاهر في الصفحة الحالية
-// جوه #content، وبيدي كل واحد منها اسم (من أول h3/h2 جواه)، وبيوريك جدول تشيك
-// بوكس تختار منه أنهي قسم عايز تطبعه (زي بالظبط فكرة طباعة "نظرة عامة")، بعدين
-// بيفتح نافذة طباعة منفصلة (_openPrintDoc) فيها بس الأقسام اللي اخترتها، بنفس
-// تنسيق الموقع الأساسي (بناخد كل الـ <style> بتاعت الصفحة زي ما هي)، واسم
-// الملف/العنوان = اسم الصفحة الحالية.
-function _ppCollectSections_(){
-  const content = document.getElementById('content');
-  if (!content) return [];
-  const panels = Array.from(content.querySelectorAll('.panel')).filter(p => p.offsetParent !== null || p.closest('.tab-pane, [style*="display:none"]') === null);
-  return panels.map((p, i) => {
-    const heading = p.querySelector('h3, h2');
-    let label = heading ? heading.textContent.trim().split('\n')[0] : ('قسم ' + (i + 1));
-    label = label.replace(/\s+/g, ' ').trim() || ('قسم ' + (i + 1));
-    return { el: p, label };
-  }).filter(s => s.el.innerHTML.trim());
-}
-function openPagePrintModal(){
-  const sections = _ppCollectSections_();
-  if (!sections.length){ showToast('مفيش محتوى ظاهر دلوقتي عشان تطبعه', 'error'); return; }
-  window._ppSections = sections;
-  openCardModal(`
-    <div class="cd-head"><h3>🖨 طباعة الصفحة — عاوز تطبع ايه؟</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
-    <div id="printOptList">
-      ${sections.map((s, i) => `
-        <label class="print-opt-row">
-          <input type="checkbox" class="print-opt-cb" value="${i}" checked>
-          <span>${qEsc(s.label)}</span>
-        </label>`).join('')}
-    </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
-      <button class="btn btn-sm btn-outline" onclick="closeCardModal()">إلغاء</button>
-      <button class="btn-print" onclick="confirmPagePrint_()"><span class="bp-icon">🖨</span> طباعة</button>
-    </div>
-  `);
-}
-function confirmPagePrint_(){
-  const checked = Array.from(document.querySelectorAll('.print-opt-cb:checked')).map(cb => Number(cb.value));
-  if (!checked.length){ showToast('اختار قسم واحد على الأقل عشان تطبع', 'error'); return; }
-  const sections = (window._ppSections || []).filter((s, i) => checked.includes(i));
-  closeCardModal();
-  // بنثبّت القيم الحالية اللي المستخدم كاتبها (مش بس اللي كانت وقت أول رسم للصفحة)
-  // كـ attribute على كل input/textarea/select قبل الاستنساخ، عشان الطباعة تعكس
-  // اللي شايفه فعليًا دلوقتي مش القيمة الأصلية بس.
-  sections.forEach(s => {
-    s.el.querySelectorAll('input, textarea').forEach(el => { el.setAttribute('value', el.value); if (el.tagName === 'TEXTAREA') el.textContent = el.value; });
-    s.el.querySelectorAll('select').forEach(sel => { Array.from(sel.options).forEach(o => o.toggleAttribute('selected', o.selected)); });
-  });
-  const pageTitle = (PAGES[_currentPage] && PAGES[_currentPage].title) || document.title || 'الصفحة';
-  const date = new Date().toLocaleDateString('en-GB');
-  const styleTags = Array.from(document.querySelectorAll('style')).map(s => s.innerHTML).join('\n');
-  const bodyHtml = sections.map(s => `<div style="margin-bottom:18px;">${s.el.outerHTML}</div>`).join('');
-  const html = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"/>
-  <title>${qEsc(pdfFileTitle(pageTitle, ''))}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet"/>
-  <style>${styleTags}
-    body{background:#fff;padding:20px;} .panel{box-shadow:none!important;border:1px solid var(--border,#D9D0C4);}
-    button, .btn, .btn-sm, .btn-outline, .btn-danger, .btn-primary, [onclick]{ display:none !important; }
-    input, textarea, select{ border:1px solid #D9D0C4 !important; background:#fff !important; -webkit-appearance:none; }
-    @page{size:A4;margin:14mm 12mm;} @media print{ body{-webkit-print-color-adjust:exact;print-color-adjust:exact;} }
-  </style></head>
-  <body>
-    <div class="brand-block" style="text-align:center;padding-bottom:14px;border-bottom:2px solid #B8975A;margin-bottom:16px;">
-      <div style="font-family:'Playfair Display',Georgia,serif;font-size:32px;letter-spacing:5px;color:#1E1A15;direction:ltr;">Living <span style="color:#B8975A;">Mood</span></div>
-      <div style="font-size:9px;letter-spacing:3px;color:#6B5E4E;text-transform:uppercase;margin-top:4px;">${qEsc(pageTitle)}</div>
-    </div>
-    <div style="font-size:12px;color:#6B5E4E;direction:ltr;text-align:left;margin-bottom:16px;">${date}</div>
-    ${bodyHtml}
-  </body></html>`;
-  _openPrintDoc(html);
-}
 function confirmPrintDashboardOverview(){
   const checked = Array.from(document.querySelectorAll('.print-opt-cb:checked')).map(cb => cb.value);
   if (!checked.length){ showToast('اختار قسم واحد على الأقل عشان تطبع', 'error'); return; }
@@ -5099,7 +5024,6 @@ function dRenderRows(){
         <div class="d-desc-cell">
           <input type="text" class="d-input" autocomplete="off" data-lpignore="true" data-1p-ignore name="${_noAutofill('desc')}" id="d-desc-${r._id}" data-col="0" value="${qEsc(r.desc)}" oninput="dSetDescLive(${r._id}, this.value)" onkeydown="dHandleTab(event)" onpaste="dHandlePaste(event, ${r._id}, 0)" placeholder="مثال: فطار، بنزين، مسامير...">
           <div class="d-quick-wrap">
-            <button type="button" class="d-quick-tag-btn" style="min-width:0;padding:12px 14px;" title="اختيار موظف — مسحوبات" onclick="dToggleEmpPicker(${r._id}, this)">&#128100;</button>
             <button type="button" class="d-quick-tag-btn" title="إضافة سريعة بعد المكتوب" onclick="dToggleQuickTag(${r._id}, this)">+ سريع</button>
             <button type="button" id="d-note-btn-${r._id}" class="d-quick-tag-btn d-note-btn${r.note ? ' has-note' : ''}" style="min-width:0;padding:12px 14px;" title="${r.note ? 'فيه ملاحظة — دوس تعدّلها' : 'إضافة ملاحظة (بتتسجل Note على الخلية في الشيت)'}" onclick="dToggleNotePopup(${r._id}, this)">📝</button>
           </div>
@@ -5212,7 +5136,7 @@ function _dNotePopover(){ return document.getElementById('d-note-popover'); }
 // بتقفل قايمة "+ سريع" وبوكس الملاحظة مع بعض — بتتنادى من كل الأماكن اللي كانت
 // بتقفل قايمة "+ سريع" بس (سكرول، تغيير حجم الشاشة، ضغطة بره الاتنين، إلخ).
 function dCloseAllQuickTags(){
-  const box = _dQuickPopover(); if (box){ box.classList.remove('open'); box.dataset.rowId = ''; box.dataset.mode = ''; }
+  const box = _dQuickPopover(); if (box){ box.classList.remove('open'); box.dataset.rowId = ''; }
   document.querySelectorAll('.d-quick-tag-btn.open').forEach(b => b.classList.remove('open'));
   const nbox = _dNotePopover(); if (nbox){ nbox.classList.remove('open'); nbox.dataset.rowId = ''; }
   document.querySelectorAll('.d-note-btn.open').forEach(b => b.classList.remove('open'));
@@ -5257,65 +5181,17 @@ function dToggleQuickTag(id, btnEl){
   box.innerHTML = '<div class="d-pop-items">' + D_QUICK_TAGS.map(t =>
     `<div class="d-quick-item" onmousedown="event.preventDefault();dPickQuickTag(${id}, '${t.replace(/'/g, "\\'")}')"><span class="d-pop-icon">${D_QUICK_TAG_ICONS[t] || '📌'}</span><span class="d-pop-label">${qEsc(t)}</span></div>`
   ).join('') + '</div><div class="d-pop-hint">↑↓ للتنقل · Enter للاختيار</div>';
-  box.dataset.rowId = id; box.dataset.mode = 'tag';
-  _dPositionQuickPopover_(box, btnEl);
-  box.classList.add('open');
-  btnEl.classList.add('open');
-}
-// ⚠️ إضافة 2026-08-25: زرار 👤 بيفتح قايمة الموظفين الفعلية (نفس قايمة صفحة مرتبات)
-// بدل ما المستخدم يكتب اسم الموظف بإيده (وممكن يغلط في الحروف فمزامنة "مسحوبات"
-// التلقائية للمرتبات متلاقيش تطابق). اختيار موظف من هنا بيكتب الوصف بالظبط بصيغة
-// "اسم الموظف - مسحوبات" اللي محتاجاها _syncExpenseToPayrollWithdrawal_ في الباك إند.
-let D_EMP_NAMES_CACHE = null;
-async function dToggleEmpPicker(id, btnEl){
-  const box = _dQuickPopover(); if (!box) return;
-  const wasOpenForThisRow = box.classList.contains('open') && String(box.dataset.rowId) === String(id) && box.dataset.mode === 'emp';
-  dCloseAllQuickTags();
-  if (wasOpenForThisRow) return;
-  box.dataset.rowId = id; box.dataset.mode = 'emp';
-  box.innerHTML = '<div class="d-pop-items"><div class="d-quick-item" style="color:var(--muted);">جاري التحميل...</div></div>';
-  box.classList.add('open'); btnEl.classList.add('open');
-  _dPositionQuickPopover_(box, btnEl);
-  try {
-    if (!D_EMP_NAMES_CACHE) {
-      const { employees } = await apiGet('listEmployees');
-      D_EMP_NAMES_CACHE = (employees || []).map(e => e.name).filter(Boolean);
-    }
-    if (!(box.classList.contains('open') && String(box.dataset.rowId) === String(id) && box.dataset.mode === 'emp')) return; // المستخدم قفل/غيّر قبل ما القايمة توصل
-    box.innerHTML = D_EMP_NAMES_CACHE.length
-      ? '<div class="d-pop-items">' + D_EMP_NAMES_CACHE.map(n =>
-          `<div class="d-quick-item" onmousedown="event.preventDefault();dPickEmployee(${id}, '${String(n).replace(/'/g, "\\'")}')"><span class="d-pop-icon">&#128100;</span><span class="d-pop-label">${qEsc(n)}</span></div>`
-        ).join('') + '</div><div class="d-pop-hint">هيتكتب "الاسم - مسحوبات"</div>'
-      : '<div class="d-pop-items"><div class="d-quick-item" style="color:var(--muted);">مفيش موظفين مسجلين</div></div>';
-  } catch (e) {
-    if (box.classList.contains('open') && String(box.dataset.rowId) === String(id) && box.dataset.mode === 'emp') {
-      box.innerHTML = '<div class="d-pop-items"><div class="d-quick-item" style="color:var(--danger,#c0392b);">تعذّر تحميل الموظفين</div></div>';
-    }
-  }
-}
-function _dPositionQuickPopover_(box, btnEl){
+  box.dataset.rowId = id;
   const r = btnEl.getBoundingClientRect();
   const spaceBelow = window.innerHeight - r.bottom;
   const openUp = spaceBelow < 200 && r.top > spaceBelow;
   box.style.left = ''; box.style.right = '';
+  // محاذي لحافة الزرار اليمين (RTL) بدل ما يتمركز فوق الأعمدة اللي جنبه
   box.style.right = (window.innerWidth - r.right) + 'px';
   if (openUp){ box.style.top = ''; box.style.bottom = (window.innerHeight - r.top + 6) + 'px'; }
   else { box.style.bottom = ''; box.style.top = (r.bottom + 6) + 'px'; }
-}
-function dPickEmployee(id, name){
-  dCloseAllQuickTags();
-  if (!name) return;
-  const r = DSTATE.rows.find(r => r._id === id); if (!r) return;
-  const newVal = name + ' - مسحوبات';
-  const input = document.getElementById('d-desc-' + id);
-  let inserted = false;
-  if (input) {
-    input.focus();
-    input.setSelectionRange(0, input.value.length);
-    try { inserted = document.execCommand && document.execCommand('insertText', false, newVal); } catch (e) { inserted = false; }
-  }
-  if (!inserted) { r.desc = newVal; if (input) input.value = newVal; }
-  dScheduleDraftSave();
+  box.classList.add('open');
+  btnEl.classList.add('open');
 }
 function dSetDescLive(id, v){
   const r = DSTATE.rows.find(r => r._id === id); if (!r) return;
@@ -7903,7 +7779,7 @@ function qRenderEditor(){
       <h3>بنود عرض السعر</h3>
       <div class="msg" id="qSaveMsg"></div>
       <div class="q-wrap">
-        <table class="q-tbl">
+        <table class="q-tbl q-items-tbl">
           <thead><tr>
             <th style="width:34px;">#</th><th style="width:150px;">النموذج</th><th style="width:160px;">الوحدة</th>
             <th style="width:340px;">المطلوب تنفيذه</th><th style="width:100px;">عدد</th><th style="width:110px;">السعر</th>
@@ -9374,14 +9250,7 @@ function toRenderDailyForm() {
         <div class="to-bs-grid">
           <div class="field"><label>التخصص</label><input class="d-input" id="to_specialty" list="to-dl-spec" placeholder="التخصص"><datalist id="to-dl-spec">${WORKFLOW_SPECIALTIES_FALLBACK.map(s => `<option value="${qEsc(s)}">`).join('')}</datalist></div>
           <div class="field"><label>الحضور</label><input class="d-input" id="to_attendance" placeholder="8ص"></div>
-          <div class="field"><label>المقاسات (اختياري)</label>
-            <div class="to-dims-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;">
-              <input class="d-input" id="to_dim_w" placeholder="طول" inputmode="decimal">
-              <input class="d-input" id="to_dim_l" placeholder="عرض" inputmode="decimal">
-              <input class="d-input" id="to_dim_h" placeholder="ارتفاع" inputmode="decimal">
-              <input class="d-input" id="to_dim_d" placeholder="عمق" inputmode="decimal">
-            </div>
-          </div>
+          <div class="field"><label>المقاسات</label><input class="d-input" id="to_sizes" placeholder="المقاسات"></div>
           <div class="field"><label>الكمية</label><input class="d-input" id="to_qty" placeholder="الكمية"></div>
           <div class="field"><label>اشراف</label><input class="d-input" id="to_supervision" placeholder="اشراف"></div>
           <div class="field"><label>ملاحظات</label><input class="d-input" id="to_notes" placeholder="ملاحظات"></div>
@@ -9449,7 +9318,6 @@ function toItemHTML(it) {
           </div>
           ${it.title?`<div class="to-wf-item-title" style="font-weight:700;font-size:13px;margin-bottom:2px;">${qEsc(it.title)}</div>`:''}
           ${it.feedback?`<div class="wf-feedback">&#128172; ${qEsc(it.feedback)}</div>`:''}
-          ${it.notes?`<div class="wf-feedback" style="background:#f3efea;border-right-color:var(--muted);">&#128221; ${qEsc(it.notes)}</div>`:''}
         </div>
         <div class="to-status-row">
           <button type="button" class="to-status-btn ${it.status==='blocked'?'blocked-active':''}" data-statusid="${it.id}" data-status="blocked">
@@ -9475,31 +9343,9 @@ function toWireDailyTab() {
   const csTrigger = document.getElementById('toCsTrigger');
   const csList = document.getElementById('toCsList');
   if (csTrigger) {
-    // ⚠️ إصلاح 2026-08-25 (السليكت الأصفر بيعلق/يرجع لأول اختيار، والصفحة بتقفز
-    // لمكان السليكت): قبل كده فتح/قفل القايمة واختيار الصنيعي كانوا بينادوا
-    // toRenderDailyForm() اللي بتعيد بناء الفورم *كله* من الصفر (innerHTML)، وده
-    // بيهدم عناصر الـ DOM القديمة (وبينهم أي عنصر كان عليه فوكس) فالمتصفح كان
-    // أحيانًا بيلغي الفوكس/يسكرول لمكان العنصر الجديد بدل ما يسيبك في مكانك، وأي
-    // تعديل زي "احيانًا مش بتتحدث فورًا" كان سببه إعادة بناء كل الفورم لأمر بسيط
-    // زي فتح/قفل قايمة. دلوقتي فتح/قفل القايمة واختيار صنيعي بيحصلوا بتعديل
-    // مباشر لعناصر القايمة نفسها بس (من غير ما نهد الفورم كله)، فمفيش قفزة ولا
-    // فقدان فوكس/سكرول، وحالة الاختيار بتتحدث فورًا وبثبات.
-    csTrigger.addEventListener('click', e => {
-      e.stopPropagation();
-      TO_STATE.csOpen = !TO_STATE.csOpen;
-      csTrigger.classList.toggle('open', TO_STATE.csOpen);
-      if (csList) csList.classList.toggle('open', TO_STATE.csOpen);
-    });
-    if (csList) csList.querySelectorAll('.to-cs-option').forEach(opt => {
-      opt.addEventListener('click', e => {
-        e.stopPropagation();
-        TO_STATE.qCraftsman = opt.dataset.name;
-        TO_STATE.csOpen = false;
-        csTrigger.classList.remove('open');
-        csList.classList.remove('open');
-        const labelSpan = csTrigger.querySelector('span'); if (labelSpan) labelSpan.textContent = TO_STATE.qCraftsman || 'اختار صنيعي';
-        csList.querySelectorAll('.to-cs-option').forEach(o => o.classList.toggle('selected', o.dataset.name === TO_STATE.qCraftsman));
-      });
+    csTrigger.addEventListener('click', e => { e.stopPropagation(); TO_STATE.csOpen = !TO_STATE.csOpen; toRenderDailyForm(); });
+    csList.querySelectorAll('.to-cs-option').forEach(opt => {
+      opt.addEventListener('click', e => { e.stopPropagation(); TO_STATE.qCraftsman = opt.dataset.name; TO_STATE.csOpen = false; toRenderDailyForm(); });
     });
   }
   const dateInput = document.getElementById('to_date');
@@ -9528,18 +9374,6 @@ function toWireDailyTab() {
   });
 }
 
-// ⚠️ إضافة 2026-08-25: المقاسات بقت 4 حقول اختيارية منفصلة (طول/عرض/ارتفاع/عمق)
-// بدل حقل نصي واحد — بنجمعهم هنا في نص واحد (بيتسجل زي ما هو في نفس عمود "sizes"
-// القديم في الشيت، فمفيش أي تغيير في شكل البيانات المخزّنة) وبنسيب أي حقل فاضي.
-function toReadDimsAsSizeString_() {
-  const dims = [
-    ['طول', document.getElementById('to_dim_w')?.value.trim() || ''],
-    ['عرض', document.getElementById('to_dim_l')?.value.trim() || ''],
-    ['ارتفاع', document.getElementById('to_dim_h')?.value.trim() || ''],
-    ['عمق', document.getElementById('to_dim_d')?.value.trim() || ''],
-  ];
-  return dims.filter(([,v]) => v).map(([label,v]) => `${label}: ${v}`).join(' × ');
-}
 async function toSaveEntry() {
   const msg = document.getElementById('to-save-msg');
   const craftsman = (TO_STATE.qCraftsman || '').trim();
@@ -9553,7 +9387,7 @@ async function toSaveEntry() {
     feedback: document.getElementById('to_feedback').value.trim(),
     specialty: document.getElementById('to_specialty')?.value.trim() || '',
     attendance: document.getElementById('to_attendance')?.value.trim() || '',
-    sizes: toReadDimsAsSizeString_(),
+    sizes: document.getElementById('to_sizes')?.value.trim() || '',
     qty: document.getElementById('to_qty')?.value.trim() || '',
     supervision: document.getElementById('to_supervision')?.value.trim() || '',
     notes: document.getElementById('to_notes')?.value.trim() || '',
@@ -9928,15 +9762,8 @@ async function toMiSubmitAll() {
 }
 
 document.addEventListener('click', () => {
-  // قفل ليستة اختيار الصنيعي: تفاعل UI بحت — تعديل مباشر للعناصر من غير أي
-  // إعادة بناء للفورم (شوف كومنت الإصلاح 2026-08-25 فوق في toWireDailyTab)
-  if (TO_STATE.csOpen && TO_STATE.activeTab === 'daily') {
-    TO_STATE.csOpen = false;
-    const csTrigger = document.getElementById('toCsTrigger');
-    const csList = document.getElementById('toCsList');
-    if (csTrigger) csTrigger.classList.remove('open');
-    if (csList) csList.classList.remove('open');
-  }
+  // قفل ليستة اختيار الصنيعي: تفاعل UI بحت — من غير فيتش ولا مسح الشاشة
+  if (TO_STATE.csOpen && TO_STATE.activeTab === 'daily') { TO_STATE.csOpen = false; toRenderDailyForm(); }
 });
 
 /* ═══ تقرير يومي / اسبوعي — كانوا صفحة منفصلة "تقرير يومي بالصنايعية"،
@@ -9991,8 +9818,8 @@ function toReportCraftsmanHtml_(c){
             ${it.sizes ? `<span><b>المقاسات:</b> ${qEsc(it.sizes)}</span>` : ''}
             ${it.qty ? `<span><b>الكمية:</b> ${qEsc(it.qty)}</span>` : ''}
           </div>
-          ${it.feedback ? `<div class="wf-feedback">💬 ${qEsc(it.feedback)}</div>` : ''}
           ${it.notes ? `<div style="font-size:12.5px;color:var(--muted);">📝 ${qEsc(it.notes)}</div>` : ''}
+          ${it.feedback ? `<div class="wf-feedback">💬 ${qEsc(it.feedback)}</div>` : ''}
         </div>
       `).join('')}
     </div>
