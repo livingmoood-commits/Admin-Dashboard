@@ -205,6 +205,8 @@
   .to-extra-body.open{ max-height:600px; opacity:1; padding:16px 14px 4px; }
   .to-bs-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px 14px; }
   @media(max-width:520px){ .to-bs-grid{ grid-template-columns:1fr; } }
+  .to-size-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px 10px; }
+  @media(max-width:520px){ .to-size-grid{ grid-template-columns:1fr 1fr; } }
 
   .to-wf-item{ border-top:1px dashed var(--border); padding:9px 8px 9px 0; position:relative; border-radius:8px; transition:background .2s; }
   .to-wf-item:first-child{ border-top:none; }
@@ -363,14 +365,6 @@
 
   .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:18px; }
   @media(max-width:980px){ .grid2{ grid-template-columns:1fr; } }
-  /* ═══ نظام المقاسات الموحّد (4 خلايا: طول/عرض/ارتفاع/عمق) ═══ */
-  .dims-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
-  @media(max-width:700px){ .dims-grid{ grid-template-columns:repeat(2,1fr); } }
-  .dims-grid input{ text-align:center; }
-  .dims-table{ border-collapse:collapse; margin-top:6px; font-size:12px; }
-  .dims-table th, .dims-table td{ border:1px solid var(--border); padding:4px 10px; text-align:center; }
-  .dims-table th{ background:var(--panel-2,#F3EFEA); color:var(--muted); font-weight:700; font-size:11px; }
-  .dims-legacy{ font-size:11px; color:var(--muted); margin-top:4px; }
   .stack-v{ display:flex; flex-direction:column; gap:18px; }
 
   /* ===== Mobile: حماية عامة من أي overflow أفقي في أي صفحة ===== */
@@ -669,14 +663,9 @@
   .mat-progress-fill{ height:100%; border-radius:20px; transition:width .3s; }
   .mat-usage-form{ margin-top:10px; padding-top:10px; border-top:1px dashed var(--border); display:flex; flex-direction:column; gap:8px; }
   .mat-usage-form .field label{ font-size:11px; color:var(--muted); margin-bottom:2px; display:block; }
-  .mat-usage-details{ background:var(--cream); border:1px solid var(--border); border-radius:8px; padding:10px; display:flex; flex-direction:column; gap:8px; }
-  .mat-usage-details-title{ font-size:12px; font-weight:700; color:var(--muted); }
   .mat-hist-list{ max-height:60vh; overflow-y:auto; }
-  .mat-hist-count{ font-size:12px; color:var(--muted); margin-bottom:8px; }
-  .mat-hist-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
-  .mat-hist-table th, .mat-hist-table td{ border-bottom:1px solid var(--border); padding:7px 6px; text-align:center; }
-  .mat-hist-table th{ color:var(--muted); font-size:11px; font-weight:700; background:var(--cream); }
-  .mat-hist-table td.mat-hist-desc{ text-align:right; }
+  .mat-hist-row{ padding:9px 4px; border-bottom:1px dashed var(--border); }
+  .mat-hist-row:last-child{ border-bottom:none; }
   td.mc-ded{ color:var(--red); font-weight:700; }
   td.mc-add{ color:var(--green); font-weight:700; }
   td.mc-draw{ color:#8a6408; font-weight:700; }
@@ -1706,6 +1695,14 @@ async function apiPost(action, payload) {
   return data;
 }
 function fmt(n){ return (Number(n)||0).toLocaleString('en-US', {maximumFractionDigits:0}); }
+// بيكوّن نص مقاس واحد مقروء من 4 أبعاد منفصلة (طول/عرض/ارتفاع/عمق) — بيتجاهل
+// أي بعد فاضي، وبيرجع '' لو كله فاضي. مستخدمة في كل أماكن عرض المقاسات
+// (سجل الشغل اليومي + بنود المشاريع) عشان الشكل يبقى موحّد في كل مكان.
+function fmtDims(d){
+  d = d || {};
+  const parts = [d.length, d.width, d.height, d.depth].map(v => String(v||'').trim()).filter(Boolean);
+  return parts.join(' × ');
+}
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function monthStartStr(){ const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-01`; }
 function yesterdayStr(){ const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0,10); }
@@ -7262,79 +7259,6 @@ let QSTATE = { subpage:'home', customer:null, rows:[], discount:{percent:0,amoun
 let _qActionToken = 0; // بيتزود كل ما نبدأ عملية async جوه صفحة الكوتيشن — لو المستخدم غيّر الصفحة أو بدأ عملية تانية قبل ما القديمة تخلص، بنلغي كتابة النتيجة القديمة فوق الشاشة
 
 const qEsc = s => (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-
-/* ═══════════════════════════════════════════════════════════════════════
- *  نظام المقاسات الموحّد — 4 خلايا (طول/عرض/ارتفاع/عمق) في كل مكان فيه
- *  "مقاسات/المقاس". بنخزنهم كـ JSON string في نفس الخانة القديمة بالظبط
- *  (من غير أي تعديل في هيكل الشيتات) عشان الأرقام تفضل دقيقة ومنفصلة،
- *  وفي نفس الوقت العرض في الموقع يبقى جدول واضح بدل نص حر.
- *  قيم قديمة (نص حر اتسجل قبل التحديث ده) بتتعرض زي ما هي كـ fallback.
- * ═══════════════════════════════════════════════════════════════════════ */
-function dimsPack(l, w, h, d) {
-  const obj = {};
-  if (String(l||'').trim()) obj.l = String(l).trim();
-  if (String(w||'').trim()) obj.w = String(w).trim();
-  if (String(h||'').trim()) obj.h = String(h).trim();
-  if (String(d||'').trim()) obj.d = String(d).trim();
-  return Object.keys(obj).length ? JSON.stringify(obj) : '';
-}
-function dimsUnpack(str) {
-  const empty = { l:'', w:'', h:'', d:'', legacy:'' };
-  if (!str) return empty;
-  if (typeof str === 'object') return { l:str.l||'', w:str.w||'', h:str.h||'', d:str.d||'', legacy:'' };
-  const s = String(str).trim();
-  if (!s) return empty;
-  if (s[0] === '{') {
-    try {
-      const obj = JSON.parse(s);
-      if (obj && typeof obj === 'object') return { l:obj.l||'', w:obj.w||'', h:obj.h||'', d:obj.d||'', legacy:'' };
-    } catch (e) { /* مش JSON صالح — نتعامل معاه كنص قديم تحت */ }
-  }
-  return { l:'', w:'', h:'', d:'', legacy:s }; // نص قديم اتسجل قبل التحديث
-}
-// بيرسم الـ4 خلايا (طول/عرض/ارتفاع/عمق) — idPrefix لازم يكون فريد لكل فورم
-function dimsInputHTML(idPrefix, val) {
-  const v = dimsUnpack(val);
-  return `
-    <div class="dims-grid" id="${idPrefix}_grid">
-      <input class="d-input" id="${idPrefix}_l" data-dim="l" placeholder="الطول" inputmode="decimal" value="${qEsc(v.l)}">
-      <input class="d-input" id="${idPrefix}_w" data-dim="w" placeholder="العرض" inputmode="decimal" value="${qEsc(v.w)}">
-      <input class="d-input" id="${idPrefix}_h" data-dim="h" placeholder="الارتفاع" inputmode="decimal" value="${qEsc(v.h)}">
-      <input class="d-input" id="${idPrefix}_d" data-dim="d" placeholder="العمق" inputmode="decimal" value="${qEsc(v.d)}">
-    </div>
-    ${v.legacy ? `<div class="dims-legacy">قيمة قديمة اتسجلت قبل كده: ${qEsc(v.legacy)} — اكتبها في الخانات فوق لو عايز تظبطها</div>` : ''}
-  `;
-}
-// بيقرا الـ4 خلايا من الـDOM ويرجّع الـstring الجاهز للحفظ
-function dimsReadFromInputs(idPrefix) {
-  const g = k => document.getElementById(`${idPrefix}_${k}`)?.value.trim() || '';
-  return dimsPack(g('l'), g('w'), g('h'), g('d'));
-}
-// عرض كجدول واضح (طول/عرض/ارتفاع/عمق) — لو الخانة فاضية بيرجّع ''
-function dimsTableHTML(str, opts) {
-  opts = opts || {};
-  const v = dimsUnpack(str);
-  if (v.legacy) return `<div style="font-size:12.5px;"><b>${opts.label || 'المقاسات'}:</b> ${qEsc(v.legacy)}</div>`;
-  if (!v.l && !v.w && !v.h && !v.d) return '';
-  return `
-    <table class="dims-table">
-      <thead><tr><th>الطول</th><th>العرض</th><th>الارتفاع</th><th>العمق</th></tr></thead>
-      <tbody><tr><td>${qEsc(v.l)||'—'}</td><td>${qEsc(v.w)||'—'}</td><td>${qEsc(v.h)||'—'}</td><td>${qEsc(v.d)||'—'}</td></tr></tbody>
-    </table>
-  `;
-}
-// عرض مضغوط سطر واحد — للاستخدام جوه خلية جدول ضيقة (زي جدول بنود المشروع)
-function dimsCompact(str) {
-  const v = dimsUnpack(str);
-  if (v.legacy) return qEsc(v.legacy);
-  const parts = [];
-  if (v.l) parts.push('ط:' + v.l);
-  if (v.w) parts.push('ع:' + v.w);
-  if (v.h) parts.push('ا:' + v.h);
-  if (v.d) parts.push('عمق:' + v.d);
-  return parts.length ? qEsc(parts.join(' × ')) : '—';
-}
-
 const qNum = v => parseFloat((v+'').replace(/,/g,'')) || 0;
 function qNewRow(){ return { _id:Math.random(), category:'', unit:'', description:'', qty:1, price:0, notes:'' }; }
 // بيبني اسم ملف نظيف للـ PDF من اسم المشروع/العميل (بيشيل رموز ممنوعة في أسماء الملفات)
@@ -9092,17 +9016,6 @@ let TO_STATE = {
 };
 const TO_DAY_NAMES = ["السبت","الأحد","الاثنين","الثلاثاء","الأربعاء","الخميس","الجمعة"];
 let TO_WARMED = false; // عشان التحميل المسبق في الخلفية ما يتكررش كل ما ندخل الصفحة تاني
-// ⚠️ إصلاح "التعليق والريفرش المتكرر": التحميل المسبق في الخلفية (toWarmupBackground)
-// كان بيطلق حتى 16 طلب سيرفر ورا بعض (3 أيام + 3 أسابيع + بند كل مشروع)، وده كان بيزنق
-// طلبات المستخدم الحقيقية (فتح تاب، تغيير تاريخ...) خلفهم في طابور المتصفح، فتحس إن
-// الشاشة "علّقت" لثواني وبعدين فجأة "ريفرشت" لما الطلب بتاعك يوصله دوره أخيرًا.
-// TO_USER_ACTION_PENDING بيتزوّد قبل أي طلب سيرفر المستخدم بنفسه داس عليه، والتحميل
-// المسبق بيستنى (بيدي أولوية) لحد ما يخلص قبل ما يكمل طلب تاني.
-let TO_USER_ACTION_PENDING = 0;
-function toSleep(ms) { return new Promise(res => setTimeout(res, ms)); }
-async function toYieldToUserActions() {
-  while (TO_USER_ACTION_PENDING > 0) await toSleep(120);
-}
 
 function toISO(d){ const x = new Date(d); x.setMinutes(x.getMinutes() - x.getTimezoneOffset()); return x.toISOString().slice(0,10); }
 function toFmtDayDate(d){ return d.getDate()+'/'+(d.getMonth()+1); }
@@ -9199,8 +9112,6 @@ async function toWarmupBackground(token) {
     for (const d of dailyDates) {
       if (isStaleNav(token)) return;
       if (TO_STATE.dailyCache[d]) continue;
-      await toYieldToUserActions(); // مستني لو المستخدم لسه مستني رد على طلب هو داسه بنفسه
-      if (isStaleNav(token)) return;
       try {
         const { entries } = await apiGet('listWorkflowEntries', { filters: { date: d } });
         if (isStaleNav(token)) return;
@@ -9222,8 +9133,6 @@ async function toWarmupBackground(token) {
       const from = toISO(dts[0]), to = toISO(dts[6]);
       const key = from + '_' + to;
       if (TO_STATE.weekCache[key]) continue;
-      await toYieldToUserActions();
-      if (isStaleNav(token)) return;
       try {
         const { entries } = await apiGet('getWorkflowWeek', { from, to });
         if (isStaleNav(token)) return;
@@ -9240,8 +9149,6 @@ async function toWarmupBackground(token) {
     for (const p of TO_STATE.projects) {
       if (isStaleNav(token)) return;
       if (TO_STATE.planCache[p]) continue;
-      await toYieldToUserActions();
-      if (isStaleNav(token)) return;
       try {
         const { items } = await apiGet('listMissingItems', { filters: { project: p } });
         if (isStaleNav(token)) return;
@@ -9340,6 +9247,7 @@ function toRenderDailyForm() {
         <div class="field"><label>المطلوب</label><input class="d-input" id="to_title" placeholder="مثال: تركيب أبواب"></div>
       </div>
       <div class="field"><label>فيد باك / آخر حالة الشغل</label><input class="d-input" id="to_feedback" placeholder="مثال: خلص 3 من 5 أبواب"></div>
+      <div class="field"><label>ملاحظات</label><input class="d-input" id="to_notes" placeholder="ملاحظات"></div>
 
       <button type="button" class="to-extra-toggle ${TO_STATE.moreOpen?'open':''}" id="toExtraToggleBtn" aria-expanded="${TO_STATE.moreOpen?'true':'false'}">
         <span class="et-left">
@@ -9353,10 +9261,16 @@ function toRenderDailyForm() {
         <div class="to-bs-grid">
           <div class="field"><label>التخصص</label><input class="d-input" id="to_specialty" list="to-dl-spec" placeholder="التخصص"><datalist id="to-dl-spec">${WORKFLOW_SPECIALTIES_FALLBACK.map(s => `<option value="${qEsc(s)}">`).join('')}</datalist></div>
           <div class="field"><label>الحضور</label><input class="d-input" id="to_attendance" placeholder="8ص"></div>
-          <div class="field" style="grid-column:1/-1;"><label>المقاسات</label>${dimsInputHTML('to_sizes')}</div>
           <div class="field"><label>الكمية</label><input class="d-input" id="to_qty" placeholder="الكمية"></div>
           <div class="field"><label>اشراف</label><input class="d-input" id="to_supervision" placeholder="اشراف"></div>
-          <div class="field"><label>ملاحظات</label><input class="d-input" id="to_notes" placeholder="ملاحظات"></div>
+        </div>
+        <div class="field" style="margin-top:2px;"><label>المقاسات</label>
+          <div class="to-size-grid">
+            <input class="d-input ltr-num" inputmode="decimal" id="to_length" placeholder="الطول">
+            <input class="d-input ltr-num" inputmode="decimal" id="to_width" placeholder="العرض">
+            <input class="d-input ltr-num" inputmode="decimal" id="to_height" placeholder="الارتفاع">
+            <input class="d-input ltr-num" inputmode="decimal" id="to_depth" placeholder="العمق">
+          </div>
         </div>
       </div>
 
@@ -9418,6 +9332,7 @@ function toItemHTML(it) {
             <span><b>المشروع:</b> ${qEsc(it.project)}</span>
             ${it.location?`<span><b>الموقع:</b> ${qEsc(it.location)}</span>`:''}
             ${it.attendance?`<span><b>الحضور:</b> ${qEsc(it.attendance)}</span>`:''}
+            ${fmtDims(it)?`<span><b>المقاس:</b> ${qEsc(fmtDims(it))}</span>`:''}
           </div>
           ${it.title?`<div class="to-wf-item-title" style="font-weight:700;font-size:13px;margin-bottom:2px;">${qEsc(it.title)}</div>`:''}
           ${it.feedback?`<div class="wf-feedback">&#128172; ${qEsc(it.feedback)}</div>`:''}
@@ -9490,7 +9405,10 @@ async function toSaveEntry() {
     feedback: document.getElementById('to_feedback').value.trim(),
     specialty: document.getElementById('to_specialty')?.value.trim() || '',
     attendance: document.getElementById('to_attendance')?.value.trim() || '',
-    sizes: dimsReadFromInputs('to_sizes'),
+    length: document.getElementById('to_length')?.value.trim() || '',
+    width: document.getElementById('to_width')?.value.trim() || '',
+    height: document.getElementById('to_height')?.value.trim() || '',
+    depth: document.getElementById('to_depth')?.value.trim() || '',
     qty: document.getElementById('to_qty')?.value.trim() || '',
     supervision: document.getElementById('to_supervision')?.value.trim() || '',
     notes: document.getElementById('to_notes')?.value.trim() || '',
@@ -9726,13 +9644,11 @@ function toRenderPlanBody(items) {
         <div class="mi-progress-bar"><div class="mi-progress-fill" style="width:${pct}%;"></div></div>
         <div class="tbl-wrap" style="margin-top:12px;">
           ${items && items.length ? `<table>
-            <thead><tr><th style="width:30px;">تم</th><th>البند</th><th>الطول</th><th>العرض</th><th>الارتفاع</th><th>العمق</th><th>الكمية</th></tr></thead>
-            <tbody>${items.map(i => { const dv = dimsUnpack(i.size); return `<tr class="${i.done?'mi-done-row':''}">
+            <thead><tr><th style="width:30px;">تم</th><th>البند</th><th>المقاس</th><th>الكمية</th></tr></thead>
+            <tbody>${items.map(i => `<tr class="${i.done?'mi-done-row':''}">
               <td><input type="checkbox" class="mi-check" ${i.done?'checked':''} data-miid="${i.id}"></td>
-              <td>${qEsc(i.name)}</td>
-              ${dv.legacy ? `<td colspan="4" style="font-size:11.5px;">${qEsc(dv.legacy)}</td>` : `<td>${qEsc(dv.l)||'—'}</td><td>${qEsc(dv.w)||'—'}</td><td>${qEsc(dv.h)||'—'}</td><td>${qEsc(dv.d)||'—'}</td>`}
-              <td>${qEsc(i.qty)}</td>
-            </tr>`; }).join('')}</tbody>
+              <td>${qEsc(i.name)}</td><td>${qEsc(fmtDims(i))}</td><td>${qEsc(i.qty)}</td>
+            </tr>`).join('')}</tbody>
           </table>` : `<div class="empty">مفيش بنود مسجلة للمشروع ده</div>`}
         </div>
       </div>
@@ -9773,7 +9689,7 @@ function toRenderPlanBody(items) {
    ولحد ما تدوس "حفظ" يتضافوا كلهم مرة واحدة. المقاس اتحط جوه "تفاصيل" مقفولة
    افتراضيًا زي حقول "شغل يومي" الإضافية، عشان الفورم يفضل بسيط. ═══ */
 let TO_MI_DRAFT = { rows: [] };
-function toMiNewRow() { return { id: 'r' + Math.random().toString(36).slice(2, 9), name: '', qty: '', size: '', detailsOpen: false }; }
+function toMiNewRow() { return { id: 'r' + Math.random().toString(36).slice(2, 9), name: '', qty: '', length: '', width: '', height: '', depth: '', detailsOpen: false }; }
 if (!TO_MI_DRAFT.rows.length) TO_MI_DRAFT.rows.push(toMiNewRow());
 
 function toRenderMiAddBox() {
@@ -9799,7 +9715,14 @@ function toRenderMiAddBox() {
             <span class="et-chev">&#9662;</span>
           </button>
           <div class="to-extra-body ${r.detailsOpen?'open':''}">
-            <div class="field"><label>المقاس</label>${dimsInputHTML('to_mi_' + r.id, r.size)}</div>
+            <div class="field"><label>المقاسات</label>
+              <div class="to-size-grid">
+                <input class="d-input ltr-num" inputmode="decimal" data-rowfield="length" data-rowid="${r.id}" placeholder="الطول" value="${qEsc(r.length)}">
+                <input class="d-input ltr-num" inputmode="decimal" data-rowfield="width" data-rowid="${r.id}" placeholder="العرض" value="${qEsc(r.width)}">
+                <input class="d-input ltr-num" inputmode="decimal" data-rowfield="height" data-rowid="${r.id}" placeholder="الارتفاع" value="${qEsc(r.height)}">
+                <input class="d-input ltr-num" inputmode="decimal" data-rowfield="depth" data-rowid="${r.id}" placeholder="العمق" value="${qEsc(r.depth)}">
+              </div>
+            </div>
           </div>
         </div>
       `).join('')}
@@ -9816,14 +9739,6 @@ function toRenderMiAddBox() {
     inp.addEventListener('input', () => {
       const row = TO_MI_DRAFT.rows.find(r => r.id === inp.dataset.rowid);
       if (row) row[inp.dataset.rowfield] = inp.value;
-    });
-  });
-  // خلايا المقاس (طول/عرض/ارتفاع/عمق) — نفس مبدأ التحديث المحلي بس، من غير رندر تاني
-  box.querySelectorAll('[data-dim]').forEach(inp => {
-    inp.addEventListener('input', () => {
-      const rowId = inp.id.replace(/^to_mi_/, '').replace(/_[lwhd]$/, '');
-      const row = TO_MI_DRAFT.rows.find(r => r.id === rowId);
-      if (row) row.size = dimsReadFromInputs('to_mi_' + rowId);
     });
   });
   box.querySelectorAll('[data-toggledetails]').forEach(btn => {
@@ -9857,7 +9772,7 @@ async function toMiSubmitAll() {
   const project = projectSel ? projectSel.value : TO_PLAN_PROJECT;
   const rows = TO_MI_DRAFT.rows.filter(r => r.name.trim());
   if (!rows.length) { msg.className = 'msg err'; msg.textContent = 'محتاج تكتب اسم بند واحد على الأقل'; return; }
-  const items = rows.map(r => ({ project, name: r.name.trim(), size: r.size.trim(), qty: r.qty.trim() }));
+  const items = rows.map(r => ({ project, name: r.name.trim(), qty: r.qty.trim(), length: r.length.trim(), width: r.width.trim(), height: r.height.trim(), depth: r.depth.trim() }));
   const addBtn = document.getElementById('to_mi_add');
   addBtn.disabled = true; const oldLabel = addBtn.textContent; addBtn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
   msg.className = 'msg'; msg.textContent = '';
@@ -9928,9 +9843,9 @@ function toReportCraftsmanHtml_(c){
           ${it.title ? `<div style="font-weight:700;font-size:13.5px;margin-bottom:3px;">${qEsc(it.title)}</div>` : ''}
           ${it.details ? `<div style="font-size:12.5px;color:var(--muted);margin-bottom:3px;">${qEsc(it.details)}</div>` : ''}
           <div class="wf-item-row">
+            ${fmtDims(it) ? `<span><b>المقاس:</b> ${qEsc(fmtDims(it))}</span>` : ''}
             ${it.qty ? `<span><b>الكمية:</b> ${qEsc(it.qty)}</span>` : ''}
           </div>
-          ${dimsTableHTML(it.sizes)}
           ${it.notes ? `<div style="font-size:12.5px;color:var(--muted);">📝 ${qEsc(it.notes)}</div>` : ''}
           ${it.feedback ? `<div class="wf-feedback">💬 ${qEsc(it.feedback)}</div>` : ''}
         </div>
@@ -10077,12 +9992,12 @@ async function renderMissingItems(token) {
              فيه إيه، وعلى الشاشة الضيقة تقدر تسحب يمين/شمال تشوف باقي
              الأعمدة زي أي جدول تاني في الداشبورد. -->
         <div class="tbl-wrap" style="margin-top:10px;">
-          <table style="min-width:950px;table-layout:fixed;">
+          <table style="min-width:660px;table-layout:fixed;">
             <colgroup>
-              <col style="width:190px;"><col style="width:70px;"><col style="width:70px;"><col style="width:70px;"><col style="width:70px;"><col style="width:140px;"><col style="width:100px;"><col style="width:190px;"><col style="width:44px;">
+              <col style="width:190px;"><col style="width:130px;"><col style="width:140px;"><col style="width:100px;"><col style="width:190px;"><col style="width:44px;">
             </colgroup>
-            <thead><tr><th>البند</th><th>الطول</th><th>العرض</th><th>الارتفاع</th><th>العمق</th><th>الوحدة</th><th>الكمية</th><th>ملاحظة</th><th></th></tr></thead>
-            <tbody id="miPendingBody"><tr><td colspan="9" class="empty">دوس "+ إضافة سطر" عشان تبدأ تضيف بنود</td></tr></tbody>
+            <thead><tr><th>البند</th><th>المقاس</th><th>الوحدة</th><th>الكمية</th><th>ملاحظة</th><th></th></tr></thead>
+            <tbody id="miPendingBody"><tr><td colspan="6" class="empty">دوس "+ إضافة سطر" عشان تبدأ تضيف بنود</td></tr></tbody>
           </table>
         </div>
         <div class="add-footer">
@@ -10301,10 +10216,10 @@ function miRenderItemsList() {
             </div>
           </div>
           <div class="item-meta">
+            ${fmtDims(it) ? `<span><b>المقاس:</b> ${qEsc(fmtDims(it))}</span>` : ''}
             ${it.unit ? `<span><b>الوحدة:</b> ${qEsc(it.unit)}</span>` : ''}
             ${it.qty ? `<span><b>الكمية:</b> ${qEsc(it.qty)}</span>` : ''}
           </div>
-          ${dimsTableHTML(it.size)}
           <div class="item-notes">
             <button type="button" class="item-notes-toggle ${notesOpen ? 'open' : ''}" data-notestoggle="${it.id}">
               <span class="chev">▾</span>
@@ -10427,19 +10342,13 @@ function miRenderPending() {
   if (countEl) countEl.textContent = MISTATE.pending.length;
   const tb = document.getElementById('miPendingBody');
   if (!tb) return;
-  if (!MISTATE.pending.length) { tb.innerHTML = '<tr><td colspan="9" class="empty">دوس "+ إضافة سطر" عشان تبدأ تضيف بنود</td></tr>'; return; }
-  tb.innerHTML = MISTATE.pending.map(p => { const dv = dimsUnpack(p.size); return `
+  if (!MISTATE.pending.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">دوس "+ إضافة سطر" عشان تبدأ تضيف بنود</td></tr>'; return; }
+  tb.innerHTML = MISTATE.pending.map(p => `
     <tr>
       <td><input class="d-input" data-mirow="${p._id}" data-mifield="name" autocomplete="off" type="text" value="${qEsc(p.name)}" placeholder="مثال: كوع ألوميتال 90 درجة"
         oninput="miSetPendingField(${p._id},'name',this.value)"></td>
-      <td><input class="d-input" style="text-align:center;" data-mirow="${p._id}" data-mifield="size" autocomplete="off" type="text" inputmode="decimal" value="${qEsc(dv.l)}" placeholder="طول"
-        oninput="miSetPendingDim(${p._id},'l',this.value)"></td>
-      <td><input class="d-input" style="text-align:center;" data-mirow="${p._id}" data-mifield="size" autocomplete="off" type="text" inputmode="decimal" value="${qEsc(dv.w)}" placeholder="عرض"
-        oninput="miSetPendingDim(${p._id},'w',this.value)"></td>
-      <td><input class="d-input" style="text-align:center;" data-mirow="${p._id}" data-mifield="size" autocomplete="off" type="text" inputmode="decimal" value="${qEsc(dv.h)}" placeholder="ارتفاع"
-        oninput="miSetPendingDim(${p._id},'h',this.value)"></td>
-      <td><input class="d-input" style="text-align:center;" data-mirow="${p._id}" data-mifield="size" autocomplete="off" type="text" inputmode="decimal" value="${qEsc(dv.d)}" placeholder="عمق"
-        oninput="miSetPendingDim(${p._id},'d',this.value)"></td>
+      <td><input class="d-input" data-mirow="${p._id}" data-mifield="size" autocomplete="off" type="text" value="${qEsc(p.size)}" placeholder="مثال: 4 سم"
+        oninput="miSetPendingField(${p._id},'size',this.value)"></td>
       <td><select class="d-input" data-mirow="${p._id}" data-mifield="unit" onchange="miSetPendingField(${p._id},'unit',this.value)">
         <option value=""></option>${WORKFLOW_UNITS_JS.map(u => `<option value="${qEsc(u)}" ${p.unit===u?'selected':''}>${qEsc(u)}</option>`).join('')}
       </select></td>
@@ -10448,15 +10357,7 @@ function miRenderPending() {
       <td><input class="d-input" data-mirow="${p._id}" data-mifield="notes" autocomplete="off" type="text" value="${qEsc(p.notes)}" placeholder="أي تفاصيل إضافية..."
         oninput="miSetPendingField(${p._id},'notes',this.value)"></td>
       <td><button type="button" class="btn btn-sm btn-danger" onclick="miRemovePending(${p._id})">✕</button></td>
-    </tr>`; }).join('');
-}
-// تحديث خانة واحدة من الـ4 (طول/عرض/ارتفاع/عمق) لسطر بند لسه ما اتحفظش — بيدمجها في p.size زي الأول
-function miSetPendingDim(id, dim, value) {
-  const row = MISTATE.pending.find(p => p._id === id);
-  if (!row) return;
-  const dv = dimsUnpack(row.size);
-  dv[dim] = value;
-  row.size = dimsPack(dv.l, dv.w, dv.h, dv.d);
+    </tr>`).join('');
 }
 async function miSaveAllPending() {
   const btn = document.getElementById('saveMissingItemsBtn');
@@ -10480,7 +10381,7 @@ async function miSaveAllPending() {
  * ⚠️ إضافة 2026-08-24. تبويبين: "شغالة" (فيها فورم تسجيل استخدام لكل خامة)
  * و"خلصت" (أرشيف — الخامة والاستخدامات بتاعتها بيفضلوا محفوظين، بس متحركش
  * فيهم؛ تقدر تدوس عليها تشوف سجل الاستخدام بالكامل). */
-const MATSTATE = { tab: 'active', materials: [], projects: [] };
+const MATSTATE = { tab: 'active', materials: [], projects: [], detailsOpen: {} };
 
 async function renderMaterials(token){
   // ⚠️ إضافة: مفيش داعي نمسح الشاشة ونعرض "جاري التحميل" في كل مرة تفتح فيها الصفحة —
@@ -10541,11 +10442,15 @@ function matRenderGrid(){
 function matCardHtml_(m){
   const pctColor = m.usedPct >= 90 ? 'var(--red)' : m.usedPct >= 60 ? '#b8860b' : 'var(--green)';
   const idSuffix = qId2_(m.id);
+  const detailsOpen = !!MATSTATE.detailsOpen[m.id];
   return `
     <div class="panel mat-card" data-mat-id="${qEsc(m.id)}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
         <h4 style="margin:0;">${qEsc(m.name)}</h4>
-        <span style="font-size:11px;color:var(--muted);background:var(--cream);border-radius:20px;padding:2px 10px;white-space:nowrap;">${qEsc(m.status)}</span>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+          <span style="font-size:11px;color:var(--muted);background:var(--cream);border-radius:20px;padding:2px 10px;white-space:nowrap;">${qEsc(m.status)}</span>
+          <button type="button" class="btn btn-sm btn-danger" title="حذف الخامة" onclick="matDeleteConfirm('${qEscJs(m.id)}','${qEscJs(m.name)}')">✕</button>
+        </div>
       </div>
       <div style="font-size:12.5px;color:var(--muted);margin:6px 0 4px;">
         المتبقي: <b style="color:var(--dark);">${fmt(m.remainingQty)} ${qEsc(m.unit)}</b> من أصل <b>${fmt(m.originalQty)} ${qEsc(m.unit)}</b>
@@ -10556,15 +10461,20 @@ function matCardHtml_(m){
 
       ${m.status !== 'خلصت' ? `
         <div class="mat-usage-form">
-          <div class="field"><label>الكمية المستخدمة *</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="mat-use-amt-${idSuffix}" placeholder="مثال: 2" required onkeypress="return /[0-9.]/.test(event.key)"></div>
+          <div class="field"><label>الكمية المستخدمة</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="mat-use-amt-${idSuffix}" placeholder="مثال: 2" onkeypress="return /[0-9.]/.test(event.key)"></div>
 
-          <div class="mat-usage-details">
-            <div class="mat-usage-details-title">تفاصيل الاستخدام</div>
-            <div class="grid2">
-              <div class="field"><label>ليه (الوصف) *</label><input type="text" class="d-input" id="mat-use-desc-${idSuffix}" placeholder="مثال: دهان غرفة النوم" required></div>
-              <div class="field"><label>المشروع *</label><input type="text" class="d-input" list="mat-proj-list" id="mat-use-proj-${idSuffix}" placeholder="اختار أو اكتب مشروع" required></div>
-            </div>
-            <div class="field"><label>التاريخ *</label><input type="date" class="d-input" id="mat-use-date-${idSuffix}" autocomplete="off" value="${todayStr()}" required></div>
+          <button type="button" class="to-extra-toggle ${detailsOpen?'open':''}" id="mat-details-toggle-${idSuffix}" onclick="matToggleDetails('${qEscJs(m.id)}')" aria-expanded="${detailsOpen?'true':'false'}">
+            <span class="et-left">
+              <span class="et-icon">${detailsOpen?'−':'+'}</span>
+              <span class="et-text">تفاصيل الاستخدام</span>
+              <span class="et-hint" style="color:var(--red);">مطلوبة (الوصف، المشروع)</span>
+            </span>
+            <span class="et-chev">&#9662;</span>
+          </button>
+          <div class="to-extra-body ${detailsOpen?'open':''}" id="mat-details-body-${idSuffix}" style="display:flex;flex-direction:column;">
+            <div class="field" style="width:100%;"><label>ليه (الوصف) *</label><input type="text" class="d-input" id="mat-use-desc-${idSuffix}" placeholder="مثال: دهان غرفة النوم" required></div>
+            <div class="field" style="width:100%;"><label>المشروع *</label><input type="text" class="d-input" list="mat-proj-list" id="mat-use-proj-${idSuffix}" placeholder="اختار أو اكتب مشروع" required></div>
+            <div class="field" style="width:100%;"><label>التاريخ</label><input type="date" class="d-input" id="mat-use-date-${idSuffix}" autocomplete="off" value="${todayStr()}"></div>
           </div>
 
           <button type="button" class="btn btn-outline btn-sm" style="margin-top:8px;" id="mat-use-btn-${idSuffix}" onclick="matLogUsage('${qEscJs(m.id)}')">تسجيل استخدام</button>
@@ -10575,6 +10485,22 @@ function matCardHtml_(m){
         <button type="button" class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="matShowHistory('${qEscJs(m.id)}','${qEscJs(m.name)}')">📜 عرض سجل الاستخدام</button>
       `}
     </div>`;
+}
+
+// فتح/قفل بلوك "تفاصيل الاستخدام" — بيبدّل الكلاسات في الـDOM مباشرة من غير
+// إعادة رسم الكارت كله، عشان لو المستخدم كاتب حاجة في "الكمية المستخدمة"
+// قبل ما يفتح التفاصيل، الكتابة متتمسحش.
+function matToggleDetails(id){
+  const idSuffix = qId2_(id);
+  const btn = document.getElementById('mat-details-toggle-' + idSuffix);
+  const body = document.getElementById('mat-details-body-' + idSuffix);
+  if (!btn || !body) return;
+  const isOpen = body.classList.toggle('open');
+  btn.classList.toggle('open', isOpen);
+  btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  const icon = btn.querySelector('.et-icon');
+  if (icon) icon.textContent = isOpen ? '−' : '+';
+  MATSTATE.detailsOpen[id] = isOpen;
 }
 
 // معرّف HTML-safe من id الخامة (زي qId بتاعة مسحوبات الشركاء بس أعم)
@@ -10616,20 +10542,20 @@ async function matLogUsage(materialId){
   const amount = amtEl.value.trim();
   const description = descEl.value.trim();
   const project = projEl.value.trim();
-  const date = dateEl.value.trim();
   if (!amount || Number(amount) <= 0) { msg.className = 'msg err'; msg.textContent = 'اكتب كمية أكبر من صفر'; return; }
-  // ⚠️ الوصف والمشروع والتاريخ إجباريين — الفورم بقى ظاهر بالكامل على طول، فمفيش داعي نفتح أي بلوك
-  if (!description || !project || !date) {
+  // ⚠️ الوصف والمشروع بقوا مطلوبين — لو ناقصين، افتح بلوك "تفاصيل الاستخدام" (لو مقفول) وبيّن الخطأ
+  if (!description || !project) {
+    if (!MATSTATE.detailsOpen[materialId]) matToggleDetails(materialId);
     msg.className = 'msg err';
-    msg.textContent = !description ? 'لازم تكتب وصف/سبب الاستخدام (ليه)' : !project ? 'لازم تختار أو تكتب المشروع' : 'لازم تحدد التاريخ';
-    (!description ? descEl : !project ? projEl : dateEl).focus();
+    msg.textContent = !description ? 'لازم تكتب وصف/سبب الاستخدام (ليه)' : 'لازم تختار أو تكتب المشروع';
+    (!description ? descEl : projEl).focus();
     return;
   }
   if (btn && btn.disabled) return; // منع الدوس المتكرر لحد ما الطلب اللي قبله يخلص
   msg.className = 'msg'; msg.textContent = '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري التسجيل...'; }
   try {
-    const res = await apiPost('logMaterialUsage', { usage: { materialId, amount, description, project, date } });
+    const res = await apiPost('logMaterialUsage', { usage: { materialId, amount, description, project, date: (dateEl && dateEl.value) ? dateEl.value : todayStr() } });
     if (!res.success) { msg.className = 'msg err'; msg.textContent = res.error || 'حصل خطأ'; return; }
     msg.className = 'msg ok';
     msg.textContent = res.finished ? '✅ اتسجل — والخامة خلصت، نقلناها لتبويب "خلصت"' : `✅ اتسجل — الباقي ${fmt(res.remainingQty)}`;
@@ -10638,6 +10564,17 @@ async function matLogUsage(materialId){
     setTimeout(matRenderGrid, res.finished ? 900 : 0);
   } catch (err) { msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
   finally { if (btn) { btn.disabled = false; btn.textContent = 'تسجيل استخدام'; } }
+}
+
+async function matDeleteConfirm(materialId, materialName){
+  if (!(await openGenConfirm(`متأكد إنك عاوز تمسح خامة "${materialName}"؟ هيتمسح معاها كل سجلات الاستخدام بتاعتها.`, 'حذف الخامة'))) return;
+  try {
+    const res = await apiPost('deleteMaterial', { id: materialId });
+    if (!res.success) { showToast('خطأ: ' + (res.error || 'حصل خطأ'), 'error'); return; }
+    const { materials } = await apiGet('listMaterials');
+    MATSTATE.materials = materials || [];
+    matRenderGrid();
+  } catch (err) { showToast('خطأ: ' + (err.message || err), 'error'); }
 }
 
 async function matShowHistory(materialId, materialName){
@@ -10649,22 +10586,18 @@ async function matShowHistory(materialId, materialName){
       return;
     }
     const rows = usage.map(u => `
-      <tr>
-        <td>${qEsc(u.date)}</td>
-        <td><b>${fmt(u.amount)}</b></td>
-        <td>${qEsc(u.project || '—')}</td>
-        <td class="mat-hist-desc">${qEsc(u.description || '—')}</td>
-        <td>${qEsc(u.by || '—')}</td>
-      </tr>`).join('');
+      <div class="mat-hist-row">
+        <div style="display:flex;justify-content:space-between;gap:8px;">
+          <b>${fmt(u.amount)}</b>
+          <span style="color:var(--muted);font-size:11.5px;">${qEsc(u.date)}</span>
+        </div>
+        ${u.project ? `<div style="font-size:12px;color:var(--muted);">المشروع: ${qEsc(u.project)}</div>` : ''}
+        ${u.description ? `<div style="font-size:12px;">${qEsc(u.description)}</div>` : ''}
+        ${u.by ? `<div style="font-size:10.5px;color:var(--muted);">بواسطة: ${qEsc(u.by)}</div>` : ''}
+      </div>`).join('');
     openCardModal(`
       <div class="cd-head"><h3>📜 سجل استخدام: ${qEsc(materialName)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
-      <div class="mat-hist-count">${usage.length} ${usage.length === 1 ? 'استخدام مسجل' : 'استخدامات مسجلة'}</div>
-      <div class="mat-hist-list">
-        <table class="mat-hist-table">
-          <thead><tr><th>التاريخ</th><th>الكمية</th><th>المشروع</th><th>الوصف</th><th>بواسطة</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
+      <div class="mat-hist-list">${rows}</div>
     `);
   } catch (err) { showError(err); }
 }
