@@ -205,8 +205,6 @@
   .to-extra-body.open{ max-height:600px; opacity:1; padding:16px 14px 4px; }
   .to-bs-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px 14px; }
   @media(max-width:520px){ .to-bs-grid{ grid-template-columns:1fr; } }
-  .to-size-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px 10px; }
-  @media(max-width:520px){ .to-size-grid{ grid-template-columns:1fr 1fr; } }
 
   .to-wf-item{ border-top:1px dashed var(--border); padding:9px 8px 9px 0; position:relative; border-radius:8px; transition:background .2s; }
   .to-wf-item:first-child{ border-top:none; }
@@ -1695,14 +1693,6 @@ async function apiPost(action, payload) {
   return data;
 }
 function fmt(n){ return (Number(n)||0).toLocaleString('en-US', {maximumFractionDigits:0}); }
-// بيكوّن نص مقاس واحد مقروء من 4 أبعاد منفصلة (طول/عرض/ارتفاع/عمق) — بيتجاهل
-// أي بعد فاضي، وبيرجع '' لو كله فاضي. مستخدمة في كل أماكن عرض المقاسات
-// (سجل الشغل اليومي + بنود المشاريع) عشان الشكل يبقى موحّد في كل مكان.
-function fmtDims(d){
-  d = d || {};
-  const parts = [d.length, d.width, d.height, d.depth].map(v => String(v||'').trim()).filter(Boolean);
-  return parts.join(' × ');
-}
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function monthStartStr(){ const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-01`; }
 function yesterdayStr(){ const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0,10); }
@@ -9146,6 +9136,10 @@ async function toWarmupBackground(token) {
     }
 
     // 3) بنود كل المشاريع (تايم بلاننج) — واحد ورا التاني عشان ما نضغطش على السيرفر مرة واحدة
+    // ⚠️ بنحدّث الكاش بس هنا، من غير ما نعيد رسم الشاشة أثناء اللف على المشاريع. لو رسمنا هنا
+    // كل ما مشروع يوصل، وكان المستخدم في نفس اللحظة فاتح/بيبدّل في سليكت "المشروع"، هيتمسح
+    // السليكت ويترسم من الأول — وده اللي كان حاسس إنه "بيرجع يشغل يومي" أو بيلاج. الرسم الفعلي
+    // بيحصل بس لما المستخدم يبدّل مشروع بنفسه (toLoadPlanTab) أو أول ما يفتح التاب.
     for (const p of TO_STATE.projects) {
       if (isStaleNav(token)) return;
       if (TO_STATE.planCache[p]) continue;
@@ -9153,7 +9147,6 @@ async function toWarmupBackground(token) {
         const { items } = await apiGet('listMissingItems', { filters: { project: p } });
         if (isStaleNav(token)) return;
         TO_STATE.planCache[p] = items || [];
-        if (TO_STATE.activeTab === 'plan' && TO_PLAN_PROJECT === p) toRenderPlanBody(TO_STATE.planCache[p]);
       } catch (e) { /* تجاهل */ }
     }
   } catch (e) { /* التحميل المسبق اختياري بالكامل — أي خطأ فيه ما ينفعش يعطّل الصفحة */ }
@@ -9247,7 +9240,6 @@ function toRenderDailyForm() {
         <div class="field"><label>المطلوب</label><input class="d-input" id="to_title" placeholder="مثال: تركيب أبواب"></div>
       </div>
       <div class="field"><label>فيد باك / آخر حالة الشغل</label><input class="d-input" id="to_feedback" placeholder="مثال: خلص 3 من 5 أبواب"></div>
-      <div class="field"><label>ملاحظات</label><input class="d-input" id="to_notes" placeholder="ملاحظات"></div>
 
       <button type="button" class="to-extra-toggle ${TO_STATE.moreOpen?'open':''}" id="toExtraToggleBtn" aria-expanded="${TO_STATE.moreOpen?'true':'false'}">
         <span class="et-left">
@@ -9261,16 +9253,10 @@ function toRenderDailyForm() {
         <div class="to-bs-grid">
           <div class="field"><label>التخصص</label><input class="d-input" id="to_specialty" list="to-dl-spec" placeholder="التخصص"><datalist id="to-dl-spec">${WORKFLOW_SPECIALTIES_FALLBACK.map(s => `<option value="${qEsc(s)}">`).join('')}</datalist></div>
           <div class="field"><label>الحضور</label><input class="d-input" id="to_attendance" placeholder="8ص"></div>
+          <div class="field"><label>المقاسات</label><input class="d-input" id="to_sizes" placeholder="المقاسات"></div>
           <div class="field"><label>الكمية</label><input class="d-input" id="to_qty" placeholder="الكمية"></div>
           <div class="field"><label>اشراف</label><input class="d-input" id="to_supervision" placeholder="اشراف"></div>
-        </div>
-        <div class="field" style="margin-top:2px;"><label>المقاسات</label>
-          <div class="to-size-grid">
-            <input class="d-input ltr-num" inputmode="decimal" id="to_length" placeholder="الطول">
-            <input class="d-input ltr-num" inputmode="decimal" id="to_width" placeholder="العرض">
-            <input class="d-input ltr-num" inputmode="decimal" id="to_height" placeholder="الارتفاع">
-            <input class="d-input ltr-num" inputmode="decimal" id="to_depth" placeholder="العمق">
-          </div>
+          <div class="field"><label>ملاحظات</label><input class="d-input" id="to_notes" placeholder="ملاحظات"></div>
         </div>
       </div>
 
@@ -9332,7 +9318,6 @@ function toItemHTML(it) {
             <span><b>المشروع:</b> ${qEsc(it.project)}</span>
             ${it.location?`<span><b>الموقع:</b> ${qEsc(it.location)}</span>`:''}
             ${it.attendance?`<span><b>الحضور:</b> ${qEsc(it.attendance)}</span>`:''}
-            ${fmtDims(it)?`<span><b>المقاس:</b> ${qEsc(fmtDims(it))}</span>`:''}
           </div>
           ${it.title?`<div class="to-wf-item-title" style="font-weight:700;font-size:13px;margin-bottom:2px;">${qEsc(it.title)}</div>`:''}
           ${it.feedback?`<div class="wf-feedback">&#128172; ${qEsc(it.feedback)}</div>`:''}
@@ -9405,10 +9390,7 @@ async function toSaveEntry() {
     feedback: document.getElementById('to_feedback').value.trim(),
     specialty: document.getElementById('to_specialty')?.value.trim() || '',
     attendance: document.getElementById('to_attendance')?.value.trim() || '',
-    length: document.getElementById('to_length')?.value.trim() || '',
-    width: document.getElementById('to_width')?.value.trim() || '',
-    height: document.getElementById('to_height')?.value.trim() || '',
-    depth: document.getElementById('to_depth')?.value.trim() || '',
+    sizes: document.getElementById('to_sizes')?.value.trim() || '',
     qty: document.getElementById('to_qty')?.value.trim() || '',
     supervision: document.getElementById('to_supervision')?.value.trim() || '',
     notes: document.getElementById('to_notes')?.value.trim() || '',
@@ -9647,7 +9629,7 @@ function toRenderPlanBody(items) {
             <thead><tr><th style="width:30px;">تم</th><th>البند</th><th>المقاس</th><th>الكمية</th></tr></thead>
             <tbody>${items.map(i => `<tr class="${i.done?'mi-done-row':''}">
               <td><input type="checkbox" class="mi-check" ${i.done?'checked':''} data-miid="${i.id}"></td>
-              <td>${qEsc(i.name)}</td><td>${qEsc(fmtDims(i))}</td><td>${qEsc(i.qty)}</td>
+              <td>${qEsc(i.name)}</td><td>${qEsc(i.size)}</td><td>${qEsc(i.qty)}</td>
             </tr>`).join('')}</tbody>
           </table>` : `<div class="empty">مفيش بنود مسجلة للمشروع ده</div>`}
         </div>
@@ -9689,7 +9671,7 @@ function toRenderPlanBody(items) {
    ولحد ما تدوس "حفظ" يتضافوا كلهم مرة واحدة. المقاس اتحط جوه "تفاصيل" مقفولة
    افتراضيًا زي حقول "شغل يومي" الإضافية، عشان الفورم يفضل بسيط. ═══ */
 let TO_MI_DRAFT = { rows: [] };
-function toMiNewRow() { return { id: 'r' + Math.random().toString(36).slice(2, 9), name: '', qty: '', length: '', width: '', height: '', depth: '', detailsOpen: false }; }
+function toMiNewRow() { return { id: 'r' + Math.random().toString(36).slice(2, 9), name: '', qty: '', size: '', detailsOpen: false }; }
 if (!TO_MI_DRAFT.rows.length) TO_MI_DRAFT.rows.push(toMiNewRow());
 
 function toRenderMiAddBox() {
@@ -9715,14 +9697,7 @@ function toRenderMiAddBox() {
             <span class="et-chev">&#9662;</span>
           </button>
           <div class="to-extra-body ${r.detailsOpen?'open':''}">
-            <div class="field"><label>المقاسات</label>
-              <div class="to-size-grid">
-                <input class="d-input ltr-num" inputmode="decimal" data-rowfield="length" data-rowid="${r.id}" placeholder="الطول" value="${qEsc(r.length)}">
-                <input class="d-input ltr-num" inputmode="decimal" data-rowfield="width" data-rowid="${r.id}" placeholder="العرض" value="${qEsc(r.width)}">
-                <input class="d-input ltr-num" inputmode="decimal" data-rowfield="height" data-rowid="${r.id}" placeholder="الارتفاع" value="${qEsc(r.height)}">
-                <input class="d-input ltr-num" inputmode="decimal" data-rowfield="depth" data-rowid="${r.id}" placeholder="العمق" value="${qEsc(r.depth)}">
-              </div>
-            </div>
+            <div class="field"><label>المقاس</label><input class="d-input" data-rowfield="size" data-rowid="${r.id}" placeholder="مثال: 4 سم" value="${qEsc(r.size)}"></div>
           </div>
         </div>
       `).join('')}
@@ -9772,7 +9747,7 @@ async function toMiSubmitAll() {
   const project = projectSel ? projectSel.value : TO_PLAN_PROJECT;
   const rows = TO_MI_DRAFT.rows.filter(r => r.name.trim());
   if (!rows.length) { msg.className = 'msg err'; msg.textContent = 'محتاج تكتب اسم بند واحد على الأقل'; return; }
-  const items = rows.map(r => ({ project, name: r.name.trim(), qty: r.qty.trim(), length: r.length.trim(), width: r.width.trim(), height: r.height.trim(), depth: r.depth.trim() }));
+  const items = rows.map(r => ({ project, name: r.name.trim(), size: r.size.trim(), qty: r.qty.trim() }));
   const addBtn = document.getElementById('to_mi_add');
   addBtn.disabled = true; const oldLabel = addBtn.textContent; addBtn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
   msg.className = 'msg'; msg.textContent = '';
@@ -9843,7 +9818,7 @@ function toReportCraftsmanHtml_(c){
           ${it.title ? `<div style="font-weight:700;font-size:13.5px;margin-bottom:3px;">${qEsc(it.title)}</div>` : ''}
           ${it.details ? `<div style="font-size:12.5px;color:var(--muted);margin-bottom:3px;">${qEsc(it.details)}</div>` : ''}
           <div class="wf-item-row">
-            ${fmtDims(it) ? `<span><b>المقاس:</b> ${qEsc(fmtDims(it))}</span>` : ''}
+            ${it.sizes ? `<span><b>المقاسات:</b> ${qEsc(it.sizes)}</span>` : ''}
             ${it.qty ? `<span><b>الكمية:</b> ${qEsc(it.qty)}</span>` : ''}
           </div>
           ${it.notes ? `<div style="font-size:12.5px;color:var(--muted);">📝 ${qEsc(it.notes)}</div>` : ''}
@@ -10216,7 +10191,7 @@ function miRenderItemsList() {
             </div>
           </div>
           <div class="item-meta">
-            ${fmtDims(it) ? `<span><b>المقاس:</b> ${qEsc(fmtDims(it))}</span>` : ''}
+            ${it.size ? `<span><b>المقاس:</b> ${qEsc(it.size)}</span>` : ''}
             ${it.unit ? `<span><b>الوحدة:</b> ${qEsc(it.unit)}</span>` : ''}
             ${it.qty ? `<span><b>الكمية:</b> ${qEsc(it.qty)}</span>` : ''}
           </div>
@@ -10447,10 +10422,7 @@ function matCardHtml_(m){
     <div class="panel mat-card" data-mat-id="${qEsc(m.id)}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
         <h4 style="margin:0;">${qEsc(m.name)}</h4>
-        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-          <span style="font-size:11px;color:var(--muted);background:var(--cream);border-radius:20px;padding:2px 10px;white-space:nowrap;">${qEsc(m.status)}</span>
-          <button type="button" class="btn btn-sm btn-danger" title="حذف الخامة" onclick="matDeleteConfirm('${qEscJs(m.id)}','${qEscJs(m.name)}')">✕</button>
-        </div>
+        <span style="font-size:11px;color:var(--muted);background:var(--cream);border-radius:20px;padding:2px 10px;white-space:nowrap;">${qEsc(m.status)}</span>
       </div>
       <div style="font-size:12.5px;color:var(--muted);margin:6px 0 4px;">
         المتبقي: <b style="color:var(--dark);">${fmt(m.remainingQty)} ${qEsc(m.unit)}</b> من أصل <b>${fmt(m.originalQty)} ${qEsc(m.unit)}</b>
@@ -10471,10 +10443,10 @@ function matCardHtml_(m){
             </span>
             <span class="et-chev">&#9662;</span>
           </button>
-          <div class="to-extra-body ${detailsOpen?'open':''}" id="mat-details-body-${idSuffix}" style="display:flex;flex-direction:column;">
-            <div class="field" style="width:100%;"><label>ليه (الوصف) *</label><input type="text" class="d-input" id="mat-use-desc-${idSuffix}" placeholder="مثال: دهان غرفة النوم" required></div>
-            <div class="field" style="width:100%;"><label>المشروع *</label><input type="text" class="d-input" list="mat-proj-list" id="mat-use-proj-${idSuffix}" placeholder="اختار أو اكتب مشروع" required></div>
-            <div class="field" style="width:100%;"><label>التاريخ</label><input type="date" class="d-input" id="mat-use-date-${idSuffix}" autocomplete="off" value="${todayStr()}"></div>
+          <div class="to-extra-body ${detailsOpen?'open':''}" id="mat-details-body-${idSuffix}">
+            <div class="field"><label>ليه (الوصف) *</label><input type="text" class="d-input" id="mat-use-desc-${idSuffix}" placeholder="مثال: دهان غرفة النوم" required></div>
+            <div class="field"><label>المشروع *</label><input type="text" class="d-input" list="mat-proj-list" id="mat-use-proj-${idSuffix}" placeholder="اختار أو اكتب مشروع" required></div>
+            <div class="field"><label>التاريخ</label><input type="date" class="d-input" id="mat-use-date-${idSuffix}" autocomplete="off" value="${todayStr()}"></div>
           </div>
 
           <button type="button" class="btn btn-outline btn-sm" style="margin-top:8px;" id="mat-use-btn-${idSuffix}" onclick="matLogUsage('${qEscJs(m.id)}')">تسجيل استخدام</button>
@@ -10564,17 +10536,6 @@ async function matLogUsage(materialId){
     setTimeout(matRenderGrid, res.finished ? 900 : 0);
   } catch (err) { msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
   finally { if (btn) { btn.disabled = false; btn.textContent = 'تسجيل استخدام'; } }
-}
-
-async function matDeleteConfirm(materialId, materialName){
-  if (!(await openGenConfirm(`متأكد إنك عاوز تمسح خامة "${materialName}"؟ هيتمسح معاها كل سجلات الاستخدام بتاعتها.`, 'حذف الخامة'))) return;
-  try {
-    const res = await apiPost('deleteMaterial', { id: materialId });
-    if (!res.success) { showToast('خطأ: ' + (res.error || 'حصل خطأ'), 'error'); return; }
-    const { materials } = await apiGet('listMaterials');
-    MATSTATE.materials = materials || [];
-    matRenderGrid();
-  } catch (err) { showToast('خطأ: ' + (err.message || err), 'error'); }
 }
 
 async function matShowHistory(materialId, materialName){
