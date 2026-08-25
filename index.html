@@ -205,6 +205,8 @@
   .to-extra-body.open{ max-height:600px; opacity:1; padding:16px 14px 4px; }
   .to-bs-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px 14px; }
   @media(max-width:520px){ .to-bs-grid{ grid-template-columns:1fr; } }
+  .to-size-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px 14px; }
+  @media(max-width:520px){ .to-size-grid{ grid-template-columns:1fr 1fr; } }
 
   .to-wf-item{ border-top:1px dashed var(--border); padding:9px 8px 9px 0; position:relative; border-radius:8px; transition:background .2s; }
   .to-wf-item:first-child{ border-top:none; }
@@ -7715,9 +7717,9 @@ function qRenderRows(){
       <td data-label="المطلوب تنفيذه"><textarea placeholder="اكتب وصف العمل هنا..." oninput="qSetField(${r._id},'description',this.value)">${qEsc(r.description)}</textarea></td>
       <td data-label="عدد" style="white-space:nowrap;">
         <div style="display:flex;align-items:center;gap:6px;">
-          <button type="button" class="btn btn-sm" title="نقص 1" onmousedown="event.preventDefault();" onclick="qStepQty(${r._id},-1)" style="padding:6px 11px;">−</button>
+          <button type="button" class="btn btn-sm" onmousedown="event.preventDefault();" onclick="qStepQty(${r._id},-1)" style="padding:6px 11px;">−</button>
           <input autocomplete="off" type="text" class="ltr-num" data-qty-input="${r._id}" inputmode="numeric" value="${r.qty}" oninput="qSetNumField(${r._id},'qty',this.value)" onkeypress="return /[0-9.]/.test(event.key)" style="width:56px;text-align:center;">
-          <button type="button" class="btn btn-sm" title="زود 1" onmousedown="event.preventDefault();" onclick="qStepQty(${r._id},1)" style="padding:6px 11px;">+</button>
+          <button type="button" class="btn btn-sm" onmousedown="event.preventDefault();" onclick="qStepQty(${r._id},1)" style="padding:6px 11px;">+</button>
         </div>
       </td>
       <td data-label="السعر"><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" value="${r.price}" oninput="qSetNumField(${r._id},'price',this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
@@ -7782,7 +7784,7 @@ function qRenderEditor(){
         <table class="q-tbl q-items-tbl">
           <thead><tr>
             <th style="width:34px;">#</th><th style="width:150px;">النموذج</th><th style="width:160px;">الوحدة</th>
-            <th style="width:340px;">المطلوب تنفيذه</th><th style="width:100px;">عدد</th><th style="width:110px;">السعر</th>
+            <th style="width:340px;">المطلوب تنفيذه</th><th style="width:180px;">عدد</th><th style="width:110px;">السعر</th>
             <th style="width:120px;">الإجمالي</th><th style="width:170px;">ملاحظات</th><th style="width:110px;"></th>
           </tr></thead>
           <tbody id="q-body"></tbody>
@@ -9237,6 +9239,7 @@ function toRenderDailyForm() {
         <div class="field"><label>المطلوب</label><input class="d-input" id="to_title" placeholder="مثال: تركيب أبواب"></div>
       </div>
       <div class="field"><label>فيد باك / آخر حالة الشغل</label><input class="d-input" id="to_feedback" placeholder="مثال: خلص 3 من 5 أبواب"></div>
+      <div class="field"><label>ملاحظات</label><input class="d-input" id="to_notes" placeholder="ملاحظات"></div>
 
       <button type="button" class="to-extra-toggle ${TO_STATE.moreOpen?'open':''}" id="toExtraToggleBtn" aria-expanded="${TO_STATE.moreOpen?'true':'false'}">
         <span class="et-left">
@@ -9250,10 +9253,17 @@ function toRenderDailyForm() {
         <div class="to-bs-grid">
           <div class="field"><label>التخصص</label><input class="d-input" id="to_specialty" list="to-dl-spec" placeholder="التخصص"><datalist id="to-dl-spec">${WORKFLOW_SPECIALTIES_FALLBACK.map(s => `<option value="${qEsc(s)}">`).join('')}</datalist></div>
           <div class="field"><label>الحضور</label><input class="d-input" id="to_attendance" placeholder="8ص"></div>
-          <div class="field"><label>المقاسات</label><input class="d-input" id="to_sizes" placeholder="المقاسات"></div>
           <div class="field"><label>الكمية</label><input class="d-input" id="to_qty" placeholder="الكمية"></div>
           <div class="field"><label>اشراف</label><input class="d-input" id="to_supervision" placeholder="اشراف"></div>
-          <div class="field"><label>ملاحظات</label><input class="d-input" id="to_notes" placeholder="ملاحظات"></div>
+        </div>
+        <div class="field" style="margin-top:4px;">
+          <label>المقاسات</label>
+          <div class="to-size-grid">
+            <input class="d-input" id="to_size_length" placeholder="الطول">
+            <input class="d-input" id="to_size_width" placeholder="العرض">
+            <input class="d-input" id="to_size_height" placeholder="الارتفاع">
+            <input class="d-input" id="to_size_depth" placeholder="العمق">
+          </div>
         </div>
       </div>
 
@@ -9380,6 +9390,12 @@ async function toSaveEntry() {
   const project = document.getElementById('to_project').value.trim();
   if (!craftsman) { msg.className = 'msg err'; msg.textContent = 'اختار الصنيعي الأول'; return; }
   if (!project) { msg.className = 'msg err'; msg.textContent = 'محتاج تكتب اسم المشروع'; return; }
+  const dims = [
+    ['الطول', document.getElementById('to_size_length')?.value.trim() || ''],
+    ['العرض', document.getElementById('to_size_width')?.value.trim() || ''],
+    ['الارتفاع', document.getElementById('to_size_height')?.value.trim() || ''],
+    ['العمق', document.getElementById('to_size_depth')?.value.trim() || ''],
+  ].filter(([, v]) => v).map(([lbl, v]) => `${lbl}: ${v}`).join(' × ');
   const entry = {
     date: TO_STATE.formDate, craftsman, project,
     location: document.getElementById('to_location').value.trim(),
@@ -9387,7 +9403,7 @@ async function toSaveEntry() {
     feedback: document.getElementById('to_feedback').value.trim(),
     specialty: document.getElementById('to_specialty')?.value.trim() || '',
     attendance: document.getElementById('to_attendance')?.value.trim() || '',
-    sizes: document.getElementById('to_sizes')?.value.trim() || '',
+    sizes: dims,
     qty: document.getElementById('to_qty')?.value.trim() || '',
     supervision: document.getElementById('to_supervision')?.value.trim() || '',
     notes: document.getElementById('to_notes')?.value.trim() || '',
