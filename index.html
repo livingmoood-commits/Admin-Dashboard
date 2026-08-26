@@ -658,6 +658,9 @@
   .mat-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; }
   .mat-card{ padding:14px; }
   .mat-progress{ background:var(--cream); border-radius:20px; height:9px; overflow:hidden; margin-top:2px; }
+  .mat-icon-btn{ all:unset; cursor:pointer; font-size:14px; line-height:1; padding:4px 6px; border-radius:8px; transition:background .15s; }
+  .mat-icon-btn:hover{ background:var(--cream); }
+  .mat-hist-row-actions{ display:flex; gap:4px; }
   .mat-progress-fill{ height:100%; border-radius:20px; transition:width .3s; }
   .mat-usage-form{ margin-top:10px; padding-top:10px; border-top:1px dashed var(--border); display:flex; flex-direction:column; gap:8px; }
   .mat-usage-form .field label{ font-size:11px; color:var(--muted); margin-bottom:2px; display:block; }
@@ -1651,6 +1654,14 @@ async function apiGet(action, params) {
   if (cached && (Date.now() - cached.t) < API_CACHE_TTL_MS) return cached.data;
 
   const qs = new URLSearchParams({ action, ...Object.fromEntries(Object.entries(params).map(([k,v]) => [k, typeof v === 'object' ? JSON.stringify(v) : v])) });
+  // ⚠️ إصلاح 404/إبطاء متكرر على echo: لما كذا طلب GET يضربوا بنفس الـ URL بالظبط في
+  // نفس اللحظة (أي صفحة بتعمل Promise.all لأكتر من apiGet مع بعض)، المتصفح أحيانًا
+  // بيتعامل معاهم كأنهم "نفس الطلب" على مستوى الشبكة وبيصطدموا على رابط الـ echo
+  // المؤقت (single-use) بتاع Apps Script، فيرجع 404 لواحد منهم رغم إن السيرفر شغال
+  // تمام — وده اللي بيظهر في الكونسول وبيبطّئ التحميل (كل تصادم بيحتاج إعادة محاولة).
+  // إضافة باراميتر عشوائي فريد لكل طلب (مش جزء من مفتاح الكاش الداخلي) بتضمن إن كل
+  // URL فريد فعليًا، فمفيش تصادم من الأساس.
+  qs.set('_r', Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
   const url = API_URL + '?' + qs.toString();
 
   // 2) كاش دائم (localStorage) — حتى لو قديم، اعرضه فورًا (مفيش استنى للسيرفر خالص)
@@ -1684,7 +1695,10 @@ async function apiPost(action, payload) {
   // اتنفذ في السيرفر قبل كده، السيرفر هيرجع نفس النتيجة القديمة تاني من غير
   // ما يكرر الكتابة في الشيت.
   const requestId = _genRequestId();
-  const data = await _apiFetch(API_URL, {
+  // نفس منطق الـ nonce في الـ GET (شوف الشرح فوق) — هنا كمان عشان لو المستخدم دوس
+  // حفظ في كذا تبويب/فورم قريبين من بعض، الطلبات متتصدمش على نفس رابط الـ echo.
+  const postUrl = API_URL + '?_r=' + (Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
+  const data = await _apiFetch(postUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // بيتفادى CORS preflight
     body: JSON.stringify({ action, actor, requestId, ...payload })
@@ -4934,11 +4948,14 @@ async function renderDailyExpenses(token) {
   try {
     const _draft = dLoadDraft();
     if (_draft && _draft.date) DSTATE.date = _draft.date;
-    const [{ projects }, log, { days }, empRes] = await Promise.all([
+    // ⚠️ إصلاح: كان listEmployees() هنا بيفتح شيت المرتبات (شيت تاني منفصل عن الشيت
+    // الأساسي) كجزء من التحميل الأول للصفحة، فده كان بيبطّئ فتح "مصاريف يومية" بشكل
+    // ملحوظ. دلوقتي بنجيب قايمة الموظفين بس أول مرة المستخدم يدوس على زرار 🧑 (ومنكاشها
+    // بعد كده) — صفحة المصاريف اليومية نفسها ماعادتش مستنية الشيت التاني خالص.
+    const [{ projects }, log, { days }] = await Promise.all([
       apiGet('listProjects'),
       apiGet('getDailyExpenses', { date: DSTATE.date }),
-      apiGet('listDailyExpenseDays'),
-      apiGet('listEmployees')
+      apiGet('listDailyExpenseDays')
     ]);
     if (isStaleNav(token)) return;
     DSTATE.rows = _draft ? _draft.rows : [dNewRow(), dNewRow(), dNewRow()];
@@ -4946,7 +4963,7 @@ async function renderDailyExpenses(token) {
     DPROJECT_NAMES = Array.from(new Set(
       ['مصروفات عامة', ...projects].map(p => String(p || '').trim()).filter(Boolean)
     ));
-    DEMPLOYEE_NAMES = (empRes.employees || []).map(e => String(e.name || '').trim()).filter(Boolean);
+    DEMPLOYEE_NAMES = []; DEMPLOYEE_NAMES_LOADED = false;
     document.getElementById('content').innerHTML = `
       <div class="panel">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
@@ -5079,6 +5096,7 @@ async function dLoadDayLog(dateStr){
 }
 let DPROJECT_NAMES = [];
 let DEMPLOYEE_NAMES = []; // ⚠️ إضافة: أسماء الموظفين — لزرار 🧑 اللي بيكتب "(الاسم) - مسحوبات" في خانة الوصف
+let DEMPLOYEE_NAMES_LOADED = false; // بنجيبها كسلًا (lazy) أول مرة تدوس على 🧑 بس، مش وقت فتح الصفحة
 const D_QUICK_TAGS = ['مسحوبات', 'مسحوبات ش ق', 'مرتبات', 'أكل', 'مشتريات', 'صيانة', 'مواصلات', 'بنزين', 'أخرى'];
 const D_QUICK_TAG_ICONS = { 'مسحوبات':'💸', 'مسحوبات ش ق':'🗓️', 'مرتبات':'💰', 'أكل':'🍔', 'مشتريات':'🛒', 'صيانة':'🔧', 'مواصلات':'🚗',  'بنزين':'⛽', 'أخرى':'✨' };
 function dRenderRows(){
@@ -5325,6 +5343,37 @@ function dToggleEmployeeTag(id, btnEl){
   const wasOpenForThisRow = box.classList.contains('open') && String(box.dataset.rowId) === String(id);
   dCloseAllQuickTags();
   if (wasOpenForThisRow) return;
+  box.dataset.rowId = id;
+  const position = () => {
+    const r = btnEl.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - r.bottom;
+    const openUp = spaceBelow < 200 && r.top > spaceBelow;
+    box.style.left = ''; box.style.right = '';
+    box.style.right = (window.innerWidth - r.right) + 'px';
+    if (openUp){ box.style.top = ''; box.style.bottom = (window.innerHeight - r.top + 6) + 'px'; }
+    else { box.style.bottom = ''; box.style.top = (r.bottom + 6) + 'px'; }
+  };
+  if (!DEMPLOYEE_NAMES_LOADED){
+    box.innerHTML = '<div class="d-pop-hint" style="border-top:none;">جاري تحميل الموظفين...</div>';
+    position();
+    box.classList.add('open');
+    btnEl.classList.add('open');
+    apiGet('listEmployees').then(res => {
+      DEMPLOYEE_NAMES = (res.employees || []).map(e => String(e.name || '').trim()).filter(Boolean);
+      DEMPLOYEE_NAMES_LOADED = true;
+      // لو المستخدم لسه واقف فاتح نفس الصف، حدّث المحتوى بعد ما توصل البيانات
+      if (box.classList.contains('open') && String(box.dataset.rowId) === String(id)) dRenderEmployeeList_(box, id);
+    }).catch(err => {
+      box.innerHTML = `<div class="d-pop-hint" style="border-top:none;">تعذّر تحميل الموظفين: ${qEsc(err.message || err)}</div>`;
+    });
+    return;
+  }
+  dRenderEmployeeList_(box, id);
+  position();
+  box.classList.add('open');
+  btnEl.classList.add('open');
+}
+function dRenderEmployeeList_(box, id){
   if (!DEMPLOYEE_NAMES.length){
     box.innerHTML = '<div class="d-pop-hint" style="border-top:none;">مفيش موظفين متسجلين</div>';
   } else {
@@ -5332,16 +5381,6 @@ function dToggleEmployeeTag(id, btnEl){
       `<div class="d-quick-item" onmousedown="event.preventDefault();dPickEmployeeTag(${id}, '${name.replace(/'/g, "\\'")}')"><span class="d-pop-icon">🧑</span><span class="d-pop-label">${qEsc(name)}</span></div>`
     ).join('') + '</div><div class="d-pop-hint">هيتكتب: الاسم - مسحوبات</div>';
   }
-  box.dataset.rowId = id;
-  const r = btnEl.getBoundingClientRect();
-  const spaceBelow = window.innerHeight - r.bottom;
-  const openUp = spaceBelow < 200 && r.top > spaceBelow;
-  box.style.left = ''; box.style.right = '';
-  box.style.right = (window.innerWidth - r.right) + 'px';
-  if (openUp){ box.style.top = ''; box.style.bottom = (window.innerHeight - r.top + 6) + 'px'; }
-  else { box.style.bottom = ''; box.style.top = (r.bottom + 6) + 'px'; }
-  box.classList.add('open');
-  btnEl.classList.add('open');
 }
 function dPickEmployeeTag(id, name){
   dCloseAllQuickTags();
@@ -9141,9 +9180,9 @@ async function renderTaskOrganize(token) {
     document.getElementById('content').innerHTML = `
       <div id="to-stat-strip"></div>
       <div class="to-tabs" id="toTabs">
-        <button data-t="daily" class="active"><span class="ico">&#128221;</span>شغل يومي</button>
-        <button data-t="week"><span class="ico">&#128197;</span>اسبوعي</button>
-        <button data-t="plan"><span class="ico">&#128230;</span>تايم بلاننج</button>
+        <button data-t="daily" class="${TO_STATE.activeTab==='daily'?'active':''}"><span class="ico">&#128221;</span>شغل يومي</button>
+        <button data-t="week" class="${TO_STATE.activeTab==='week'?'active':''}"><span class="ico">&#128197;</span>اسبوعي</button>
+        <button data-t="plan" class="${TO_STATE.activeTab==='plan'?'active':''}"><span class="ico">&#128230;</span>تايم بلاننج</button>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 4px;">
         <button type="button" class="btn btn-outline btn-sm" id="toOpenDailyReportBtn">📋 تقرير يومي</button>
@@ -9348,6 +9387,7 @@ function toRenderDailyForm() {
         <div class="field"><label>المطلوب</label><input class="d-input" id="to_title" placeholder="مثال: تركيب أبواب"></div>
       </div>
       <div class="field"><label>فيد باك / آخر حالة الشغل</label><input class="d-input" id="to_feedback" placeholder="مثال: خلص 3 من 5 أبواب"></div>
+      <div class="field"><label>ملاحظات</label><input class="d-input" id="to_notes" placeholder="ملاحظات"></div>
 
       <button type="button" class="to-extra-toggle ${TO_STATE.moreOpen?'open':''}" id="toExtraToggleBtn" aria-expanded="${TO_STATE.moreOpen?'true':'false'}">
         <span class="et-left">
@@ -9363,7 +9403,6 @@ function toRenderDailyForm() {
           <div class="field"><label>الحضور</label><input class="d-input" id="to_attendance" placeholder="8ص"></div>
           <div class="field"><label>الكمية</label><input class="d-input" id="to_qty" placeholder="الكمية"></div>
           <div class="field"><label>اشراف</label><input class="d-input" id="to_supervision" placeholder="اشراف"></div>
-          <div class="field"><label>ملاحظات</label><input class="d-input" id="to_notes" placeholder="ملاحظات"></div>
           <div class="field wf-form-full" style="grid-column:1/-1;">
             <label>المقاسات (كل خانة اختيارية)</label>
             <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
@@ -9813,7 +9852,7 @@ function toRenderPlanBody(items) {
    ولحد ما تدوس "حفظ" يتضافوا كلهم مرة واحدة. المقاس اتحط جوه "تفاصيل" مقفولة
    افتراضيًا زي حقول "شغل يومي" الإضافية، عشان الفورم يفضل بسيط. ═══ */
 let TO_MI_DRAFT = { rows: [] };
-function toMiNewRow() { return { id: 'r' + Math.random().toString(36).slice(2, 9), name: '', qty: '', sizeLength: '', sizeWidth: '', sizeHeight: '', sizeDepth: '', detailsOpen: false }; }
+function toMiNewRow() { return { id: 'r' + Math.random().toString(36).slice(2, 9), name: '', qty: '', notes: '', sizeLength: '', sizeWidth: '', sizeHeight: '', sizeDepth: '', detailsOpen: false }; }
 // بتجمع 4 حقول المقاس (طول/عرض/ارتفاع/عمق) — كل واحد اختياري — في نص واحد للحفظ في عمود "المقاس"
 function toMiSizeString_(r){
   const parts = [];
@@ -9839,6 +9878,7 @@ function toRenderMiAddBox() {
             <div class="field"><label>اسم البند</label><input class="d-input" data-rowfield="name" data-rowid="${r.id}" placeholder="مثال: كوع ألوميتال 90 درجة" value="${qEsc(r.name)}"></div>
             <div class="field"><label>الكمية</label><input class="d-input" data-rowfield="qty" data-rowid="${r.id}" placeholder="مثال: 12" value="${qEsc(r.qty)}"></div>
           </div>
+          <div class="field"><label>ملاحظات</label><input class="d-input" data-rowfield="notes" data-rowid="${r.id}" placeholder="أي تفاصيل إضافية..." value="${qEsc(r.notes)}"></div>
           <button type="button" class="to-extra-toggle ${r.detailsOpen?'open':''}" data-toggledetails="${r.id}" aria-expanded="${r.detailsOpen?'true':'false'}">
             <span class="et-left">
               <span class="et-icon">${r.detailsOpen?'−':'+'}</span>
@@ -9903,7 +9943,7 @@ async function toMiSubmitAll() {
   const project = projectSel ? projectSel.value : TO_PLAN_PROJECT;
   const rows = TO_MI_DRAFT.rows.filter(r => r.name.trim());
   if (!rows.length) { msg.className = 'msg err'; msg.textContent = 'محتاج تكتب اسم بند واحد على الأقل'; return; }
-  const items = rows.map(r => ({ project, name: r.name.trim(), size: toMiSizeString_(r), qty: r.qty.trim() }));
+  const items = rows.map(r => ({ project, name: r.name.trim(), size: toMiSizeString_(r), qty: r.qty.trim(), notes: r.notes.trim() }));
   const addBtn = document.getElementById('to_mi_add');
   addBtn.disabled = true; const oldLabel = addBtn.textContent; addBtn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
   msg.className = 'msg'; msg.textContent = '';
@@ -10581,7 +10621,7 @@ async function miSaveAllPending() {
  * ⚠️ إضافة 2026-08-24. تبويبين: "شغالة" (فيها فورم تسجيل استخدام لكل خامة)
  * و"خلصت" (أرشيف — الخامة والاستخدامات بتاعتها بيفضلوا محفوظين، بس متحركش
  * فيهم؛ تقدر تدوس عليها تشوف سجل الاستخدام بالكامل). */
-const MATSTATE = { tab: 'active', materials: [], projects: [], detailsOpen: {} };
+const MATSTATE = { tab: 'active', materials: [], projects: [] };
 
 async function renderMaterials(token){
   // ⚠️ إضافة: مفيش داعي نمسح الشاشة ونعرض "جاري التحميل" في كل مرة تفتح فيها الصفحة —
@@ -10642,12 +10682,15 @@ function matRenderGrid(){
 function matCardHtml_(m){
   const pctColor = m.usedPct >= 90 ? 'var(--red)' : m.usedPct >= 60 ? '#b8860b' : 'var(--green)';
   const idSuffix = qId2_(m.id);
-  const detailsOpen = !!MATSTATE.detailsOpen[m.id];
   return `
     <div class="panel mat-card" data-mat-id="${qEsc(m.id)}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
         <h4 style="margin:0;">${qEsc(m.name)}</h4>
-        <span style="font-size:11px;color:var(--muted);background:var(--cream);border-radius:20px;padding:2px 10px;white-space:nowrap;">${qEsc(m.status)}</span>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+          <span style="font-size:11px;color:var(--muted);background:var(--cream);border-radius:20px;padding:2px 10px;white-space:nowrap;">${qEsc(m.status)}</span>
+          <button type="button" class="mat-icon-btn" title="تعديل الخامة" onclick="matOpenEditModal('${qEscJs(m.id)}')">✏️</button>
+          <button type="button" class="mat-icon-btn" title="حذف الخامة (وكل سجل استخدامها)" onclick="matConfirmDelete('${qEscJs(m.id)}','${qEscJs(m.name)}')">🗑️</button>
+        </div>
       </div>
       <div style="font-size:12.5px;color:var(--muted);margin:6px 0 4px;">
         المتبقي: <b style="color:var(--dark);">${fmt(m.remainingQty)} ${qEsc(m.unit)}</b> من أصل <b>${fmt(m.originalQty)} ${qEsc(m.unit)}</b>
@@ -10659,20 +10702,10 @@ function matCardHtml_(m){
       ${m.status !== 'خلصت' ? `
         <div class="mat-usage-form">
           <div class="field"><label>الكمية المستخدمة</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="mat-use-amt-${idSuffix}" placeholder="مثال: 2" onkeypress="return /[0-9.]/.test(event.key)"></div>
-
-          <button type="button" class="to-extra-toggle ${detailsOpen?'open':''}" id="mat-details-toggle-${idSuffix}" onclick="matToggleDetails('${qEscJs(m.id)}')" aria-expanded="${detailsOpen?'true':'false'}">
-            <span class="et-left">
-              <span class="et-icon">${detailsOpen?'−':'+'}</span>
-              <span class="et-text">تفاصيل الاستخدام</span>
-              <span class="et-hint" style="color:var(--red);">مطلوبة (الوصف، المشروع)</span>
-            </span>
-            <span class="et-chev">&#9662;</span>
-          </button>
-          <div class="to-extra-body ${detailsOpen?'open':''}" id="mat-details-body-${idSuffix}">
-            <div class="field"><label>ليه (الوصف) *</label><input type="text" class="d-input" id="mat-use-desc-${idSuffix}" placeholder="مثال: دهان غرفة النوم" required></div>
-            <div class="field"><label>المشروع *</label><input type="text" class="d-input" list="mat-proj-list" id="mat-use-proj-${idSuffix}" placeholder="اختار أو اكتب مشروع" required></div>
-            <div class="field"><label>التاريخ</label><input type="date" class="d-input" id="mat-use-date-${idSuffix}" autocomplete="off" value="${todayStr()}"></div>
-          </div>
+          <div class="field"><label>ليه (الوصف) *</label><input type="text" class="d-input" id="mat-use-desc-${idSuffix}" placeholder="مثال: دهان غرفة النوم" required></div>
+          <div class="field"><label>المشروع *</label><input type="text" class="d-input" list="mat-proj-list" id="mat-use-proj-${idSuffix}" placeholder="اختار أو اكتب مشروع" required></div>
+          <div class="field"><label>التاريخ</label><input type="date" class="d-input" id="mat-use-date-${idSuffix}" autocomplete="off" value="${todayStr()}"></div>
+          <div class="field"><label>ملاحظة (اختياري)</label><input type="text" class="d-input" id="mat-use-notes-${idSuffix}" placeholder="أي تفاصيل إضافية..."></div>
 
           <button type="button" class="btn btn-outline btn-sm" style="margin-top:8px;" id="mat-use-btn-${idSuffix}" onclick="matLogUsage('${qEscJs(m.id)}')">تسجيل استخدام</button>
           <button type="button" class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="matShowHistory('${qEscJs(m.id)}','${qEscJs(m.name)}')">📜 عرض تفاصيل الاستخدام المسجلة</button>
@@ -10684,25 +10717,70 @@ function matCardHtml_(m){
     </div>`;
 }
 
-// فتح/قفل بلوك "تفاصيل الاستخدام" — بيبدّل الكلاسات في الـDOM مباشرة من غير
-// إعادة رسم الكارت كله، عشان لو المستخدم كاتب حاجة في "الكمية المستخدمة"
-// قبل ما يفتح التفاصيل، الكتابة متتمسحش.
-function matToggleDetails(id){
-  const idSuffix = qId2_(id);
-  const btn = document.getElementById('mat-details-toggle-' + idSuffix);
-  const body = document.getElementById('mat-details-body-' + idSuffix);
-  if (!btn || !body) return;
-  const isOpen = body.classList.toggle('open');
-  btn.classList.toggle('open', isOpen);
-  btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-  const icon = btn.querySelector('.et-icon');
-  if (icon) icon.textContent = isOpen ? '−' : '+';
-  MATSTATE.detailsOpen[id] = isOpen;
-}
-
 // معرّف HTML-safe من id الخامة (زي qId بتاعة مسحوبات الشركاء بس أعم)
 function qId2_(id){ return 'm' + String(id).replace(/[^a-zA-Z0-9]/g, '_'); }
 
+// ⚠️ إضافة: تعديل بيانات خامة موجودة (اسم/وحدة/الكمية الأصلية/تاريخ الشراء)
+function matOpenEditModal(materialId){
+  const m = MATSTATE.materials.find(x => x.id === materialId); if (!m) return;
+  openCardModal(`
+    <div class="cd-head"><h3>✏️ تعديل: ${qEsc(m.name)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div class="field"><label>اسم الخامة</label><input class="d-input" id="mat-edit-name" value="${qEsc(m.name)}"></div>
+    <div class="field"><label>الوحدة</label><input class="d-input" id="mat-edit-unit" value="${qEsc(m.unit)}"></div>
+    <div class="field"><label>الكمية الأصلية</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="mat-edit-qty" value="${m.originalQty}" onkeypress="return /[0-9.]/.test(event.key)"></div>
+    <div class="field"><label>تاريخ الشراء</label><input type="date" class="d-input" id="mat-edit-pdate" value="${m.addedDate}"></div>
+    <div style="font-size:11.5px;color:var(--muted);margin:4px 0 10px;">تغيير الكمية الأصلية بيحرّك "المتبقي" بنفس الفرق، وسجل الاستخدام القديم مايتلمسش.</div>
+    <button type="button" class="btn btn-primary" id="mat-edit-save-btn" onclick="matSaveEdit('${qEscJs(materialId)}')">حفظ التعديل</button>
+    <div class="msg" id="mat-edit-msg"></div>
+  `);
+}
+async function matSaveEdit(materialId){
+  const name = document.getElementById('mat-edit-name').value.trim();
+  const unit = document.getElementById('mat-edit-unit').value.trim();
+  const qty = document.getElementById('mat-edit-qty').value.trim();
+  const purchaseDate = document.getElementById('mat-edit-pdate').value;
+  const msg = document.getElementById('mat-edit-msg');
+  const btn = document.getElementById('mat-edit-save-btn');
+  if (!name || !unit || !qty) { msg.className = 'msg err'; msg.textContent = 'كل الخانات مطلوبة'; return; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...'; }
+  try {
+    const res = await apiPost('updateMaterial', { item: { id: materialId, name, unit, qty, purchaseDate } });
+    if (!res.success) { msg.className = 'msg err'; msg.textContent = res.error || 'حصل خطأ'; return; }
+    closeCardModal();
+    showToast('✅ اتعدلت الخامة');
+    const { materials } = await apiGet('listMaterials');
+    MATSTATE.materials = materials || [];
+    matRenderGrid();
+  } catch (err) { msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = 'حفظ التعديل'; } }
+}
+// ⚠️ إضافة: تأكيد قبل حذف خامة كاملة (بيمسح سجل استخدامها كله معاها كمان)
+function matConfirmDelete(materialId, materialName){
+  openCardModal(`
+    <div class="cd-head"><h3>🗑️ حذف: ${qEsc(materialName)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div style="margin-bottom:14px;">متأكد إنك عايز تحذف الخامة دي؟ هيتمسح معاها كل سجل الاستخدام بتاعها كمان — الخطوة دي مينفعش تترجع.</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn btn-sm btn-outline" onclick="closeCardModal()">إلغاء</button>
+      <button class="btn btn-sm btn-danger" id="mat-delete-confirm-btn" onclick="matDoDelete('${qEscJs(materialId)}')">تأكيد الحذف</button>
+    </div>
+    <div class="msg" id="mat-delete-msg"></div>
+  `);
+}
+async function matDoDelete(materialId){
+  const btn = document.getElementById('mat-delete-confirm-btn');
+  const msg = document.getElementById('mat-delete-msg');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحذف...'; }
+  try {
+    const res = await apiPost('deleteMaterial', { materialId });
+    if (!res.success) { msg.className = 'msg err'; msg.textContent = res.error || 'حصل خطأ'; return; }
+    closeCardModal();
+    showToast('🗑️ اتحذفت الخامة');
+    const { materials } = await apiGet('listMaterials');
+    MATSTATE.materials = materials || [];
+    matRenderGrid();
+  } catch (err) { msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = 'تأكيد الحذف'; } }
+}
 async function matAddMaterial(){
   const nameEl = document.getElementById('mat-new-name');
   const unitEl = document.getElementById('mat-new-unit');
@@ -10734,15 +10812,16 @@ async function matLogUsage(materialId){
   const descEl = document.getElementById('mat-use-desc-' + idSuffix);
   const projEl = document.getElementById('mat-use-proj-' + idSuffix);
   const dateEl = document.getElementById('mat-use-date-' + idSuffix);
+  const notesEl = document.getElementById('mat-use-notes-' + idSuffix);
   const msg = document.getElementById('mat-use-msg-' + idSuffix);
   const btn = document.getElementById('mat-use-btn-' + idSuffix);
   const amount = amtEl.value.trim();
   const description = descEl.value.trim();
   const project = projEl.value.trim();
+  const notes = notesEl ? notesEl.value.trim() : '';
   if (!amount || Number(amount) <= 0) { msg.className = 'msg err'; msg.textContent = 'اكتب كمية أكبر من صفر'; return; }
-  // ⚠️ الوصف والمشروع بقوا مطلوبين — لو ناقصين، افتح بلوك "تفاصيل الاستخدام" (لو مقفول) وبيّن الخطأ
+  // الوصف والمشروع إلزاميين — الحقلين ظاهرين دايمًا في الفورم فمفيش داعي نفتح أي حاجة، بس نبيّن الخطأ ونفوكس على الناقص
   if (!description || !project) {
-    if (!MATSTATE.detailsOpen[materialId]) matToggleDetails(materialId);
     msg.className = 'msg err';
     msg.textContent = !description ? 'لازم تكتب وصف/سبب الاستخدام (ليه)' : 'لازم تختار أو تكتب المشروع';
     (!description ? descEl : projEl).focus();
@@ -10752,7 +10831,7 @@ async function matLogUsage(materialId){
   msg.className = 'msg'; msg.textContent = '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري التسجيل...'; }
   try {
-    const res = await apiPost('logMaterialUsage', { usage: { materialId, amount, description, project, date: (dateEl && dateEl.value) ? dateEl.value : todayStr() } });
+    const res = await apiPost('logMaterialUsage', { usage: { materialId, amount, description, project, notes, date: (dateEl && dateEl.value) ? dateEl.value : todayStr() } });
     if (!res.success) { msg.className = 'msg err'; msg.textContent = res.error || 'حصل خطأ'; return; }
     msg.className = 'msg ok';
     msg.textContent = res.finished ? '✅ اتسجل — والخامة خلصت، نقلناها لتبويب "خلصت"' : `✅ اتسجل — الباقي ${fmt(res.remainingQty)}`;
@@ -10763,29 +10842,103 @@ async function matLogUsage(materialId){
   finally { if (btn) { btn.disabled = false; btn.textContent = 'تسجيل استخدام'; } }
 }
 
+let MAT_HIST_STATE = { materialId: '', materialName: '', usage: [] };
 async function matShowHistory(materialId, materialName){
   openCardModal(`<div class="cd-head"><h3>📜 سجل استخدام: ${qEsc(materialName)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="loading-row">جاري التحميل...</div>`);
   try {
     const { usage } = await apiGet('listMaterialUsage', { materialId });
-    if (!usage || !usage.length) {
-      openCardModal(`<div class="cd-head"><h3>📜 سجل استخدام: ${qEsc(materialName)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="empty">مفيش استخدامات مسجلة</div>`);
-      return;
-    }
-    const rows = usage.map(u => `
-      <div class="mat-hist-row">
-        <div style="display:flex;justify-content:space-between;gap:8px;">
-          <b>${fmt(u.amount)}</b>
-          <span style="color:var(--muted);font-size:11.5px;">${qEsc(u.date)}</span>
-        </div>
-        ${u.project ? `<div style="font-size:12px;color:var(--muted);">المشروع: ${qEsc(u.project)}</div>` : ''}
-        ${u.description ? `<div style="font-size:12px;">${qEsc(u.description)}</div>` : ''}
-        ${u.by ? `<div style="font-size:10.5px;color:var(--muted);">بواسطة: ${qEsc(u.by)}</div>` : ''}
-      </div>`).join('');
-    openCardModal(`
-      <div class="cd-head"><h3>📜 سجل استخدام: ${qEsc(materialName)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
-      <div class="mat-hist-list">${rows}</div>
-    `);
+    MAT_HIST_STATE = { materialId, materialName, usage: usage || [] };
+    matRenderHistoryModal_();
   } catch (err) { showError(err); }
+}
+function matRenderHistoryModal_(){
+  const { materialId, materialName, usage } = MAT_HIST_STATE;
+  if (!usage || !usage.length) {
+    openCardModal(`<div class="cd-head"><h3>📜 سجل استخدام: ${qEsc(materialName)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="empty">مفيش استخدامات مسجلة</div>`);
+    return;
+  }
+  const rows = usage.map(u => `
+    <div class="mat-hist-row">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">
+        <b>${fmt(u.amount)}</b>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="color:var(--muted);font-size:11.5px;">${qEsc(u.date)}</span>
+          <div class="mat-hist-row-actions">
+            <button type="button" class="mat-icon-btn" title="تعديل" onclick="matHistEditOpen('${qEscJs(u.id)}')">✏️</button>
+            <button type="button" class="mat-icon-btn" title="حذف" onclick="matHistConfirmDelete('${qEscJs(u.id)}')">🗑️</button>
+          </div>
+        </div>
+      </div>
+      ${u.project ? `<div style="font-size:12px;color:var(--muted);">المشروع: ${qEsc(u.project)}</div>` : ''}
+      ${u.description ? `<div style="font-size:12px;">${qEsc(u.description)}</div>` : ''}
+      ${u.notes ? `<div style="font-size:11.5px;color:var(--muted);margin-top:2px;">📝 ${qEsc(u.notes)}</div>` : ''}
+      ${u.by ? `<div style="font-size:10.5px;color:var(--muted);">بواسطة: ${qEsc(u.by)}</div>` : ''}
+    </div>`).join('');
+  openCardModal(`
+    <div class="cd-head"><h3>📜 سجل استخدام: ${qEsc(materialName)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div class="mat-hist-list">${rows}</div>
+  `);
+}
+function matHistEditOpen(usageId){
+  const u = MAT_HIST_STATE.usage.find(x => x.id === usageId); if (!u) return;
+  openCardModal(`
+    <div class="cd-head"><h3>✏️ تعديل سطر استخدام</h3><button class="cd-close" onclick="matRenderHistoryModal_()">&times;</button></div>
+    <div class="field"><label>الكمية المستخدمة</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="mat-hist-edit-amt" value="${u.amount}" onkeypress="return /[0-9.]/.test(event.key)"></div>
+    <div class="field"><label>ليه (الوصف) *</label><input class="d-input" id="mat-hist-edit-desc" value="${qEsc(u.description)}"></div>
+    <div class="field"><label>المشروع *</label><input class="d-input" list="mat-proj-list" id="mat-hist-edit-proj" value="${qEsc(u.project)}"></div>
+    <div class="field"><label>التاريخ</label><input type="date" class="d-input" id="mat-hist-edit-date" value="${u.date}"></div>
+    <div class="field"><label>ملاحظة (اختياري)</label><input class="d-input" id="mat-hist-edit-notes" value="${qEsc(u.notes || '')}"></div>
+    <button type="button" class="btn btn-primary" id="mat-hist-edit-save-btn" onclick="matHistSaveEdit('${qEscJs(usageId)}')">حفظ التعديل</button>
+    <div class="msg" id="mat-hist-edit-msg"></div>
+  `);
+}
+async function matHistSaveEdit(usageId){
+  const amount = document.getElementById('mat-hist-edit-amt').value.trim();
+  const description = document.getElementById('mat-hist-edit-desc').value.trim();
+  const project = document.getElementById('mat-hist-edit-proj').value.trim();
+  const date = document.getElementById('mat-hist-edit-date').value;
+  const notes = document.getElementById('mat-hist-edit-notes').value.trim();
+  const msg = document.getElementById('mat-hist-edit-msg');
+  const btn = document.getElementById('mat-hist-edit-save-btn');
+  if (!amount || Number(amount) <= 0) { msg.className = 'msg err'; msg.textContent = 'اكتب كمية أكبر من صفر'; return; }
+  if (!description || !project) { msg.className = 'msg err'; msg.textContent = 'الوصف والمشروع مطلوبين'; return; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...'; }
+  try {
+    const res = await apiPost('updateMaterialUsage', { usage: { id: usageId, amount, description, project, date, notes } });
+    if (!res.success) { msg.className = 'msg err'; msg.textContent = res.error || 'حصل خطأ'; return; }
+    showToast('✅ اتعدل السطر');
+    const { materials } = await apiGet('listMaterials');
+    MATSTATE.materials = materials || [];
+    matRenderGrid();
+    await matShowHistory(MAT_HIST_STATE.materialId, MAT_HIST_STATE.materialName);
+  } catch (err) { msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = 'حفظ التعديل'; } }
+}
+function matHistConfirmDelete(usageId){
+  openCardModal(`
+    <div class="cd-head"><h3>🗑️ حذف سطر استخدام</h3><button class="cd-close" onclick="matRenderHistoryModal_()">&times;</button></div>
+    <div style="margin-bottom:14px;">متأكد؟ الكمية اللي في السطر ده هترجع للمخزون المتبقي تاني.</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn btn-sm btn-outline" onclick="matRenderHistoryModal_()">إلغاء</button>
+      <button class="btn btn-sm btn-danger" id="mat-hist-delete-confirm-btn" onclick="matHistDoDelete('${qEscJs(usageId)}')">تأكيد الحذف</button>
+    </div>
+    <div class="msg" id="mat-hist-delete-msg"></div>
+  `);
+}
+async function matHistDoDelete(usageId){
+  const btn = document.getElementById('mat-hist-delete-confirm-btn');
+  const msg = document.getElementById('mat-hist-delete-msg');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحذف...'; }
+  try {
+    const res = await apiPost('deleteMaterialUsage', { usageId });
+    if (!res.success) { msg.className = 'msg err'; msg.textContent = res.error || 'حصل خطأ'; return; }
+    showToast('🗑️ اتحذف السطر');
+    const { materials } = await apiGet('listMaterials');
+    MATSTATE.materials = materials || [];
+    matRenderGrid();
+    await matShowHistory(MAT_HIST_STATE.materialId, MAT_HIST_STATE.materialName);
+  } catch (err) { msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = 'تأكيد الحذف'; } }
 }
 
 </script>
