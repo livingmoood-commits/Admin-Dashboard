@@ -1589,7 +1589,40 @@ document.addEventListener('copy', (e) => {
 
 
 
+// ⚠️ إضافة: تقليل عدد الطلبات اللي بتضرب Apps Script في نفس اللحظة بالظبط.
+// المصادفة على رابط الـ echo المؤقت بتاع Google بتزيد كل ما عدد الطلبات المتزامنة
+// زاد (أي صفحة بتعمل Promise.all لكذا apiGet مع بعض) — فبدل ما نسيبهم يضربوا كلهم
+// مرة واحدة، بنمرر بس عدد محدود (4) في نفس اللحظة والباقي بينتظر دوره في طابور.
+// ده بيقلل التصادمات نفسها (مش بس بيعالج نتيجتها بإعادة المحاولة) وبيقلل الضغط
+// على السيرفر، فبيبان أسرع في الحالات اللي كانت بتتصادم كتير قبل كده.
+const _API_MAX_CONCURRENT = 4;
+let _apiActiveCount = 0;
+const _apiWaitQueue = [];
+function _apiAcquireSlot(){
+  return new Promise(resolve => {
+    if (_apiActiveCount < _API_MAX_CONCURRENT) { _apiActiveCount++; resolve(); }
+    else _apiWaitQueue.push(resolve);
+  });
+}
+function _apiReleaseSlot(){
+  if (_apiWaitQueue.length) {
+    const next = _apiWaitQueue.shift();
+    // فاصل صغير (60ms) قبل ما نطلق الطلب اللي بعده — بيقلل احتمال تصادم اتنين قريبين جدًا من بعض
+    setTimeout(next, 60);
+  } else {
+    _apiActiveCount--;
+  }
+}
 async function _apiFetch(url, opts, _retryCount) {
+  const isRetry = !!_retryCount;
+  if (!isRetry) await _apiAcquireSlot(); // الطلبات المُعاد محاولتها (retry) بتستخدم نفس السلوت المحجوز، مش تاخد سلوت جديد
+  try {
+    return await _apiFetchCore(url, opts, _retryCount);
+  } finally {
+    if (!isRetry) _apiReleaseSlot();
+  }
+}
+async function _apiFetchCore(url, opts, _retryCount) {
   _retryCount = _retryCount || 0;
   const controller = new AbortController();
   // ⚠️ إصلاح 2026-08-22: كانت 100 ثانية، ولسه بتقطع طلبات حفظ شغالة فعلاً في
@@ -1624,7 +1657,7 @@ async function _apiFetch(url, opts, _retryCount) {
   // 5 محاولات (بدل 2) بفاصل زمني متزايد، وده بيغطي الأغلبية الساحقة من الحالات.
   if (res.status === 404 && _retryCount < 5) {
     await new Promise(r => setTimeout(r, 350 * (_retryCount + 1)));
-    return _apiFetch(url, opts, _retryCount + 1);
+    return _apiFetchCore(url, opts, _retryCount + 1);
   }
 
   const raw = await res.text();
@@ -9133,7 +9166,7 @@ if (sessionStorage.getItem('lm_loggedIn') === '1') {
  *  صفحتي "تقرير يومي بالصنايعية" و"بنود المشاريع" بيقروا منه.
  * ═══════════════════════════════════════════════════════════════════════ */
 let TO_STATE = {
-  activeTab: 'daily',
+  activeTab: sessionStorage.getItem('lm_toActiveTab') || 'daily',
   projects: [],
   craftsmen: [],
   todayEntries: [],      // شغل يوم formDate بس (تاب شغل يومي)
@@ -9204,6 +9237,7 @@ async function renderTaskOrganize(token) {
       const btn = e.target.closest('button'); if (!btn) return;
       if (btn.dataset.t === TO_STATE.activeTab) return; // نفس التاب المفتوح أصلاً — مفيش داعي لأي حاجة
       TO_STATE.activeTab = btn.dataset.t;
+      try { sessionStorage.setItem('lm_toActiveTab', TO_STATE.activeTab); } catch(e){}
       document.querySelectorAll('#toTabs button').forEach(b => b.classList.toggle('active', b===btn));
       toRenderActiveTab();
     });
