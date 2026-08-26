@@ -1327,6 +1327,16 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbzstJuI5EKdabQmOIechewi
 // بيسرّع التنقل بين الصفحات وبيقلل عدد الطلبات لسيرفر الـ Apps Script (اللي بطيء أصلًا في الـ cold start)
 const _apiCache = new Map();
 const API_CACHE_TTL_MS = 20000; // 20 ثانية — كفاية تقلل التكرار من غير ما تعرض بيانات قديمة كتير
+// ⚠️ إضافة: بعض القوايم بتتغيّر نادرًا جدًا (مشاريع، موظفين، عملاء) — مفيش داعي
+// نعتبرها "قديمة" بعد 20 ثانية بس زي بيانات الخزنة/المصاريف اللي بتتغيّر باستمرار.
+// TTL أطول للقوايم دي بيقلل عدد الطلبات لسيرفر Apps Script بشكل ملموس أثناء
+// التنقل بين الصفحات (مفيش داعي تتجاب تاني كل شوية لو محدش غيّرها فعليًا).
+const _API_LONG_TTL_ACTIONS = new Set([
+  'listProjects', 'listProjectsSummary', 'listEmployees', 'quoteListCustomers',
+  'payListCustomers', 'listMiProjects', 'listFinishedMiProjects', 'listFixedExpenses'
+]);
+const API_CACHE_TTL_MS_LONG = 120000; // دقيقتين
+function _apiCacheTtlFor(action){ return _API_LONG_TTL_ACTIONS.has(action) ? API_CACHE_TTL_MS_LONG : API_CACHE_TTL_MS; }
 // ⚠️ إضافة: طلبات GET شغالة دلوقتي (لسه مردودش) — مفتاحها action+params. لو
 // اتنين مكان مختلفين في نفس الصفحة طلبوا نفس الـ action+params في نفس اللحظة
 // (زي ما بيحصل وقت تحميل صفحة فيها كذا component بيقروا نفس البيانات)، التاني
@@ -1682,9 +1692,9 @@ async function apiGet(action, params) {
   params = params || {};
   const key = _apiCacheKey(action, params);
 
-  // 1) كاش الذاكرة الطازة (أقل من 20 ثانية) — أسرع حاجة ممكنة، رجّعها فورًا
+  // 1) كاش الذاكرة الطازة — أسرع حاجة ممكنة، رجّعها فورًا
   const cached = _apiCache.get(key);
-  if (cached && (Date.now() - cached.t) < API_CACHE_TTL_MS) return cached.data;
+  if (cached && (Date.now() - cached.t) < _apiCacheTtlFor(action)) return cached.data;
 
   const qs = new URLSearchParams({ action, ...Object.fromEntries(Object.entries(params).map(([k,v]) => [k, typeof v === 'object' ? JSON.stringify(v) : v])) });
   // ⚠️ إصلاح 404/إبطاء متكرر على echo: لما كذا طلب GET يضربوا بنفس الـ URL بالظبط في
