@@ -5074,7 +5074,20 @@ async function renderDailyExpenses(token) {
     // سكرول الصفحة نفسها (مش سكرول الجدول الداخلي بس) كان ممكن يسيب القايمة "طايرة"
     // بعيد عن الخلية بتاعتها لو اتفتحت وبعدين المستخدم عمل سكرول للصفحة — بنقفلها هنا برضه.
     window.addEventListener('scroll', () => { dHideProjectSuggestions(); dCloseAllQuickTags(); }, { passive:true });
+    // ⚠️ إضافة: تحميل قايمة الموظفين بهدوء في الخلفية بعد ما الصفحة خلصت ظهور —
+    // من غير ما نستنى الرد ده (مفيش await)، فمتأثرش على سرعة فتح الصفحة نفسها.
+    // الفايدة: غالبًا لما تدوس على 🧑 هتلاقي القايمة جاهزة فورًا من غير أي "جاري
+    // التحميل..."، لأنها اتجابت مسبقًا وهي شغالة في الخلفية من غير ما تحس.
+    dPreloadEmployeesQuietly(token);
   } catch(err){ showError(err); }
+}
+function dPreloadEmployeesQuietly(token){
+  if (DEMPLOYEE_NAMES_LOADED) return;
+  apiGet('listEmployees').then(res => {
+    if (isStaleNav(token)) return; // لو المستخدم غيّر الصفحة قبل ما الطلب يخلص، منحدّثش حاجة
+    DEMPLOYEE_NAMES = (res.employees || []).map(e => String(e.name || '').trim()).filter(Boolean);
+    DEMPLOYEE_NAMES_LOADED = true;
+  }).catch(() => { /* فشل التحميل الصامت في الخلفية مش مشكلة — هيتجاب تاني عادي أول ما حد يدوس على 🧑 */ });
 }
 function dRenderDaysList(){
   const list = document.getElementById('d-days-dd-list');
@@ -7965,7 +7978,7 @@ function qRenderEditor(){
         <table class="q-tbl">
           <thead><tr>
             <th style="width:34px;">#</th><th style="width:150px;">النموذج</th><th style="width:160px;">الوحدة</th>
-            <th style="width:340px;">المطلوب تنفيذه</th><th style="width:100px;">عدد</th><th style="width:110px;">السعر</th>
+            <th style="width:340px;">المطلوب تنفيذه</th><th style="width:160px;">عدد</th><th style="width:110px;">السعر</th>
             <th style="width:120px;">الإجمالي</th><th style="width:170px;">ملاحظات</th><th style="width:110px;"></th>
           </tr></thead>
           <tbody id="q-body"></tbody>
