@@ -9150,15 +9150,26 @@ async function _loadBuildVersion(){
 }
 
 /* ================= Init ================= */
-if (sessionStorage.getItem('lm_loggedIn') === '1') {
-  document.getElementById('loginWrap').remove();
-  document.getElementById('appRoot').style.display = 'flex';
-  applyRoleAccess();
-  goTo(_defaultPageForRole(sessionStorage.getItem('lm_currentPage')));
-  _loadBuildVersion();
-} else {
-  document.getElementById('l_name').focus();
-}
+// ⚠️ إصلاح مهم: كان الكود ده بينفّذ فورًا هنا (في نص الملف تقريبًا)، بس فيه حالة
+// (MATSTATE, TO_STATE, MISTATE, TO_PLAN_PROJECT, وغيرهم) بتاعة صفحات زي "Work
+// Flow" و"الخامات" متعرّفة أسفل في الملف (بعد السطر ده). لو آخر صفحة كان فاتحها
+// المستخدم (المحفوظة في sessionStorage) كانت من الصفحات دي، الـ goTo() هنا كان
+// بينده على render() بتاعها قبل ما المتغيرات دي حتى تتعرّف أصلاً — يعني
+// "ReferenceError: Cannot access 'X' before initialization" وتعليق الصفحة كلها
+// على "جاري التحميل...". الحل: نأجّل التشغيل الفعلي لحد ما الملف كله يخلص —
+// setTimeout بـ0 بتضمن إن كل تعريفات المتغيرات (حتى اللي تحت في الملف) تكون
+// خلصت قبل ما أول render فعلي يحصل، مهما كانت آخر صفحة كانت مفتوحة.
+setTimeout(function _bootApp(){
+  if (sessionStorage.getItem('lm_loggedIn') === '1') {
+    document.getElementById('loginWrap').remove();
+    document.getElementById('appRoot').style.display = 'flex';
+    applyRoleAccess();
+    goTo(_defaultPageForRole(sessionStorage.getItem('lm_currentPage')));
+    _loadBuildVersion();
+  } else {
+    document.getElementById('l_name').focus();
+  }
+}, 0);
 
 /* ═══════════════════════════════════════════════════════════════════════
  *  تنظيم المهام (taskOrganize) — شغل يومي / اسبوعي / تايم بلاننج، في تابات
