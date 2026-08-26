@@ -205,8 +205,6 @@
   .to-extra-body.open{ max-height:600px; opacity:1; padding:16px 14px 4px; }
   .to-bs-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px 14px; }
   @media(max-width:520px){ .to-bs-grid{ grid-template-columns:1fr; } }
-  .to-size-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px 10px; }
-  @media(max-width:520px){ .to-size-grid{ grid-template-columns:1fr 1fr; } }
 
   .to-wf-item{ border-top:1px dashed var(--border); padding:9px 8px 9px 0; position:relative; border-radius:8px; transition:background .2s; }
   .to-wf-item:first-child{ border-top:none; }
@@ -1695,14 +1693,6 @@ async function apiPost(action, payload) {
   return data;
 }
 function fmt(n){ return (Number(n)||0).toLocaleString('en-US', {maximumFractionDigits:0}); }
-// بيكوّن نص مقاس واحد مقروء من 4 أبعاد منفصلة (طول/عرض/ارتفاع/عمق) — بيتجاهل
-// أي بعد فاضي، وبيرجع '' لو كله فاضي. مستخدمة في كل أماكن عرض المقاسات
-// (سجل الشغل اليومي + بنود المشاريع) عشان الشكل يبقى موحّد في كل مكان.
-function fmtDims(d){
-  d = d || {};
-  const parts = [d.length, d.width, d.height, d.depth].map(v => String(v||'').trim()).filter(Boolean);
-  return parts.join(' × ');
-}
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function monthStartStr(){ const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-01`; }
 function yesterdayStr(){ const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0,10); }
@@ -2321,6 +2311,68 @@ const DASH_PRINT_SECTIONS = [
   { key:'costs',       label:'التكاليف — تفصيل حسب المصدر' },
   { key:'projects',    label:'المشاريع بالتكلفة والربح' },
 ];
+
+// ═══ زرار طباعة PDF عام — قابل لإعادة الاستخدام في أي صفحة ═══
+// sections: [{key, label}] بتتحط كتشيك بوكسات، والدالة onConfirm(checkedKeys) بتتنادى
+// بعد ما المستخدم يختار ويدوس "طباعة" — هي المسؤولة تبني وتفتح مستند الطباعة.
+function openGenericPrintModal(pageTitle, sections, onConfirm){
+  if (!sections || !sections.length){ showToast('مفيش حاجة قابلة للطباعة هنا دلوقتي', 'error'); return; }
+  openCardModal(`
+    <div class="cd-head"><h3>طباعة (${qEsc(pageTitle)}) — عاوز تطبع ايه؟</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div id="genericPrintOptList">
+      ${sections.map(s => `
+        <label class="print-opt-row">
+          <input type="checkbox" class="generic-print-opt-cb" value="${qEsc(s.key)}" checked>
+          <span>${qEsc(s.label)}</span>
+        </label>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
+      <button class="btn btn-sm btn-outline" onclick="closeCardModal()">إلغاء</button>
+      <button class="btn-print" id="genericPrintConfirmBtn"><span class="bp-icon">🖨</span> طباعة</button>
+    </div>
+  `);
+  document.getElementById('genericPrintConfirmBtn').addEventListener('click', async () => {
+    const checked = Array.from(document.querySelectorAll('.generic-print-opt-cb:checked')).map(cb => cb.value);
+    if (!checked.length){ showToast('اختار قسم واحد على الأقل عشان تطبع', 'error'); return; }
+    const btn = document.getElementById('genericPrintConfirmBtn');
+    btn.disabled = true; const oldLabel = btn.innerHTML; btn.innerHTML = '<span class="spinner"></span>جاري التجهيز...';
+    try { await onConfirm(checked); closeCardModal(); }
+    catch (err) { showToast('خطأ: ' + (err.message || err), 'error'); }
+    finally { btn.disabled = false; btn.innerHTML = oldLabel; }
+  });
+}
+// إطار HTML موحّد (هيدر Living Mood + تنسيق طباعة A4) — أي صفحة تبني بس محتواها
+// الداخلي (bodyHtml) وتلفه بالدالة دي بدل ما تكرر كل الـ<head>/الـstyle من الصفر.
+function buildGenericPrintShell_(title, bodyHtml){
+  const date = new Date().toLocaleDateString('en-GB');
+  return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"/>
+  <title>${qEsc(title)} — Living Mood — ${date}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;} body{font-family:'Cairo','Arial',sans-serif;direction:rtl;color:#1E1A15;background:#fff;}
+    @page{size:A4;margin:14mm 12mm;} @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+    .brand-block{text-align:center;padding-bottom:14px;border-bottom:2px solid #B8975A;margin-bottom:16px;}
+    .brand-title{font-family:'Playfair Display',Georgia,serif;font-size:32px;letter-spacing:5px;color:#1E1A15;direction:ltr;}
+    .brand-title span{color:#B8975A;} .brand-sub{font-size:9px;letter-spacing:3px;color:#6B5E4E;text-transform:uppercase;margin-top:4px;direction:ltr;}
+    .date-row{font-size:12px;color:#6B5E4E;direction:ltr;text-align:left;margin-bottom:16px;}
+    h2.sec{font-size:14.5px;margin:22px 0 8px;padding-right:8px;border-right:4px solid #B8975A;}
+    table{width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:6px;}
+    thead tr{background:#2C5F3A;color:#fff;} thead th{padding:6px 5px;text-align:right;font-weight:600;font-size:10.5px;}
+    tbody td{padding:5px;border-bottom:1px solid #e7e0d4;}
+    .num{direction:ltr;text-align:left;}
+    .wf-feedback-p{background:#fdf6e8;border-right:3px solid #B8975A;padding:6px 8px;border-radius:5px;font-size:11.5px;margin-top:4px;}
+    .wf-notes-p{font-size:11px;color:#6B5E4E;margin-top:4px;}
+    .footer{text-align:center;font-size:11px;color:#B8975A;font-family:'Playfair Display',Georgia,serif;letter-spacing:1px;direction:ltr;margin-top:20px;}
+    @media print{ table{page-break-inside:auto;} tr{page-break-inside:avoid;} .sec-block{page-break-inside:avoid;} }
+  </style></head>
+  <body><div style="padding:22px 26px;">
+    <div class="brand-block"><div class="brand-title">Living <span>Mood</span></div><div class="brand-sub">${qEsc(title)}</div></div>
+    <div class="date-row"><strong>التاريخ:</strong> ${date}</div>
+    ${bodyHtml}
+    <div class="footer">Living Mood</div>
+  </div></body></html>`;
+}
 
 function openPrintOptionsModal(){
   if (!_dashPrintSnapshot){ showToast('البيانات لسه بتتحمل، جرب تاني بعد لحظة', 'error'); return; }
@@ -4882,10 +4934,11 @@ async function renderDailyExpenses(token) {
   try {
     const _draft = dLoadDraft();
     if (_draft && _draft.date) DSTATE.date = _draft.date;
-    const [{ projects }, log, { days }] = await Promise.all([
+    const [{ projects }, log, { days }, empRes] = await Promise.all([
       apiGet('listProjects'),
       apiGet('getDailyExpenses', { date: DSTATE.date }),
-      apiGet('listDailyExpenseDays')
+      apiGet('listDailyExpenseDays'),
+      apiGet('listEmployees')
     ]);
     if (isStaleNav(token)) return;
     DSTATE.rows = _draft ? _draft.rows : [dNewRow(), dNewRow(), dNewRow()];
@@ -4893,6 +4946,7 @@ async function renderDailyExpenses(token) {
     DPROJECT_NAMES = Array.from(new Set(
       ['مصروفات عامة', ...projects].map(p => String(p || '').trim()).filter(Boolean)
     ));
+    DEMPLOYEE_NAMES = (empRes.employees || []).map(e => String(e.name || '').trim()).filter(Boolean);
     document.getElementById('content').innerHTML = `
       <div class="panel">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
@@ -4913,6 +4967,7 @@ async function renderDailyExpenses(token) {
         <div class="d-suggest-popover" id="d-suggest-popover"></div>
         <div class="d-quick-popover" id="d-quick-popover"></div>
         <div class="d-quick-popover" id="d-note-popover"></div>
+        <div class="d-quick-popover" id="d-emp-popover"></div>
         <div style="display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap;">
           <button type="button" class="btn btn-outline btn-sm" id="d-add-row">+ إضافة سطر</button>
           <div class="d-bulk-add">
@@ -5023,6 +5078,7 @@ async function dLoadDayLog(dateStr){
   } catch(err){ box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message||err}</div>`; }
 }
 let DPROJECT_NAMES = [];
+let DEMPLOYEE_NAMES = []; // ⚠️ إضافة: أسماء الموظفين — لزرار 🧑 اللي بيكتب "(الاسم) - مسحوبات" في خانة الوصف
 const D_QUICK_TAGS = ['مسحوبات', 'مسحوبات ش ق', 'مرتبات', 'أكل', 'مشتريات', 'صيانة', 'مواصلات', 'بنزين', 'أخرى'];
 const D_QUICK_TAG_ICONS = { 'مسحوبات':'💸', 'مسحوبات ش ق':'🗓️', 'مرتبات':'💰', 'أكل':'🍔', 'مشتريات':'🛒', 'صيانة':'🔧', 'مواصلات':'🚗',  'بنزين':'⛽', 'أخرى':'✨' };
 function dRenderRows(){
@@ -5035,6 +5091,7 @@ function dRenderRows(){
           <input type="text" class="d-input" autocomplete="off" data-lpignore="true" data-1p-ignore name="${_noAutofill('desc')}" id="d-desc-${r._id}" data-col="0" value="${qEsc(r.desc)}" oninput="dSetDescLive(${r._id}, this.value)" onkeydown="dHandleTab(event)" onpaste="dHandlePaste(event, ${r._id}, 0)" placeholder="مثال: فطار، بنزين، مسامير...">
           <div class="d-quick-wrap">
             <button type="button" class="d-quick-tag-btn" title="إضافة سريعة بعد المكتوب" onclick="dToggleQuickTag(${r._id}, this)">+ سريع</button>
+            <button type="button" id="d-emp-btn-${r._id}" class="d-quick-tag-btn" style="min-width:0;padding:12px 14px;" title="اختيار موظف — هيتكتب (الاسم - مسحوبات)" onclick="dToggleEmployeeTag(${r._id}, this)">🧑</button>
             <button type="button" id="d-note-btn-${r._id}" class="d-quick-tag-btn d-note-btn${r.note ? ' has-note' : ''}" style="min-width:0;padding:12px 14px;" title="${r.note ? 'فيه ملاحظة — دوس تعدّلها' : 'إضافة ملاحظة (بتتسجل Note على الخلية في الشيت)'}" onclick="dToggleNotePopup(${r._id}, this)">📝</button>
           </div>
         </div>
@@ -5143,6 +5200,7 @@ function dHandleProjectKeydown(e, rowId){
 }
 function _dQuickPopover(){ return document.getElementById('d-quick-popover'); }
 function _dNotePopover(){ return document.getElementById('d-note-popover'); }
+function _dEmpPopover(){ return document.getElementById('d-emp-popover'); }
 // بتقفل قايمة "+ سريع" وبوكس الملاحظة مع بعض — بتتنادى من كل الأماكن اللي كانت
 // بتقفل قايمة "+ سريع" بس (سكرول، تغيير حجم الشاشة، ضغطة بره الاتنين، إلخ).
 function dCloseAllQuickTags(){
@@ -5150,6 +5208,7 @@ function dCloseAllQuickTags(){
   document.querySelectorAll('.d-quick-tag-btn.open').forEach(b => b.classList.remove('open'));
   const nbox = _dNotePopover(); if (nbox){ nbox.classList.remove('open'); nbox.dataset.rowId = ''; }
   document.querySelectorAll('.d-note-btn.open').forEach(b => b.classList.remove('open'));
+  const ebox = _dEmpPopover(); if (ebox){ ebox.classList.remove('open'); ebox.dataset.rowId = ''; }
 }
 /* دعم كيبورد لقايمة "+ سريع" (زي بالظبط قايمة اقتراحات المشروع): ↓/↑ للتنقل، Enter
  * للاختيار (أول عنصر تلقائي لو لسه محددتش حاجة بالسهم)، Esc للإغلاق. القايمة بتتفتح
@@ -5252,6 +5311,48 @@ function dPickQuickTag(id, tag){
     input.setSelectionRange(0, input.value.length);
     // execCommand بيسجّل التغيير في تاريخ الـ undo بتاع المتصفح، فـ Ctrl+Z هيرجّع الوصف
     // اللي كان قبل ما تدوس على "سريع" — عكس تغيير .value مباشرة اللي مابيتسجلش في الـ undo.
+    try { inserted = document.execCommand && document.execCommand('insertText', false, newVal); } catch (e) { inserted = false; }
+  }
+  if (!inserted) { if (input) input.value = newVal; }
+  r.desc = newVal;
+  dScheduleDraftSave();
+}
+// ⚠️ إضافة: زرار 🧑 بيفتح قايمة الموظفين (نفس مصدر listEmployees المستخدم في باقي
+// الصفحات) — دوس على اسم أي موظف يكتب "(الاسم) - مسحوبات" في خانة الوصف على طول
+// (بيستبدل أي وصف قديم في الخلية، مش بيضيف عليه، عشان الصيغة تفضل واضحة ومنضبطة).
+function dToggleEmployeeTag(id, btnEl){
+  const box = _dEmpPopover(); if (!box) return;
+  const wasOpenForThisRow = box.classList.contains('open') && String(box.dataset.rowId) === String(id);
+  dCloseAllQuickTags();
+  if (wasOpenForThisRow) return;
+  if (!DEMPLOYEE_NAMES.length){
+    box.innerHTML = '<div class="d-pop-hint" style="border-top:none;">مفيش موظفين متسجلين</div>';
+  } else {
+    box.innerHTML = '<div class="d-pop-items">' + DEMPLOYEE_NAMES.map(name =>
+      `<div class="d-quick-item" onmousedown="event.preventDefault();dPickEmployeeTag(${id}, '${name.replace(/'/g, "\\'")}')"><span class="d-pop-icon">🧑</span><span class="d-pop-label">${qEsc(name)}</span></div>`
+    ).join('') + '</div><div class="d-pop-hint">هيتكتب: الاسم - مسحوبات</div>';
+  }
+  box.dataset.rowId = id;
+  const r = btnEl.getBoundingClientRect();
+  const spaceBelow = window.innerHeight - r.bottom;
+  const openUp = spaceBelow < 200 && r.top > spaceBelow;
+  box.style.left = ''; box.style.right = '';
+  box.style.right = (window.innerWidth - r.right) + 'px';
+  if (openUp){ box.style.top = ''; box.style.bottom = (window.innerHeight - r.top + 6) + 'px'; }
+  else { box.style.bottom = ''; box.style.top = (r.bottom + 6) + 'px'; }
+  box.classList.add('open');
+  btnEl.classList.add('open');
+}
+function dPickEmployeeTag(id, name){
+  dCloseAllQuickTags();
+  if (!name) return;
+  const r = DSTATE.rows.find(r => r._id === id); if (!r) return;
+  const newVal = name + ' - مسحوبات';
+  const input = document.getElementById('d-desc-' + id);
+  let inserted = false;
+  if (input) {
+    input.focus();
+    input.setSelectionRange(0, input.value.length);
     try { inserted = document.execCommand && document.execCommand('insertText', false, newVal); } catch (e) { inserted = false; }
   }
   if (!inserted) { if (input) input.value = newVal; }
@@ -7798,9 +7899,9 @@ function qRenderEditor(){
           <tbody id="q-body"></tbody>
         </table>
       </div>
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
-        <button class="btn btn-outline btn-sm" onclick="qAddRow(document.getElementById('q-add-count').value)">+ إضافة سطر</button>
-        <input autocomplete="off" type="number" id="q-add-count" value="1" min="1" class="d-input" style="width:56px;" title="عدد الأسطر اللي عايز تضيفهم مرة واحدة">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;position:relative;z-index:2;background:var(--white);padding:6px 2px;">
+        <button class="btn btn-outline btn-sm" style="flex-shrink:0;" onclick="qAddRow(document.getElementById('q-add-count').value)">+ إضافة سطر</button>
+        <input autocomplete="off" type="number" id="q-add-count" value="1" min="1" class="d-input" style="width:56px;flex-shrink:0;" title="عدد الأسطر اللي عايز تضيفهم مرة واحدة">
       </div>
       <div style="margin-bottom:18px;font-size:13px;color:var(--muted);font-weight:700;">
         عدد البنود: <span id="q-items-count" style="color:var(--dark);font-family:'IBM Plex Mono',monospace;">0</span>
@@ -9247,7 +9348,6 @@ function toRenderDailyForm() {
         <div class="field"><label>المطلوب</label><input class="d-input" id="to_title" placeholder="مثال: تركيب أبواب"></div>
       </div>
       <div class="field"><label>فيد باك / آخر حالة الشغل</label><input class="d-input" id="to_feedback" placeholder="مثال: خلص 3 من 5 أبواب"></div>
-      <div class="field"><label>ملاحظات</label><input class="d-input" id="to_notes" placeholder="ملاحظات"></div>
 
       <button type="button" class="to-extra-toggle ${TO_STATE.moreOpen?'open':''}" id="toExtraToggleBtn" aria-expanded="${TO_STATE.moreOpen?'true':'false'}">
         <span class="et-left">
@@ -9263,13 +9363,15 @@ function toRenderDailyForm() {
           <div class="field"><label>الحضور</label><input class="d-input" id="to_attendance" placeholder="8ص"></div>
           <div class="field"><label>الكمية</label><input class="d-input" id="to_qty" placeholder="الكمية"></div>
           <div class="field"><label>اشراف</label><input class="d-input" id="to_supervision" placeholder="اشراف"></div>
-        </div>
-        <div class="field" style="margin-top:2px;"><label>المقاسات</label>
-          <div class="to-size-grid">
-            <input class="d-input ltr-num" inputmode="decimal" id="to_length" placeholder="الطول">
-            <input class="d-input ltr-num" inputmode="decimal" id="to_width" placeholder="العرض">
-            <input class="d-input ltr-num" inputmode="decimal" id="to_height" placeholder="الارتفاع">
-            <input class="d-input ltr-num" inputmode="decimal" id="to_depth" placeholder="العمق">
+          <div class="field"><label>ملاحظات</label><input class="d-input" id="to_notes" placeholder="ملاحظات"></div>
+          <div class="field wf-form-full" style="grid-column:1/-1;">
+            <label>المقاسات (كل خانة اختيارية)</label>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+              <input class="d-input" id="to_size_length" placeholder="طول">
+              <input class="d-input" id="to_size_width" placeholder="عرض">
+              <input class="d-input" id="to_size_height" placeholder="ارتفاع">
+              <input class="d-input" id="to_size_depth" placeholder="عمق">
+            </div>
           </div>
         </div>
       </div>
@@ -9332,10 +9434,10 @@ function toItemHTML(it) {
             <span><b>المشروع:</b> ${qEsc(it.project)}</span>
             ${it.location?`<span><b>الموقع:</b> ${qEsc(it.location)}</span>`:''}
             ${it.attendance?`<span><b>الحضور:</b> ${qEsc(it.attendance)}</span>`:''}
-            ${fmtDims(it)?`<span><b>المقاس:</b> ${qEsc(fmtDims(it))}</span>`:''}
           </div>
           ${it.title?`<div class="to-wf-item-title" style="font-weight:700;font-size:13px;margin-bottom:2px;">${qEsc(it.title)}</div>`:''}
           ${it.feedback?`<div class="wf-feedback">&#128172; ${qEsc(it.feedback)}</div>`:''}
+          ${it.notes?`<div style="font-size:12.5px;color:var(--muted);margin-top:4px;">&#128221; ${qEsc(it.notes)}</div>`:''}
         </div>
         <div class="to-status-row">
           <button type="button" class="to-status-btn ${it.status==='blocked'?'blocked-active':''}" data-statusid="${it.id}" data-status="blocked">
@@ -9392,6 +9494,20 @@ function toWireDailyTab() {
   });
 }
 
+// بتجمع الأربع خانات (طول/عرض/ارتفاع/عمق) — كل واحدة اختيارية — في نص واحد
+// بيتسجل في عمود "المقاسات" زي ما هو، بدون أي تعديل على الشيت أو الباك إند.
+function toBuildSizesString_(){
+  const L = document.getElementById('to_size_length')?.value.trim() || '';
+  const W = document.getElementById('to_size_width')?.value.trim() || '';
+  const H = document.getElementById('to_size_height')?.value.trim() || '';
+  const D = document.getElementById('to_size_depth')?.value.trim() || '';
+  const parts = [];
+  if (L) parts.push('ط:' + L);
+  if (W) parts.push('ع:' + W);
+  if (H) parts.push('ا:' + H);
+  if (D) parts.push('عمق:' + D);
+  return parts.join(' × ');
+}
 async function toSaveEntry() {
   const msg = document.getElementById('to-save-msg');
   const craftsman = (TO_STATE.qCraftsman || '').trim();
@@ -9405,10 +9521,7 @@ async function toSaveEntry() {
     feedback: document.getElementById('to_feedback').value.trim(),
     specialty: document.getElementById('to_specialty')?.value.trim() || '',
     attendance: document.getElementById('to_attendance')?.value.trim() || '',
-    length: document.getElementById('to_length')?.value.trim() || '',
-    width: document.getElementById('to_width')?.value.trim() || '',
-    height: document.getElementById('to_height')?.value.trim() || '',
-    depth: document.getElementById('to_depth')?.value.trim() || '',
+    sizes: toBuildSizesString_(),
     qty: document.getElementById('to_qty')?.value.trim() || '',
     supervision: document.getElementById('to_supervision')?.value.trim() || '',
     notes: document.getElementById('to_notes')?.value.trim() || '',
@@ -9587,10 +9700,21 @@ function toRenderWeekDetail() {
 }
 
 /* ===================== تاب 3: تايم بلاننج (بيستخدم نفس شيت "بنود ناقصة") ===================== */
-let TO_PLAN_PROJECT = '';
+// ⚠️ إضافة: كان TO_PLAN_PROJECT متغيّر JS عادي بيتصفر لما الصفحة تعمل Reload كامل
+// (بعد ما تعلّق مثلاً وتضطر تعمل Refresh) — فحتى لو رجعت لنفس صفحة "تايم بلاننج"
+// (بفضل sessionStorage الخاص بـ_currentPage)، الاختيار (السليكت الأصفر) كان بيرجع
+// لأول مشروع في القايمة تلقائي من غير أي سبب واضح للمستخدم. دلوقتي بنحفظ آخر
+// مشروع مختار في sessionStorage برضه، ونرجعه لو لسه موجود في القايمة.
+let TO_PLAN_PROJECT = sessionStorage.getItem('lm_toPlanProject') || '';
+function toSetPlanProject_(name){
+  TO_PLAN_PROJECT = name || '';
+  try { sessionStorage.setItem('lm_toPlanProject', TO_PLAN_PROJECT); } catch(e){}
+}
 async function toLoadPlanTab(token, opts) {
   opts = opts || {};
-  if (!TO_PLAN_PROJECT && TO_STATE.projects.length) TO_PLAN_PROJECT = TO_STATE.projects[0];
+  // لو الاختيار المحفوظ بقى مشروع اتمسح/مش موجود دلوقتي، ارجع للأول عادي
+  if (TO_PLAN_PROJECT && TO_STATE.projects.length && !TO_STATE.projects.includes(TO_PLAN_PROJECT)) TO_PLAN_PROJECT = '';
+  if (!TO_PLAN_PROJECT && TO_STATE.projects.length) toSetPlanProject_(TO_STATE.projects[0]);
   const box = document.getElementById('to-tab-content'); if (!box) return;
   const cached = TO_STATE.planCache[TO_PLAN_PROJECT];
   if (cached && !opts.force) {
@@ -9647,7 +9771,7 @@ function toRenderPlanBody(items) {
             <thead><tr><th style="width:30px;">تم</th><th>البند</th><th>المقاس</th><th>الكمية</th></tr></thead>
             <tbody>${items.map(i => `<tr class="${i.done?'mi-done-row':''}">
               <td><input type="checkbox" class="mi-check" ${i.done?'checked':''} data-miid="${i.id}"></td>
-              <td>${qEsc(i.name)}</td><td>${qEsc(fmtDims(i))}</td><td>${qEsc(i.qty)}</td>
+              <td>${qEsc(i.name)}</td><td>${qEsc(i.size)}</td><td>${qEsc(i.qty)}</td>
             </tr>`).join('')}</tbody>
           </table>` : `<div class="empty">مفيش بنود مسجلة للمشروع ده</div>`}
         </div>
@@ -9656,10 +9780,10 @@ function toRenderPlanBody(items) {
   `;
   // تبديل المشروع: هيبان فورًا لو اتشاف قبل كده (كاش)، وهيفيتش تاني بس أول مرة
   document.querySelectorAll('.to-tp-card').forEach(c => {
-    c.addEventListener('click', () => { TO_PLAN_PROJECT = c.dataset.proj; toLoadPlanTab(); });
+    c.addEventListener('click', () => { toSetPlanProject_(c.dataset.proj); toLoadPlanTab(); });
   });
   const sel = document.getElementById('to_mi_project');
-  if (sel) sel.addEventListener('change', e => { TO_PLAN_PROJECT = e.target.value; toLoadPlanTab(); });
+  if (sel) sel.addEventListener('change', e => { toSetPlanProject_(e.target.value); toLoadPlanTab(); });
   toRenderMiAddBox(); // فورم إضافة البنود (كتابة كام بند مع بعض) — منفصل عشان الكتابة فيه ما تمسحش الشاشة
   // تحديث الحالة: تفاؤلي ومحلي فورًا، والسيرفر بيتحدث في الخلفية من غير ما يوقف حاجة
   document.querySelectorAll('.mi-check').forEach(chk => {
@@ -9689,7 +9813,16 @@ function toRenderPlanBody(items) {
    ولحد ما تدوس "حفظ" يتضافوا كلهم مرة واحدة. المقاس اتحط جوه "تفاصيل" مقفولة
    افتراضيًا زي حقول "شغل يومي" الإضافية، عشان الفورم يفضل بسيط. ═══ */
 let TO_MI_DRAFT = { rows: [] };
-function toMiNewRow() { return { id: 'r' + Math.random().toString(36).slice(2, 9), name: '', qty: '', length: '', width: '', height: '', depth: '', detailsOpen: false }; }
+function toMiNewRow() { return { id: 'r' + Math.random().toString(36).slice(2, 9), name: '', qty: '', sizeLength: '', sizeWidth: '', sizeHeight: '', sizeDepth: '', detailsOpen: false }; }
+// بتجمع 4 حقول المقاس (طول/عرض/ارتفاع/عمق) — كل واحد اختياري — في نص واحد للحفظ في عمود "المقاس"
+function toMiSizeString_(r){
+  const parts = [];
+  if (String(r.sizeLength||'').trim()) parts.push('ط:' + r.sizeLength.trim());
+  if (String(r.sizeWidth||'').trim()) parts.push('ع:' + r.sizeWidth.trim());
+  if (String(r.sizeHeight||'').trim()) parts.push('ا:' + r.sizeHeight.trim());
+  if (String(r.sizeDepth||'').trim()) parts.push('عمق:' + r.sizeDepth.trim());
+  return parts.join(' × ');
+}
 if (!TO_MI_DRAFT.rows.length) TO_MI_DRAFT.rows.push(toMiNewRow());
 
 function toRenderMiAddBox() {
@@ -9710,18 +9843,16 @@ function toRenderMiAddBox() {
             <span class="et-left">
               <span class="et-icon">${r.detailsOpen?'−':'+'}</span>
               <span class="et-text">المقاس</span>
-              <span class="et-hint">(اختياري)</span>
+              <span class="et-hint">(كل خانة اختيارية)</span>
             </span>
             <span class="et-chev">&#9662;</span>
           </button>
           <div class="to-extra-body ${r.detailsOpen?'open':''}">
-            <div class="field"><label>المقاسات</label>
-              <div class="to-size-grid">
-                <input class="d-input ltr-num" inputmode="decimal" data-rowfield="length" data-rowid="${r.id}" placeholder="الطول" value="${qEsc(r.length)}">
-                <input class="d-input ltr-num" inputmode="decimal" data-rowfield="width" data-rowid="${r.id}" placeholder="العرض" value="${qEsc(r.width)}">
-                <input class="d-input ltr-num" inputmode="decimal" data-rowfield="height" data-rowid="${r.id}" placeholder="الارتفاع" value="${qEsc(r.height)}">
-                <input class="d-input ltr-num" inputmode="decimal" data-rowfield="depth" data-rowid="${r.id}" placeholder="العمق" value="${qEsc(r.depth)}">
-              </div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+              <div class="field" style="margin-bottom:0;"><label>طول</label><input class="d-input" data-rowfield="sizeLength" data-rowid="${r.id}" placeholder="طول" value="${qEsc(r.sizeLength)}"></div>
+              <div class="field" style="margin-bottom:0;"><label>عرض</label><input class="d-input" data-rowfield="sizeWidth" data-rowid="${r.id}" placeholder="عرض" value="${qEsc(r.sizeWidth)}"></div>
+              <div class="field" style="margin-bottom:0;"><label>ارتفاع</label><input class="d-input" data-rowfield="sizeHeight" data-rowid="${r.id}" placeholder="ارتفاع" value="${qEsc(r.sizeHeight)}"></div>
+              <div class="field" style="margin-bottom:0;"><label>عمق</label><input class="d-input" data-rowfield="sizeDepth" data-rowid="${r.id}" placeholder="عمق" value="${qEsc(r.sizeDepth)}"></div>
             </div>
           </div>
         </div>
@@ -9772,7 +9903,7 @@ async function toMiSubmitAll() {
   const project = projectSel ? projectSel.value : TO_PLAN_PROJECT;
   const rows = TO_MI_DRAFT.rows.filter(r => r.name.trim());
   if (!rows.length) { msg.className = 'msg err'; msg.textContent = 'محتاج تكتب اسم بند واحد على الأقل'; return; }
-  const items = rows.map(r => ({ project, name: r.name.trim(), qty: r.qty.trim(), length: r.length.trim(), width: r.width.trim(), height: r.height.trim(), depth: r.depth.trim() }));
+  const items = rows.map(r => ({ project, name: r.name.trim(), size: toMiSizeString_(r), qty: r.qty.trim() }));
   const addBtn = document.getElementById('to_mi_add');
   addBtn.disabled = true; const oldLabel = addBtn.textContent; addBtn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
   msg.className = 'msg'; msg.textContent = '';
@@ -9782,7 +9913,7 @@ async function toMiSubmitAll() {
     msg.className = 'msg ok'; msg.textContent = items.length > 1 ? `&#9989; اتضاف ${items.length} بند` : '&#9989; اتضاف البند';
     delete TO_STATE.planCache[project]; // البيانات اتغيرت فعلاً — لازم تتجاب تاني
     TO_MI_DRAFT = { rows: [ toMiNewRow() ] };
-    TO_PLAN_PROJECT = project;
+    toSetPlanProject_(project);
     await toLoadPlanTab(undefined, { force: true });
     toRenderStatStrip();
   } catch (err) { msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
@@ -9807,9 +9938,11 @@ async function toOpenDailyReport(){
       <input type="date" class="d-input" id="to-report-date" style="width:160px;" value="${TO_REPORT_DATE}">
       <button type="button" class="btn btn-outline btn-sm" id="to-report-today">النهاردة</button>
       <button type="button" class="btn btn-outline btn-sm" id="to-report-yesterday">إمبارح</button>
+      <button type="button" class="btn-print" id="to-report-print-btn" style="margin-inline-start:auto;padding:9px 16px;font-size:12.5px;"><span class="bp-icon">🖨</span> طباعة PDF</button>
     </div>
     <div id="to-report-box"><div class="loading-row">جاري التحميل...</div></div>
   `);
+  document.getElementById('to-report-print-btn').addEventListener('click', toOpenDailyReportPrintModal_);
   document.getElementById('to-report-date').addEventListener('change', e => { TO_REPORT_DATE = e.target.value || TO_REPORT_DATE; toLoadDailyReport(); });
   document.getElementById('to-report-today').addEventListener('click', () => { TO_REPORT_DATE = todayStr(); document.getElementById('to-report-date').value = TO_REPORT_DATE; toLoadDailyReport(); });
   document.getElementById('to-report-yesterday').addEventListener('click', () => { TO_REPORT_DATE = yesterdayStr(); document.getElementById('to-report-date').value = TO_REPORT_DATE; toLoadDailyReport(); });
@@ -9818,12 +9951,46 @@ async function toOpenDailyReport(){
 async function toLoadDailyReport(){
   const box = document.getElementById('to-report-box'); if (!box) return;
   box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  TO_LAST_REPORT_DATA = null;
   try {
     const data = await apiGet('getWorkflowDailyReport', { date: TO_REPORT_DATE });
     if (!box.isConnected) return; // المودال ممكن يكون اتقفل قبل ما الطلب يخلص
+    TO_LAST_REPORT_DATA = data;
     if (!data.craftsmen.length) { box.innerHTML = `<div class="wf-empty-day">مفيش أي شغل متسجل في يوم ${qEsc(TO_REPORT_DATE)}</div>`; return; }
     box.innerHTML = data.craftsmen.map(c => toReportCraftsmanHtml_(c)).join('');
   } catch (err) { box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
+}
+let TO_LAST_REPORT_DATA = null;
+// زرار "طباعة PDF" جوه مودال التقرير اليومي — بيفتح تشيك بوكس بأسماء الصنايعية
+// اللي عندهم شغل في اليوم ده، وبيطبع بس اللي المستخدم اختارهم.
+function toOpenDailyReportPrintModal_(){
+  if (!TO_LAST_REPORT_DATA || !TO_LAST_REPORT_DATA.craftsmen || !TO_LAST_REPORT_DATA.craftsmen.length){
+    showToast('مفيش أي شغل متسجل في اليوم ده عشان تطبعه', 'error'); return;
+  }
+  const sections = TO_LAST_REPORT_DATA.craftsmen.map(c => ({ key: c.craftsman, label: c.craftsman + ' (' + c.items.length + ' بند)' }));
+  openGenericPrintModal('تقرير يومي — ' + TO_REPORT_DATE, sections, async (checkedNames) => {
+    const chosen = TO_LAST_REPORT_DATA.craftsmen.filter(c => checkedNames.includes(c.craftsman));
+    const body = chosen.map(c => toReportCraftsmanPrintHtml_(c)).join('');
+    _openPrintDoc(buildGenericPrintShell_('تقرير يومي — ' + TO_REPORT_DATE, body));
+  });
+}
+// نفس محتوى toReportCraftsmanHtml_ لكن بكلاسات مستند الطباعة (buildGenericPrintShell_)
+function toReportCraftsmanPrintHtml_(c){
+  return `
+    <div class="sec-block">
+      <h2 class="sec">${qEsc(c.craftsman)}${c.specialty ? ' — ' + qEsc(c.specialty) : ''}</h2>
+      ${c.items.map(it => `
+        <div style="border-bottom:1px dashed #e7e0d4;padding:6px 0;font-size:11.5px;">
+          <div><b>المشروع:</b> ${qEsc(it.project)}${it.location ? ' — <b>العنوان:</b> ' + qEsc(it.location) : ''}${it.attendance ? ' — <b>الحضور:</b> ' + qEsc(it.attendance) : ''}${it.supervision ? ' — <b>الإشراف:</b> ' + qEsc(it.supervision) : ''}</div>
+          ${it.title ? `<div style="font-weight:700;margin-top:2px;">${qEsc(it.title)}</div>` : ''}
+          ${it.details ? `<div style="color:#6B5E4E;margin-top:2px;">${qEsc(it.details)}</div>` : ''}
+          ${(it.sizes || it.qty) ? `<div style="margin-top:2px;">${it.sizes ? '<b>المقاسات:</b> ' + qEsc(it.sizes) + ' ' : ''}${it.qty ? '<b>الكمية:</b> ' + qEsc(it.qty) : ''}</div>` : ''}
+          ${it.feedback ? `<div class="wf-feedback-p">${qEsc(it.feedback)}</div>` : ''}
+          ${it.notes ? `<div class="wf-notes-p">${qEsc(it.notes)}</div>` : ''}
+        </div>
+      `).join('')}
+    </div>
+  `;
 }
 function toReportCraftsmanHtml_(c){
   return `
@@ -9843,11 +10010,11 @@ function toReportCraftsmanHtml_(c){
           ${it.title ? `<div style="font-weight:700;font-size:13.5px;margin-bottom:3px;">${qEsc(it.title)}</div>` : ''}
           ${it.details ? `<div style="font-size:12.5px;color:var(--muted);margin-bottom:3px;">${qEsc(it.details)}</div>` : ''}
           <div class="wf-item-row">
-            ${fmtDims(it) ? `<span><b>المقاس:</b> ${qEsc(fmtDims(it))}</span>` : ''}
+            ${it.sizes ? `<span><b>المقاسات:</b> ${qEsc(it.sizes)}</span>` : ''}
             ${it.qty ? `<span><b>الكمية:</b> ${qEsc(it.qty)}</span>` : ''}
           </div>
-          ${it.notes ? `<div style="font-size:12.5px;color:var(--muted);">📝 ${qEsc(it.notes)}</div>` : ''}
           ${it.feedback ? `<div class="wf-feedback">💬 ${qEsc(it.feedback)}</div>` : ''}
+          ${it.notes ? `<div style="font-size:12.5px;color:var(--muted);margin-top:4px;">📝 ${qEsc(it.notes)}</div>` : ''}
         </div>
       `).join('')}
     </div>
@@ -9957,6 +10124,9 @@ async function renderMissingItems(token) {
     }
     MISTATE.filter = 'all';
     document.getElementById('content').innerHTML = `
+      <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+        <button class="btn-print" onclick="miOpenPrintModal_()"><span class="bp-icon">🖨</span> طباعة PDF للصفحة</button>
+      </div>
       <div class="proj-tabs-row">
         <div class="proj-tabs" id="miProjTabs"></div>
         <div class="proj-add">
@@ -10035,6 +10205,36 @@ function miBindStaticEvents() {
   document.getElementById('saveMissingItemsBtn').addEventListener('click', miSaveAllPending);
 }
 
+// زرار "طباعة PDF" أعلى صفحة "بنود المشاريع" — تشيك بوكس بكل المشاريع الظاهرة،
+// وبيجيب بنود أي مشروع مختار (حتى لو مش المشروع المفتوح دلوقتي) وقت الطباعة.
+function miOpenPrintModal_(){
+  const visible = miVisibleProjects();
+  if (!visible.length){ showToast('مفيش مشاريع عشان تطبعها', 'error'); return; }
+  const sections = visible.map(p => {
+    const s = miProjectSummary(p);
+    return { key: p, label: p + ` (${s.pending} ناقص من ${s.total})` };
+  });
+  openGenericPrintModal('بنود المشاريع', sections, async (checkedProjects) => {
+    const results = await Promise.all(checkedProjects.map(p => apiGet('listMissingItems', { filters: { project: p } })));
+    const body = checkedProjects.map((p, i) => miBuildProjectPrintHtml_(p, (results[i] && results[i].items) || [])).join('');
+    _openPrintDoc(buildGenericPrintShell_('بنود المشاريع', body));
+  });
+}
+function miBuildProjectPrintHtml_(project, items){
+  const pending = items.filter(it => !it.done);
+  const done = items.filter(it => it.done);
+  const row = it => `<tr><td>${qEsc(it.name)}</td><td>${qEsc(it.size||'—')}</td><td>${qEsc(it.unit||'—')}</td><td class="num">${qEsc(it.qty||'—')}</td><td>${qEsc(it.notes||'')}</td></tr>`;
+  return `
+    <div class="sec-block">
+      <h2 class="sec">${qEsc(project)} — ${pending.length} ناقص من ${items.length}</h2>
+      <table>
+        <thead><tr><th>البند</th><th>المقاس</th><th>الوحدة</th><th>الكمية</th><th>ملاحظات</th></tr></thead>
+        <tbody>${pending.map(row).join('') || '<tr><td colspan="5">مفيش بنود ناقصة</td></tr>'}</tbody>
+      </table>
+      ${done.length ? `<div style="font-size:11px;color:#6B5E4E;margin-top:4px;">✅ ${done.length} بند اتوفر: ${done.map(it => qEsc(it.name)).join('، ')}</div>` : ''}
+    </div>
+  `;
+}
 function miProjectSummary(p) {
   return MISTATE.summary.find(s => s.project === p) || { project: p, total: 0, done: 0, pending: 0 };
 }
@@ -10216,7 +10416,7 @@ function miRenderItemsList() {
             </div>
           </div>
           <div class="item-meta">
-            ${fmtDims(it) ? `<span><b>المقاس:</b> ${qEsc(fmtDims(it))}</span>` : ''}
+            ${it.size ? `<span><b>المقاس:</b> ${qEsc(it.size)}</span>` : ''}
             ${it.unit ? `<span><b>الوحدة:</b> ${qEsc(it.unit)}</span>` : ''}
             ${it.qty ? `<span><b>الكمية:</b> ${qEsc(it.qty)}</span>` : ''}
           </div>
@@ -10447,10 +10647,7 @@ function matCardHtml_(m){
     <div class="panel mat-card" data-mat-id="${qEsc(m.id)}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
         <h4 style="margin:0;">${qEsc(m.name)}</h4>
-        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-          <span style="font-size:11px;color:var(--muted);background:var(--cream);border-radius:20px;padding:2px 10px;white-space:nowrap;">${qEsc(m.status)}</span>
-          <button type="button" class="btn btn-sm btn-danger" title="حذف الخامة" onclick="matDeleteConfirm('${qEscJs(m.id)}','${qEscJs(m.name)}')">✕</button>
-        </div>
+        <span style="font-size:11px;color:var(--muted);background:var(--cream);border-radius:20px;padding:2px 10px;white-space:nowrap;">${qEsc(m.status)}</span>
       </div>
       <div style="font-size:12.5px;color:var(--muted);margin:6px 0 4px;">
         المتبقي: <b style="color:var(--dark);">${fmt(m.remainingQty)} ${qEsc(m.unit)}</b> من أصل <b>${fmt(m.originalQty)} ${qEsc(m.unit)}</b>
@@ -10471,10 +10668,10 @@ function matCardHtml_(m){
             </span>
             <span class="et-chev">&#9662;</span>
           </button>
-          <div class="to-extra-body ${detailsOpen?'open':''}" id="mat-details-body-${idSuffix}" style="display:flex;flex-direction:column;">
-            <div class="field" style="width:100%;"><label>ليه (الوصف) *</label><input type="text" class="d-input" id="mat-use-desc-${idSuffix}" placeholder="مثال: دهان غرفة النوم" required></div>
-            <div class="field" style="width:100%;"><label>المشروع *</label><input type="text" class="d-input" list="mat-proj-list" id="mat-use-proj-${idSuffix}" placeholder="اختار أو اكتب مشروع" required></div>
-            <div class="field" style="width:100%;"><label>التاريخ</label><input type="date" class="d-input" id="mat-use-date-${idSuffix}" autocomplete="off" value="${todayStr()}"></div>
+          <div class="to-extra-body ${detailsOpen?'open':''}" id="mat-details-body-${idSuffix}">
+            <div class="field"><label>ليه (الوصف) *</label><input type="text" class="d-input" id="mat-use-desc-${idSuffix}" placeholder="مثال: دهان غرفة النوم" required></div>
+            <div class="field"><label>المشروع *</label><input type="text" class="d-input" list="mat-proj-list" id="mat-use-proj-${idSuffix}" placeholder="اختار أو اكتب مشروع" required></div>
+            <div class="field"><label>التاريخ</label><input type="date" class="d-input" id="mat-use-date-${idSuffix}" autocomplete="off" value="${todayStr()}"></div>
           </div>
 
           <button type="button" class="btn btn-outline btn-sm" style="margin-top:8px;" id="mat-use-btn-${idSuffix}" onclick="matLogUsage('${qEscJs(m.id)}')">تسجيل استخدام</button>
@@ -10564,17 +10761,6 @@ async function matLogUsage(materialId){
     setTimeout(matRenderGrid, res.finished ? 900 : 0);
   } catch (err) { msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
   finally { if (btn) { btn.disabled = false; btn.textContent = 'تسجيل استخدام'; } }
-}
-
-async function matDeleteConfirm(materialId, materialName){
-  if (!(await openGenConfirm(`متأكد إنك عاوز تمسح خامة "${materialName}"؟ هيتمسح معاها كل سجلات الاستخدام بتاعتها.`, 'حذف الخامة'))) return;
-  try {
-    const res = await apiPost('deleteMaterial', { id: materialId });
-    if (!res.success) { showToast('خطأ: ' + (res.error || 'حصل خطأ'), 'error'); return; }
-    const { materials } = await apiGet('listMaterials');
-    MATSTATE.materials = materials || [];
-    matRenderGrid();
-  } catch (err) { showToast('خطأ: ' + (err.message || err), 'error'); }
 }
 
 async function matShowHistory(materialId, materialName){
