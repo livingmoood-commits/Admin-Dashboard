@@ -2412,10 +2412,20 @@ function buildGenericPrintShell_(title, bodyHtml){
     .brand-title span{color:#B8975A;} .brand-sub{font-size:9px;letter-spacing:3px;color:#6B5E4E;text-transform:uppercase;margin-top:4px;direction:ltr;}
     .date-row{font-size:12px;color:#6B5E4E;direction:ltr;text-align:left;margin-bottom:16px;}
     h2.sec{font-size:14.5px;margin:22px 0 8px;padding-right:8px;border-right:4px solid #B8975A;}
+    .sec-block > h3, .sec-block > h4{font-size:14.5px;margin:0 0 10px;padding-right:8px;border-right:4px solid #B8975A;}
     table{width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:6px;}
     thead tr{background:#2C5F3A;color:#fff;} thead th{padding:6px 5px;text-align:right;font-weight:600;font-size:10.5px;}
     tbody td{padding:5px;border-bottom:1px solid #e7e0d4;}
     .num{direction:ltr;text-align:left;}
+    /* بلوكات الكروت (رصيد/إجمالي...) — نفس شكل الموقع تقريبًا بس مبسّط للطباعة */
+    .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px;}
+    .card{border:1px solid #e7e0d4;border-radius:8px;padding:10px 12px;text-align:center;}
+    .card .label{color:#6B5E4E;font-size:10.5px;font-weight:600;margin-bottom:4px;}
+    .card .value{font-size:16px;font-weight:800;}
+    .card .value.green{color:#2C5F3A;} .card .value.red{color:#b23b3b;} .card .value.gold{color:#B8975A;}
+    /* خانات متبقية بعد التنظيف (تسمية: قيمة) — سطر لسطر بمسافة واضحة بدل تكديس */
+    .sec-block span{display:inline-block;}
+    .sec-block > div > span, .sec-block .field span{display:block;margin-bottom:4px;}
     .wf-feedback-p{background:#fdf6e8;border-right:3px solid #B8975A;padding:6px 8px;border-radius:5px;font-size:11.5px;margin-top:4px;}
     .wf-notes-p{font-size:11px;color:#6B5E4E;margin-top:4px;}
     .footer{text-align:center;font-size:11px;color:#B8975A;font-family:'Playfair Display',Georgia,serif;letter-spacing:1px;direction:ltr;margin-top:20px;}
@@ -2442,26 +2452,66 @@ function printCurrentPageGeneric(){
   const content = document.getElementById('content');
   if (!content || !content.innerHTML.trim()) { showToast('مفيش محتوى في الصفحة عشان يتطبع', 'error'); return; }
   const title = (document.getElementById('pageTitle') && document.getElementById('pageTitle').textContent) || 'طباعة';
-  const clone = content.cloneNode(true);
-  // ⚠️ تنظيف النسخة قبل الطباعة:
-  // - أي زرار أو حقل بحث/فلتر أو أيقونة تفاعلية (تعديل/حذف/طي/فتح) مالوش معنى في PDF ثابت
-  clone.querySelectorAll(
-    'button, .btn-print, .q-scroll-fab, .d-quick-popover, .to-extra-toggle, .mat-icon-btn, ' +
-    '.pay-note-btn, input[type="search"], .cd-close, .loading-row, [style*="display:none"], [style*="display: none"]'
-  ).forEach(el => el.remove());
-  // - أي input/textarea/select هيتحول لنص ثابت بمكانه بالظبط (نفس القيمة اللي المستخدم شايفها)
-  clone.querySelectorAll('input, textarea').forEach(el => {
-    const span = document.createElement('span');
-    span.textContent = el.value || el.placeholder || '';
-    span.style.cssText = 'display:inline-block;padding:2px 0;';
-    el.replaceWith(span);
+
+  // ⚠️ كل صفحة تقريبًا مبنية من كذا بلوك "panel" (كارت/جدول/قسم) — بنستخدمهم
+  // كأقسام قابلة للاختيار في تشيك بوكس الطباعة، بدل ما نطبع الصفحة كلها كتلة
+  // واحدة مالهاش تحكم. بناخد بس البلوكات "الخارجية" (اللي مش جوه بلوك تاني
+  // متطابق معاها بالفعل) عشان مانكررش نفس المحتوى مرتين.
+  const allPanels = Array.from(content.querySelectorAll('.panel'));
+  const topPanels = allPanels.filter(p => !allPanels.some(other => other !== p && other.contains(p)));
+
+  // ⚠️ بلوكات "إضافة/حركة جديدة" (فورم فاضي بحقوله وزرار حفظ، من غير جدول أو
+  // بيانات فعلية) مالهاش معنى نطبعها — دايمًا فاضية وقت الطباعة أصلًا. بنستبعدها
+  // تلقائي من القايمة بدل ما تتعرض كخيار المستخدم يحتار فيه.
+  const isEmptyFormPanel = (p) => !p.querySelector('table') && !!p.querySelector('.btn-primary, [id*="save" i], [id*="Save"]');
+  const printable = topPanels.filter(p => !isEmptyFormPanel(p));
+
+  if (!printable.length) {
+    _printSectionsAndOpen(title, [{ key: 'all', label: title, el: content }]);
+    return;
+  }
+
+  const sections = printable.map((p, i) => {
+    const headingEl = p.querySelector('h3, h4, h2');
+    const label = (headingEl && headingEl.textContent.trim()) || `قسم ${i + 1}`;
+    return { key: 'p' + i, label, el: p };
   });
-  clone.querySelectorAll('select').forEach(el => {
-    const span = document.createElement('span');
-    span.textContent = (el.selectedOptions && el.selectedOptions[0] && el.selectedOptions[0].textContent) || '';
-    el.replaceWith(span);
+
+  openGenericPrintModal(title, sections.map(s => ({ key: s.key, label: s.label })), async (checkedKeys) => {
+    const chosen = sections.filter(s => checkedKeys.includes(s.key));
+    _printSectionsAndOpen(title, chosen);
   });
-  const body = `<div class="sec-block">${clone.innerHTML}</div>`;
+}
+// بتنضّف وتطبع الأقسام اللي المستخدم اختارها (أو الصفحة كلها لو مفيش أقسام)
+function _printSectionsAndOpen(title, sections){
+  const body = sections.map(s => {
+    const clone = s.el.cloneNode(true);
+    // ⚠️ صفوف/بلوكات فلترة وبحث (مش بيانات فعلية) — تتشال بالكامل، مش تتحول لنص
+    clone.querySelectorAll(
+      '.af-filters, .adv-filter-count, .d-days-dropdown, .q-scroll-fab, .d-quick-popover, ' +
+      '.to-extra-toggle, .mat-icon-btn, .pay-note-btn, [class*="filter" i]:has(input, select)'
+    ).forEach(el => el.remove());
+    // أي زرار/أيقونة تفاعلية تانية مالهاش معنى في PDF ثابت
+    clone.querySelectorAll(
+      'button, .btn-print, input[type="search"], .cd-close, .loading-row, [style*="display:none"], [style*="display: none"]'
+    ).forEach(el => el.remove());
+    // ⚠️ حقول الإدخال المتبقية (زي فلاتر تاريخ فوق جدول): بدل ما تتحول لسطر
+    // مستقل تحت اسمها (شكل مكدّس قبيح)، بنحطها "التسمية: القيمة" في سطر واحد.
+    clone.querySelectorAll('input, textarea, select').forEach(el => {
+      let val = '';
+      if (el.tagName === 'SELECT') val = (el.selectedOptions && el.selectedOptions[0] && el.selectedOptions[0].textContent) || '';
+      else val = el.value || '';
+      if (!val.trim()) { el.remove(); return; } // خانة فاضية (زي فلتر متستخدمش) — من غير قيمة، متتطبعش خالص
+      const label = el.closest('.field, .af-field') ? el.closest('.field, .af-field').querySelector('label') : null;
+      const span = document.createElement('span');
+      span.textContent = label ? `${label.textContent.trim()}: ${val}` : val;
+      span.style.cssText = 'display:inline-block;padding:2px 0;font-weight:600;';
+      el.replaceWith(span);
+      // احذف الـ<label> الأصلي بعد كده عشان منكررش نفس التسمية مرتين
+      if (label) label.remove();
+    });
+    return `<div class="sec-block">${clone.innerHTML}</div>`;
+  }).join('');
   _openPrintDoc(buildGenericPrintShell_(title, body));
 }
 
