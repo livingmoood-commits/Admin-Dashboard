@@ -1151,10 +1151,10 @@
     <h1>Living Mood</h1>
     <p class="sub">نظام إدارة المصنع</p>
     <form id="loginForm">
-      <div class="field"><label>اسم المستخدم</label><input id="l_name" required autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
+      <div class="field"><label>اسم المستخدم</label><input id="l_name" name="username" required autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
       <div class="field"><label>كلمة المرور</label>
         <div class="pw-wrap">
-          <input type="password" id="l_pass" required autocomplete="off" data-lpignore="true" data-1p-ignore="true" autocapitalize="off" autocorrect="off" spellcheck="false">
+          <input type="password" id="l_pass" name="password" required autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false">
           <button type="button" class="pw-eye" onclick="pwToggle(this)" tabindex="-1" aria-label="إظهار/إخفاء كلمة السر"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg></button>
         </div>
       </div>
@@ -1604,25 +1604,36 @@ document.addEventListener('copy', (e) => {
 // ⚠️ إضافة: تقليل عدد الطلبات اللي بتضرب Apps Script في نفس اللحظة بالظبط.
 // المصادفة على رابط الـ echo المؤقت بتاع Google بتزيد كل ما عدد الطلبات المتزامنة
 // زاد (أي صفحة بتعمل Promise.all لكذا apiGet مع بعض) — فبدل ما نسيبهم يضربوا كلهم
-// مرة واحدة، بنمرر بس عدد محدود (4) في نفس اللحظة والباقي بينتظر دوره في طابور.
-// ده بيقلل التصادمات نفسها (مش بس بيعالج نتيجتها بإعادة المحاولة) وبيقلل الضغط
-// على السيرفر، فبيبان أسرع في الحالات اللي كانت بتتصادم كتير قبل كده.
-const _API_MAX_CONCURRENT = 4;
+// مرة واحدة، بنمرر بس عدد محدود في نفس اللحظة والباقي بينتظر دوره في طابور.
+// ⚠️ تعديل: كان الحد 4 والطلبات اللي تحت الحد ده كانت بتاخد سلوت فورًا من غير أي
+// فاصل بينها — يعني لو صفحة عملت Promise.all لـ4 طلبات (زي "الخزنة": ملخص + حركات
+// + إيداعات + مشاريع)، الأربعة كانوا بيتبعتوا في نفس اللحظة بالظبط برضه، ومفيش
+// فايدة حقيقية من الطابور. دلوقتي كل طلب (حتى لو فيه سلوت فاضي) بيستنى فاصل زمني
+// صغير عن آخر طلب اتبعت، مش بس لما الطابور يكون مزدحم — وده اللي بيقلل التصادم
+// فعليًا في حالة الـ4-طلبات-مع-بعض دي.
+const _API_MAX_CONCURRENT = 3;
+const _API_MIN_DISPATCH_GAP_MS = 70;
 let _apiActiveCount = 0;
+let _apiLastDispatchAt = 0;
 const _apiWaitQueue = [];
 function _apiAcquireSlot(){
   return new Promise(resolve => {
-    if (_apiActiveCount < _API_MAX_CONCURRENT) { _apiActiveCount++; resolve(); }
-    else _apiWaitQueue.push(resolve);
+    const tryDispatch = () => {
+      if (_apiActiveCount >= _API_MAX_CONCURRENT) { _apiWaitQueue.push(tryDispatch); return; }
+      const gap = Date.now() - _apiLastDispatchAt;
+      if (gap < _API_MIN_DISPATCH_GAP_MS) { setTimeout(tryDispatch, _API_MIN_DISPATCH_GAP_MS - gap); return; }
+      _apiActiveCount++;
+      _apiLastDispatchAt = Date.now();
+      resolve();
+    };
+    tryDispatch();
   });
 }
 function _apiReleaseSlot(){
+  _apiActiveCount--;
   if (_apiWaitQueue.length) {
     const next = _apiWaitQueue.shift();
-    // فاصل صغير (60ms) قبل ما نطلق الطلب اللي بعده — بيقلل احتمال تصادم اتنين قريبين جدًا من بعض
-    setTimeout(next, 60);
-  } else {
-    _apiActiveCount--;
+    next();
   }
 }
 async function _apiFetch(url, opts, _retryCount) {
