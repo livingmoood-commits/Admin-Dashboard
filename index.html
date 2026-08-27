@@ -3422,7 +3422,8 @@ function _wrGrandTotalsTableHtml_(employees, forPrint){
   });
   rows.push(['إجمالي الإضافات (سهرات)', fmt(g.totals.add) + ' ج']);
   rows.push(['إجمالي الخصومات', fmt(g.totals.deduct) + ' ج']);
-  rows.push(['إجمالي الغياب', fmt(g.totals.absent) + ' ج' + (g.totals.fullAbsenceDays ? ` (${g.totals.fullAbsenceDays} يوم كامل)` : '')]);
+  // ⚠️ إضافة: صف "إجمالي الغياب" اتشال من هنا — بقى تكرار لصف "أيام الغياب" فوق
+  // اللي بقى بيعرض عدد الأيام + قيمتها بالجنيه مع بعض في نفس السطر.
   rows.push(['إجمالي المسحوبات', fmt(g.totals.withdraw) + ' ج']);
   if (g.totals.fridayWork) rows.push(['إجمالي شغل الجمعة', fmt(g.totals.fridayWork) + ' ج']);
   rows.push(['عدد الموظفين في التقرير', String(g.count)]);
