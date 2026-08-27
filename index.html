@@ -3381,20 +3381,29 @@ async function payrollShowWeeklyReport(weekIndex, employeeNames){
 // بنجمع من مصدرين: (1) totals المحسوبة من أكواد الأيام (إضافة/خصم/غياب/مسحوبات/
 // شغل الجمعة)، و(2) weekSummary الرسمي (نفس أعمدة الشيت زي "صافي الأسبوع")
 // لكل موظف، وبنجمعهم عمود بعمود بنفس ترتيب ظهورهم.
+// ⚠️ إضافة: بعض أعمدة ملخص الشيت (زي "أيام الغياب" و"خصم أيام/يوم (خ ي)") قيمتها
+// عدد أيام مش مبلغ فلوس — فمش لازم نجمعلها ' ج' زي باقي الأعمدة. بنكتشف الأعمدة
+// دي بالاسم، وبنحسب لكل واحدة منها (على جنب) قيمتها بالجنيه (عدد الأيام × يومية
+// كل موظف على حدة، لأن كل موظف ممكن يكون له يومية مختلفة).
+const _wrIsDayCountLabel_ = (label) => /غياب|خصم\s*(يوم|أيام)/.test(String(label || ''));
+
 function _wrComputeGrandTotals_(employees){
   const totals = { add: 0, deduct: 0, absent: 0, withdraw: 0, fridayWork: 0, fullAbsenceDays: 0 };
-  const weekSumTotals = {}; const weekSumOrder = [];
+  const weekSumTotals = {}; const weekSumMoney = {}; const weekSumOrder = [];
   (employees || []).forEach(e => {
     const t = e.totals || {};
+    const dailyRate = e.dailyRate || 0;
     totals.add += qNum(t.add); totals.deduct += qNum(t.deduct); totals.absent += qNum(t.absent);
     totals.withdraw += qNum(t.withdraw); totals.fridayWork += qNum(t.fridayWork);
     totals.fullAbsenceDays += qNum(t.fullAbsenceDays);
     (e.weekSummary || []).forEach(s => {
-      if (!(s.label in weekSumTotals)) { weekSumTotals[s.label] = 0; weekSumOrder.push(s.label); }
-      weekSumTotals[s.label] += qNum(s.value);
+      if (!(s.label in weekSumTotals)) { weekSumTotals[s.label] = 0; weekSumMoney[s.label] = 0; weekSumOrder.push(s.label); }
+      const val = qNum(s.value);
+      weekSumTotals[s.label] += val;
+      if (_wrIsDayCountLabel_(s.label)) weekSumMoney[s.label] += val * dailyRate;
     });
   });
-  return { totals, weekSumTotals, weekSumOrder, count: (employees || []).length };
+  return { totals, weekSumTotals, weekSumMoney, weekSumOrder, count: (employees || []).length };
 }
 // HTML الجدول نفسه — بتتنادى مرتين (مودال بستايل عادي، وPDF بستايل الطباعة) —
 // forPrint بيتحكم في الألوان/الفونت سايز عشان تتناسب مع باقي الـ PDF.
@@ -3402,7 +3411,15 @@ function _wrGrandTotalsTableHtml_(employees, forPrint){
   const g = _wrComputeGrandTotals_(employees);
   if (!g.count) return '';
   const rows = [];
-  g.weekSumOrder.forEach(label => rows.push([label, fmt(g.weekSumTotals[label]) + ' ج']));
+  g.weekSumOrder.forEach(label => {
+    if (_wrIsDayCountLabel_(label)) {
+      // ⚠️ إضافة: دي عدد أيام مش مبلغ — بنعرض الرقم لوحده، وجنبه إجمالي قيمة
+      // الخصم بالجنيه (محسوبة من يومية كل موظف).
+      rows.push([label, `${fmt(g.weekSumTotals[label])} يوم = ${fmt(g.weekSumMoney[label])} ج`]);
+    } else {
+      rows.push([label, fmt(g.weekSumTotals[label]) + ' ج']);
+    }
+  });
   rows.push(['إجمالي الإضافات (سهرات)', fmt(g.totals.add) + ' ج']);
   rows.push(['إجمالي الخصومات', fmt(g.totals.deduct) + ' ج']);
   rows.push(['إجمالي الغياب', fmt(g.totals.absent) + ' ج' + (g.totals.fullAbsenceDays ? ` (${g.totals.fullAbsenceDays} يوم كامل)` : '')]);
