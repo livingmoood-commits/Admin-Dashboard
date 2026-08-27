@@ -3472,14 +3472,20 @@ function _wrEmployeeFinalCalc_(e){
   const dailyRate = e.dailyRate || 0;
   const t = e.totals || {};
   const absenceDays = t.fullAbsenceDays || 0;
+  // ⚠️ إصلاح 2026-08-27: "خصم أيام (خ ي)" (خ ي — مثلاً 0.5خي = نص يوم) كان بيوصل من
+  // الباك إند جوه totals.dayDedDays بس مكانش بينخصم من workDays هنا خالص، فـ"الصافي"
+  // المحسوب في التقرير كان بيطلع أكبر من "صافي الأسبوع" الحقيقي (فورمولا الشيت)
+  // بمقدار (أيام الخصم × اليومية) — ده كان سبب الفرق بين الرقمين. دلوقتي بتتخصم
+  // زي أيام الغياب بالظبط بس بجزء اليوم المسجّل فعليًا (ممكن يبقى كسر زي 0.5).
+  const dayDedDays = t.dayDedDays || 0;
   const workedFriday = (e.days || []).some(d => d.isFridayWork);
-  const workDays = Math.max(0, 6 - absenceDays + (workedFriday ? 1 : 0));
+  const workDays = Math.max(0, 6 - absenceDays - dayDedDays + (workedFriday ? 1 : 0));
   const dayWages = workDays * dailyRate;
   const additions = t.add || 0;
   const withdrawals = t.withdraw || 0;
   const deductions = t.deduct || 0;
   const net = dayWages + additions - withdrawals - deductions;
-  return { dailyRate, absenceDays, workedFriday, workDays, dayWages, additions, withdrawals, deductions, net };
+  return { dailyRate, absenceDays, dayDedDays, workedFriday, workDays, dayWages, additions, withdrawals, deductions, net };
 }
 
 function renderWeeklyReportModal_(data){
@@ -3496,13 +3502,18 @@ function renderWeeklyReportModal_(data){
     // ⚠️ إضافة: تفصيل كل يوم فيه أي كود (إضافة/خصم/غياب/مسحوبات) أو ملاحظة — مش بس المسحوبات
     const days = e.days || [];
     const dayCodeChip_ = (label, amount, color) => amount > 0 ? `<span style="display:inline-block;background:${color}22;color:${color};border:1px solid ${color}55;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;margin-inline-end:5px;">${label}: ${fmt(amount)} ج</span>` : '';
+    // ⚠️ إضافة 2026-08-27: شريحة "خصم يوم (خ ي)" — قيمتها مش مبلغ جاهز زي باقي
+    // الشرائح، دي عدد أيام (ممكن يبقى كسر زي 0.5 = نص يوم) بتتحسب كـ"حصة من
+    // اليومية نفسها" — فبنعرض الكسر وقيمته بالجنيه مع بعض (كسر × اليومية) عشان
+    // يبان بوضوح إيه اللي بيتخصم وليه، مش بس رقم مجرد من غير تفسير.
+    const dedDaysChip_ = (dedDays, dailyRate) => dedDays > 0 ? `<span style="display:inline-block;background:#a8351f22;color:#a8351f;border:1px solid #a8351f55;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;margin-inline-end:5px;">خصم يوم (خ ي): ${dedDays} يوم = ${fmt(dedDays * dailyRate)} ج</span>` : '';
     // ⚠️ إضافة 2026-08-15: لو النوت بتاعت اليوم فيها ذكر "سهرة"، شريحة الإضافة
     // بتتكتب "سهرة" بدل "إضافة" عامة، عشان يبان وقد ايه قيمة السهرة بالظبط
     // (بدل ما تتلخبط جوه مبلغ تاني أو تنضم غلط ليوم تاني — شوف الباك إند).
     const daysHtml = days.length
       ? days.map(d => {
           const hasSehra = /سهر[ةه]/.test(d.note || '');
-          const noOtherCodes = !d.isFullAbsence && !d.add && !d.deduct && !d.absent && !d.withdraw;
+          const noOtherCodes = !d.isFullAbsence && !d.add && !d.deduct && !d.absent && !d.withdraw && !d.dedDays;
           return `
         <div style="padding:6px 0;border-bottom:1px dashed var(--border);">
           <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
@@ -3513,6 +3524,7 @@ function renderWeeklyReportModal_(data){
             ${dayCodeChip_('خصم', d.deduct, '#c0392b')}
             ${dayCodeChip_('غياب', d.absent, '#5e2f80')}
             ${dayCodeChip_('مسحوبات', d.withdraw, '#8a6408')}
+            ${dedDaysChip_(d.dedDays, e.dailyRate || 0)}
             ${(!d.isFridayWork && noOtherCodes) ? '<span style="display:inline-block;background:#8a640822;color:#6B5E4E;border:1px solid #8a640855;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;">حضر</span>' : ''}
           </div>
           ${d.note ? `<div style="font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.7;">${wrNoteLinesHtml_(d.note)}</div>` : ''}
@@ -3534,7 +3546,7 @@ function renderWeeklyReportModal_(data){
     // قيمته لوحدها) — يعني تقدر تشوف وانت نازل السطور القيمة بتتجمع/تتخصم إزاي
     // خطوة خطوة لحد ما توصل للصافي في الآخر.
     const fc = _wrEmployeeFinalCalc_(e);
-    const daysLabel = `عدد أيام الشغل (6${fc.absenceDays ? ` − ${fc.absenceDays} غياب` : ''}${fc.workedFriday ? ' + 1 جمعة' : ''} = ${fc.workDays} يوم) × ${fmt(fc.dailyRate)}`;
+    const daysLabel = `عدد أيام الشغل (6${fc.absenceDays ? ` − ${fc.absenceDays} غياب` : ''}${fc.dayDedDays ? ` − ${fc.dayDedDays} خصم يوم (خ ي)` : ''}${fc.workedFriday ? ' + 1 جمعة' : ''} = ${fc.workDays} يوم) × ${fmt(fc.dailyRate)}`;
     const fcRows = _payrollFinalCalcRunningRows_(daysLabel, fc.dayWages, fc.additions, fc.deductions, fc.withdrawals);
     const finalCalcHtml = `
       <div class="wr-final-calc">
@@ -3580,7 +3592,10 @@ function payrollBuildWeeklyReportPdfHtml_(data){
   // أو يختفي من التقرير خالص — يبقى واضح إن الغياب ده غياب فعلي مش نسيان تسجيل.
   // كمان لو النوت بتاعت الإضافة فيها ذكر "سهرة"، بتتكتب "سهرة" بدل "إضافة"
   // عامة عشان يبان وقد ايه قيمة السهرة بالظبط (بدل ما تتلخبط جوه رقم تاني).
-  const wrDayDetailTxt_ = d => {
+  // ⚠️ إضافة 2026-08-27: بتاخد اليومية كمان (مش بس اليوم d) عشان "خصم يوم (خ ي)"
+  // يتعرض بجزء اليوم *وقيمته بالجنيه* مع بعض (جزء اليوم × اليومية)، بنفس فكرة
+  // شريحة dedDaysChip_ في المودال بالظبط.
+  const wrDayDetailTxt_ = (d, dailyRate) => {
     const hasSehra = /سهر[ةه]/.test(d.note || '');
     const codeTxt = [
       d.isFullAbsence ? 'غياب يوم كامل' : '',
@@ -3589,6 +3604,7 @@ function payrollBuildWeeklyReportPdfHtml_(data){
       d.deduct ? `خصم ${fmt(d.deduct)}ج` : '',
       d.absent ? `غياب ${fmt(d.absent)}ج` : '',
       d.withdraw ? `مسحوبات ${fmt(d.withdraw)}ج` : '',
+      d.dedDays ? `خصم يوم (خ ي) ${d.dedDays} يوم = ${fmt(d.dedDays * (dailyRate || 0))}ج` : '',
     ].filter(Boolean).join(' — ');
     return codeTxt || 'حضر';
   };
@@ -3600,7 +3616,7 @@ function payrollBuildWeeklyReportPdfHtml_(data){
           // من سطر، فبنقسّمها ونحط <br> بين كل سطر عشان تظهر تحت بعض في الـ
           // PDF/الطباعة مش ملزّقة في سطر واحد.
           const noteHtml = String(d.note || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => qEsc(l)).join('<br>');
-          return `<tr><td style="padding:5px 6px;">${qEsc(d.label||d.date)}</td><td style="padding:5px 6px;">${qEsc(wrDayDetailTxt_(d))}</td><td style="padding:5px 6px;">${noteHtml}</td></tr>`;
+          return `<tr><td style="padding:5px 6px;">${qEsc(d.label||d.date)}</td><td style="padding:5px 6px;">${qEsc(wrDayDetailTxt_(d, e.dailyRate))}</td><td style="padding:5px 6px;">${noteHtml}</td></tr>`;
         }).join('')
       : `<tr><td colspan="3" style="padding:6px;color:#6B5E4E;">مفيش أي حركة مسجلة</td></tr>`;
 
@@ -3610,7 +3626,7 @@ function payrollBuildWeeklyReportPdfHtml_(data){
     // بين المودال والـ PDF. ⚠️ إضافة 2026-08-21 (تاني): عمود تالت "الناتج
     // حتى هنا" بيوضح الرصيد التراكمي بعد كل صف.
     const fc = _wrEmployeeFinalCalc_(e);
-    const daysLabelPdf = `عدد أيام الشغل (6${fc.absenceDays ? ` − ${fc.absenceDays} غياب` : ''}${fc.workedFriday ? ' + 1 جمعة' : ''} = ${fc.workDays} يوم) × ${fmt(fc.dailyRate)}`;
+    const daysLabelPdf = `عدد أيام الشغل (6${fc.absenceDays ? ` − ${fc.absenceDays} غياب` : ''}${fc.dayDedDays ? ` − ${fc.dayDedDays} خصم يوم (خ ي)` : ''}${fc.workedFriday ? ' + 1 جمعة' : ''} = ${fc.workDays} يوم) × ${fmt(fc.dailyRate)}`;
     const fcRowsPdf = _payrollFinalCalcRunningRows_(daysLabelPdf, fc.dayWages, fc.additions, fc.deductions, fc.withdrawals);
     const finalCalcHtmlPdf = `
       <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:8px;">
@@ -3702,9 +3718,12 @@ async function payrollOpenMonthlyReportModal(){
 // خط واحد لكل "يوم فيه أكشن" — نفس أسلوب شرائح الألوان بتاعة التقرير
 // الأسبوعي بالظبط، بس هنا كل سطر متسبوق باسم الأسبوع عشان تعرف اليوم ده
 // وقع في أي أسبوع من أسابيع الشهر.
-function _mrActionDayLineHtml_(d){
+function _mrActionDayLineHtml_(d, dailyRate){
   const hasSehra = /سهر[ةه]/.test(d.note || '');
   const chip = (label, amount, color) => amount > 0 ? `<span style="display:inline-block;background:${color}22;color:${color};border:1px solid ${color}55;border-radius:4px;padding:1px 7px;font-size:10.5px;font-weight:700;margin-inline-end:4px;">${label}: ${fmt(amount)} ج</span>` : '';
+  // ⚠️ إضافة 2026-08-27: نفس شريحة "خصم يوم (خ ي)" بتاعة التقرير الأسبوعي — بتعرض
+  // جزء اليوم المخصوم (ممكن يبقى كسر زي 0.5) وقيمته بالجنيه (جزء اليوم × اليومية).
+  const dedDaysChip_ = (dedDays, rate) => dedDays > 0 ? `<span style="display:inline-block;background:#a8351f22;color:#a8351f;border:1px solid #a8351f55;border-radius:4px;padding:1px 7px;font-size:10.5px;font-weight:700;margin-inline-end:4px;">خصم يوم (خ ي): ${dedDays} يوم = ${fmt(dedDays * (rate || 0))} ج</span>` : '';
   const noteHtml = String(d.note || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => `<div>📝 ${qEsc(l)}</div>`).join('');
   return `
     <div style="padding:5px 0;border-bottom:1px dashed var(--border);">
@@ -3716,6 +3735,7 @@ function _mrActionDayLineHtml_(d){
         ${chip('خصم', d.deduct, '#c0392b')}
         ${chip('غياب', d.absent, '#5e2f80')}
         ${chip('مسحوبات', d.withdraw, '#8a6408')}
+        ${dedDaysChip_(d.dedDays, dailyRate)}
       </div>
       ${noteHtml ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.6;">${noteHtml}</div>` : ''}
     </div>`;
@@ -3736,8 +3756,9 @@ function _mrGrandTotalsTableHtml_(employees, forPrint){
     acc.workDays += e.totalWorkDays || 0; acc.dayWages += e.totalDayWages || 0;
     acc.additions += e.totalAdditions || 0; acc.withdrawals += e.totalWithdrawals || 0;
     acc.deductions += e.totalDeductions || 0; acc.net += e.net || 0; acc.absence += e.absenceDaysCount || 0;
+    acc.dedDays += e.dedDaysCount || 0; // ⚠️ إضافة 2026-08-27: إجمالي أيام "خصم يوم (خ ي)" عبر كل الموظفين
     return acc;
-  }, { workDays:0, dayWages:0, additions:0, withdrawals:0, deductions:0, net:0, absence:0 });
+  }, { workDays:0, dayWages:0, additions:0, withdrawals:0, deductions:0, net:0, absence:0, dedDays:0 });
   const rows = [
     ['إجمالي أيام الشغل', g.workDays + ' يوم'],
     ['إجمالي قيمة أيام الشغل', fmt(g.dayWages) + ' ج'],
@@ -3745,6 +3766,7 @@ function _mrGrandTotalsTableHtml_(employees, forPrint){
     ['إجمالي الخصومات', fmt(g.deductions) + ' ج'],
     ['إجمالي المسحوبات', fmt(g.withdrawals) + ' ج'],
     ['إجمالي أيام الغياب', g.absence + ' يوم'],
+    ['إجمالي خصم الأيام (خ ي)', g.dedDays + ' يوم'],
     ['الصافي الكلي', fmt(g.net) + ' ج'],
     ['عدد الموظفين', String(employees.length)],
   ];
@@ -3766,7 +3788,7 @@ function renderMonthlyReportModal_(data){
   const employees = data.employees || [];
   const empHtml = employees.length ? employees.map(e => {
     const daysHtml = (e.actionDays && e.actionDays.length)
-      ? e.actionDays.map(_mrActionDayLineHtml_).join('')
+      ? e.actionDays.map(d => _mrActionDayLineHtml_(d, e.dailyRate)).join('')
       : '<div class="empty" style="padding:6px 0;font-size:12.5px;">مفيش أي أكشن مسجل الشهر ده — حضور عادي طول الشهر</div>';
     const rows = _mrFinalCalcRows_(e);
     const finalCalcHtml = `
@@ -3780,7 +3802,7 @@ function renderMonthlyReportModal_(data){
           </div>`).join('')}
       </div>`;
     return `<div class="panel" style="margin-bottom:12px;">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">اليومية: <b style="color:var(--dark);">${fmt(e.dailyRate||0)} ج</b> &nbsp;•&nbsp; ${e.absenceDaysCount||0} يوم غياب في ${e.weeksCount||0} أسبوع</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">اليومية: <b style="color:var(--dark);">${fmt(e.dailyRate||0)} ج</b> &nbsp;•&nbsp; ${e.absenceDaysCount||0} يوم غياب${e.dedDaysCount ? ` &nbsp;•&nbsp; ${e.dedDaysCount} يوم خصم (خ ي)` : ''} في ${e.weeksCount||0} أسبوع</div>
       <h4 style="margin-bottom:8px;">${qEsc(e.name)}</h4>
       <div><b style="font-size:12.5px;">📌 الأيام اللي فيها أكشن:</b>${daysHtml}</div>
       ${finalCalcHtml}
@@ -3807,7 +3829,7 @@ function payrollPrintMonthlyReport(){
 // الشهر + قايمة الأيام اللي فيها أكشن بدل جدول أيام كامل.
 function payrollBuildMonthlyReportPdfHtml_(data){
   const employees = data.employees || [];
-  const mrDayDetailTxt_ = d => {
+  const mrDayDetailTxt_ = (d, dailyRate) => {
     const hasSehra = /سهر[ةه]/.test(d.note || '');
     const codeTxt = [
       d.isFullAbsence ? 'غياب يوم كامل' : '',
@@ -3816,6 +3838,7 @@ function payrollBuildMonthlyReportPdfHtml_(data){
       d.deduct ? `خصم ${fmt(d.deduct)}ج` : '',
       d.absent ? `غياب ${fmt(d.absent)}ج` : '',
       d.withdraw ? `مسحوبات ${fmt(d.withdraw)}ج` : '',
+      d.dedDays ? `خصم يوم (خ ي) ${d.dedDays} يوم = ${fmt(d.dedDays * (dailyRate || 0))}ج` : '',
     ].filter(Boolean).join(' — ');
     return codeTxt || '';
   };
@@ -3824,7 +3847,7 @@ function payrollBuildMonthlyReportPdfHtml_(data){
     const dayRows = days.length
       ? days.map(d => {
           const noteHtml = String(d.note || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => qEsc(l)).join('<br>');
-          return `<tr><td style="padding:5px 6px;">${qEsc(d.week)}</td><td style="padding:5px 6px;">${qEsc(d.label||d.date)}</td><td style="padding:5px 6px;">${qEsc(mrDayDetailTxt_(d))}</td><td style="padding:5px 6px;">${noteHtml}</td></tr>`;
+          return `<tr><td style="padding:5px 6px;">${qEsc(d.week)}</td><td style="padding:5px 6px;">${qEsc(d.label||d.date)}</td><td style="padding:5px 6px;">${qEsc(mrDayDetailTxt_(d, e.dailyRate))}</td><td style="padding:5px 6px;">${noteHtml}</td></tr>`;
         }).join('')
       : `<tr><td colspan="4" style="padding:6px;color:#6B5E4E;">مفيش أي أكشن مسجل الشهر ده</td></tr>`;
 
@@ -3845,7 +3868,7 @@ function payrollBuildMonthlyReportPdfHtml_(data){
     return `
       <div class="wr-emp-block"${isFirst ? '' : ' style="border-top:2px dashed #D9D0C4;margin-top:18px;padding-top:18px;"'}>
         <div class="wr-emp-head">
-          <div style="font-size:10px;color:#6B5E4E;margin-bottom:2px;">اليومية: ${fmt(e.dailyRate||0)} ج &nbsp;•&nbsp; ${e.absenceDaysCount||0} يوم غياب في ${e.weeksCount||0} أسبوع</div>
+          <div style="font-size:10px;color:#6B5E4E;margin-bottom:2px;">اليومية: ${fmt(e.dailyRate||0)} ج &nbsp;•&nbsp; ${e.absenceDaysCount||0} يوم غياب${e.dedDaysCount ? ` &nbsp;•&nbsp; ${e.dedDaysCount} يوم خصم (خ ي)` : ''} في ${e.weeksCount||0} أسبوع</div>
           <div style="background:#1E1A15;color:#D4B483;padding:8px 12px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0;">${qEsc(e.name)}</div>
         </div>
         <div style="border:1px solid #D9D0C4;border-top:none;padding:10px 12px;">
