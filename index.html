@@ -1176,6 +1176,7 @@
     <div class="sep"></div>
     <button data-page="treasury"><span class="icon">&#128176;</span><span class="label">الخزنة (Cash Flow)</span></button>
     <button data-page="dailyExpenses" data-exp-group="1"><span class="icon">&#128221;</span><span class="label">مصاريف</span></button>
+    <button data-page="projectsPage"><span class="icon">&#127959;</span><span class="label">المشاريع</span></button>
     <button data-page="debts"><span class="icon">&#128308;</span><span class="label">ديون</span></button>
     <button data-page="partnerWithdrawals"><span class="icon">&#129309;</span><span class="label">مسحوبات شركاء</span></button>
     <div class="sep"></div>
@@ -1221,11 +1222,11 @@
   <div class="q-steps p-filter-tabs" id="expSwitchTabs" style="display:none;margin-bottom:16px;">
     <div class="step" id="exp-tab-daily" data-page="dailyExpenses"><span class="icon" style="margin-inline-end:6px;">&#128221;</span>مصاريف يومية</div>
     <div class="step" id="exp-tab-fixed" data-page="fixedExp"><span class="icon" style="margin-inline-end:6px;">&#128203;</span>المصاريف الثابتة</div>
-    <div class="step" id="exp-tab-projects" data-page="projectsPage"><span class="icon" style="margin-inline-end:6px;">&#127959;</span>المشاريع</div>
   </div>
   <div class="q-steps p-filter-tabs" id="wfSwitchTabs" style="display:none;margin-bottom:16px;">
     <div class="step" id="wf-tab-taskOrganize" data-page="taskOrganize"><span class="icon" style="margin-inline-end:6px;">&#128221;</span>تنظيم المهام</div>
     <div class="step" id="wf-tab-materials" data-page="materials"><span class="icon" style="margin-inline-end:6px;">&#129514;</span>الخامات</div>
+    <div class="step" id="wf-tab-projectPlanning" data-page="projectPlanning"><span class="icon" style="margin-inline-end:6px;">&#127959;</span>بنود المشاريع</div>
   </div>
   <div id="content"><div class="loading-row">جاري التحميل...</div></div>
 </div>
@@ -1850,12 +1851,12 @@ function checkApiConfigured(){
 const QP_GROUP_PAGES = ['quotation', 'debtors'];
 // صفحتين "مصاريف يومية" و"المصاريف الثابتة" بقوا مجمّعين تحت زرار واحد في القائمة
 // الجانبية (data-exp-group) بنفس فكرة QP_GROUP_PAGES فوق بالظبط.
-const EXP_GROUP_PAGES = ['dailyExpenses', 'fixedExp', 'projectsPage'];
+const EXP_GROUP_PAGES = ['dailyExpenses', 'fixedExp'];
 // نفس الفكرة لصفحات Work Flow — بقيت صفحتين بس (تنظيم المهام والخامات)؛ "تقرير يومي
 // بالصنايعية" و"بنود المشاريع" اتشالوا كصفحات مستقلة لأن نفس الوظيفة موجودة بالظبط
 // جوه تابات "تنظيم المهام" (تاب "شغل يومي"/"اسبوعي" فيهم زرار تقرير، وتاب "تايم بلاننج"
 // هو نفسه بنود المشاريع) — شوف تعليق renderTaskOrganize تحت لتفاصيل أكتر
-const WF_GROUP_PAGES = ['taskOrganize', 'materials'];
+const WF_GROUP_PAGES = ['taskOrganize', 'materials', 'projectPlanning'];
 const PAGES = {
   dashboard:    { title:'نظرة عامة', sub:'ملخص شامل لكل حاجة في المصنع', render: renderDashboard },
   payroll:      { title:'مرتبات', sub:'كشف حضور الشهر بالظبط زي الشيت — عدّل أي خلية وهتتسجل في الشيت الحقيقي مباشرة', render: renderPayroll },
@@ -1869,7 +1870,8 @@ const PAGES = {
   debts:        { title:'ديون', sub:'المبالغ اللي المصنع مديون بيها لجهات تانية ومتابعة سدادها', render: renderDebts },
   partnerWithdrawals: { title:'مسحوبات شركاء', sub:'مسحوبات الشركاء التلاتة — عمود لكل واحد، وإجمالي تحت كل عمود + إجمالي كلي', render: renderPartnerWithdrawals },
   taskOrganize:   { title:'تنظيم المهام', sub:'شغل الصنايعية اليومي، خريطة الأسبوع، تايم بلاننج المشاريع، وتقرير يومي/اسبوعي — في صفحة واحدة', render: renderTaskOrganize },
-  materials:      { title:'الخامات', sub:'مخزون كل خامة وكل استخدام منها — لأي مشروع وليه', render: renderMaterials }
+  materials:      { title:'الخامات', sub:'مخزون كل خامة وكل استخدام منها — لأي مشروع وليه', render: renderMaterials },
+  projectPlanning:{ title:'بنود المشاريع', sub:'تايم بلاننج — كل بند لكل مشروع، وحالته', render: renderProjectPlanning }
 };
 
 /* ================= Sidebar (mobile off-canvas + desktop collapse) ================= */
@@ -1947,7 +1949,6 @@ function expSyncTabsBar(page){
   if (!show) return;
   document.getElementById('exp-tab-daily').classList.toggle('active', page === 'dailyExpenses');
   document.getElementById('exp-tab-fixed').classList.toggle('active', page === 'fixedExp');
-  document.getElementById('exp-tab-projects').classList.toggle('active', page === 'projectsPage');
 }
 // نفس الفكرة لتابات صفحات Work Flow (بقيت 2 بس: تنظيم المهام + الخامات)
 function wfSyncTabsBar(page){
@@ -1957,13 +1958,14 @@ function wfSyncTabsBar(page){
   if (!show) return;
   document.getElementById('wf-tab-taskOrganize').classList.toggle('active', page === 'taskOrganize');
   document.getElementById('wf-tab-materials').classList.toggle('active', page === 'materials');
+  document.getElementById('wf-tab-projectPlanning').classList.toggle('active', page === 'projectPlanning');
 }
 // كل مرة ندخل صفحة، بيتزود التوكن ده. أي صفحة قديمة لسه بتحمّل (fetch) بتتاكد قبل
 // ما تكتب في الـ DOM إن التوكن بتاعها لسه هو الحالي — لو المستخدم دخل صفحة تانية
 // قبل ما تخلص، بتلاقي التوكن اتغير فبتلغي نفسها من غير ما تكتب حاجة فوق الصفحة الجديدة
 let _navToken = 0;
 // صفحات Work Flow — المستخدمين اللي مش Role=Lead بيشوفوا دول بس (شوف applyRoleAccess تحت)
-const WORKFLOW_ONLY_PAGES = ['taskOrganize', 'materials'];
+const WORKFLOW_ONLY_PAGES = ['taskOrganize', 'materials', 'projectPlanning'];
 function _isLeadRole(){ return sessionStorage.getItem('lm_userRole') === 'Lead'; }
 function goTo(page, costTab) {
   if (!PAGES[page]) page = 'dashboard';
@@ -10281,6 +10283,30 @@ async function toLoadPlanTab(token, opts) {
   } catch (err) { box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
 }
 
+// ⚠️ إضافة: صفحة "بنود المشاريع" بقت مستقلة (مش بس تاب جوه Work Flow). بتستخدم
+// نفس TO_STATE ونفس toLoadPlanTab/toRenderPlanBody بالظبط (نفس الكود، صفر تكرار)
+// — الفرق الوحيد إنها بتتأكد إن TO_STATE.projects/missingSummary متحمّلين قبل ما
+// تنادي عليهم، لأنها ممكن تتفتح مباشرة من غير ما المستخدم يزور "تنظيم المهام" الأول.
+async function renderProjectPlanning(token){
+  document.getElementById('content').innerHTML = `<div id="to-tab-content"><div class="loading-row">جاري التحميل...</div></div>`;
+  if (!TO_STATE.projects.length || !TO_STATE.missingSummary.length) {
+    try {
+      const [{ projects }, { summary }] = await Promise.all([apiGet('listProjects'), apiGet('getMissingItemsSummary')]);
+      if (isStaleNav(token)) return;
+      TO_STATE.projects = projects || [];
+      TO_STATE.missingSummary = summary || [];
+    } catch (err) { showError(err); return; }
+  }
+  await toLoadPlanTab(token);
+}
+function toToggleTpCards(){
+  const body = document.getElementById('toTpCardsBody');
+  const arrow = document.getElementById('toTpArrow');
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : '';
+  if (arrow) arrow.style.transform = isOpen ? '' : 'rotate(180deg)';
+}
 function toRenderPlanBody(items) {
   const box = document.getElementById('to-tab-content'); if (!box) return;
   const summaryMap = {};
@@ -10289,8 +10315,11 @@ function toRenderPlanBody(items) {
   const pct = items && items.length ? Math.round(doneCount / items.length * 100) : 0;
   box.innerHTML = `
     <div class="panel">
-      <h3>تايم بلاننج — بنود المشاريع <span class="sub">كل بند لكل مشروع، وحالته</span></h3>
-      <div class="to-tp-cards">
+      <button type="button" id="toTpToggle" onclick="toToggleTpCards()" style="all:unset;cursor:pointer;display:flex;justify-content:space-between;align-items:center;width:100%;">
+        <h3 style="margin:0;">تايم بلاننج — بنود المشاريع <span class="sub">(${qEsc(TO_PLAN_PROJECT)})</span></h3>
+        <span id="toTpArrow" style="transition:transform .2s;">&#9662;</span>
+      </button>
+      <div class="to-tp-cards" id="toTpCardsBody" style="display:none;margin-top:12px;">
         ${TO_STATE.projects.map(p => {
           const s = summaryMap[p] || { total:0, done:0, pending:0 };
           const pp = s.total ? Math.round(s.done / s.total * 100) : 0;
@@ -10327,7 +10356,7 @@ function toRenderPlanBody(items) {
   `;
   // تبديل المشروع: هيبان فورًا لو اتشاف قبل كده (كاش)، وهيفيتش تاني بس أول مرة
   document.querySelectorAll('.to-tp-card').forEach(c => {
-    c.addEventListener('click', () => { toSetPlanProject_(c.dataset.proj); toLoadPlanTab(); });
+    c.addEventListener('click', () => { toSetPlanProject_(c.dataset.proj); toLoadPlanTab().then(() => { const b = document.getElementById('toTpCardsBody'); if (b) b.style.display = 'none'; }); });
   });
   const sel = document.getElementById('to_mi_project');
   if (sel) sel.addEventListener('change', e => { toSetPlanProject_(e.target.value); toLoadPlanTab(); });
