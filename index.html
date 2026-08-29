@@ -9901,6 +9901,11 @@ function toRenderCraftsmenOptionsHtml_(craftsmen, selected){
   return html;
 }
 let TO_DAILY_VIEW = sessionStorage.getItem('lm_toDailyView') || 'quickform'; // 'roster' | 'quickform'
+// ⚠️ إضافة: فورم "تسجيل شغل" بقى بيدعم كذا صنيعي مع بعض في نفس الأكشن —
+// selected: مين مختار، project/hours/title/notes: البلوك المشترك اللي
+// بيتطبق على كل المختارين، extras: مشاريع إضافية مربوطة بصنيعي معيّن (مش
+// كلهم بالضرورة)، evenings: سهرات مربوطة بصنيعي معيّن كمان.
+let TO_QF = { selected: new Set(), project: '', hours: '', title: '', notes: '', extras: [], evenings: [] };
 function toSetDailyView(view){
   TO_DAILY_VIEW = view;
   try { sessionStorage.setItem('lm_toDailyView', view); } catch(e){}
@@ -10013,7 +10018,7 @@ function toRosterExpandedHtml_(name, draft){
       <button type="button" class="btn-roster-glow" onclick="toRosterAddProjectBlock_('${qEscJs(name)}')">🌟 يشتغل في مشروع تاني؟ دوس هنا</button>
       ${draft.blocks.length > 1 ? `<div class="msg" style="display:block;font-size:11.5px;margin-top:6px;">ملحوظة: النهارده 9 ساعات — اتقسّموا بنفسك بين المشاريع فوق</div>` : ''}
       <div style="margin-top:12px;">
-        ${draft.eveningOpen ? toRosterEveningHtml_(name, draft) : `<button type="button" class="btn btn-outline btn-sm" onclick="toRosterToggleEvening_('${qEscJs(name)}')">🌙 في سهرة؟ دوس هنا</button>`}
+        ${draft.eveningOpen ? toRosterEveningHtml_(name, draft) : `<button type="button" class="btn-roster-glow" onclick="toRosterToggleEvening_('${qEscJs(name)}')">🌙 في سهرة؟ دوس هنا</button>`}
       </div>
       <div style="display:flex;gap:8px;margin-top:14px;">
         <button type="button" class="btn btn-primary btn-sm" id="rosterSaveBtn-${id}" onclick="toRosterSave_('${qEscJs(name)}')">💾 حفظ الجديد</button>
@@ -10205,21 +10210,26 @@ async function toRosterDoCancel_(name){
 
 function toRenderDailyForm() {
   const box = document.getElementById('to-tab-content'); if (!box) return;
+  const weekly = TO_STATE.craftsmen.filter(c => c.paymentType !== 'شهري');
+  const monthly = TO_STATE.craftsmen.filter(c => c.paymentType === 'شهري');
+  const empCheckHtml = c => `
+    <label class="print-opt-row" style="padding:6px 8px;">
+      <input type="checkbox" class="toqf-emp-cb" value="${qEsc(c.name)}" ${TO_QF.selected.has(c.name)?'checked':''} onchange="toQfToggleEmployee_(this.value,this.checked)">
+      <span>${qEsc(c.name)}</span>
+    </label>`;
   box.innerHTML = `
     <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
       <button type="button" class="btn btn-outline btn-sm" onclick="toSetDailyView('roster')">📋 عرض كل الصنايعية</button>
     </div>
     <div class="panel">
       <h3>تسجيل شغل <span class="sub">هيتسجل في شيت "سجل الشغل اليومي" مباشرة، وأي ساعات بتتحمّل على تكلفة المشروع أوتوماتيك</span></h3>
-      <div class="field"><label>الصنيعي</label>
-        <div class="to-cs" id="toCraftsmanCs">
-          <button type="button" class="to-cs-trigger ${TO_STATE.csOpen?'open':''}" id="toCsTrigger">
-            <span>${qEsc(TO_STATE.qCraftsman || 'اختار صنيعي')}</span><span class="arrow">&#9662;</span>
-          </button>
-          <div class="to-cs-list ${TO_STATE.csOpen?'open':''}" id="toCsList">
-            ${toRenderCraftsmenOptionsHtml_(TO_STATE.craftsmen, TO_STATE.qCraftsman)}
-          </div>
+      <div class="field"><label>الصنايعية (تقدر تختار أكتر من واحد لو كلهم شغالين في نفس الحاجة)</label>
+        <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;padding:4px;">
+          ${weekly.map(empCheckHtml).join('')}
+          ${weekly.length && monthly.length ? `<div class="to-cs-divider">شهري</div>` : ''}
+          ${monthly.map(empCheckHtml).join('')}
         </div>
+        ${TO_QF.selected.size ? `<div style="font-size:11.5px;color:var(--muted);margin-top:6px;">مختار: ${Array.from(TO_QF.selected).map(qEsc).join('، ')}</div>` : ''}
       </div>
       <datalist id="to-dl-projects">${TO_STATE.projects.map(p => `<option value="${qEsc(p)}">`).join('')}</datalist>
       <div class="field">
@@ -10231,22 +10241,30 @@ function toRenderDailyForm() {
         </div>
       </div>
 
-      ${TO_STATE.qCraftsman ? (() => {
-        const draft = toRosterDraftFor_(TO_STATE.qCraftsman);
-        const id = toRosterId_(TO_STATE.qCraftsman);
-        return `
-          ${draft.blocks.map((b,i) => toRosterBlockHtml_(TO_STATE.qCraftsman, b, i, draft.blocks.length)).join('')}
-          <button type="button" class="btn-roster-glow" onclick="toRosterAddProjectBlock_('${qEscJs(TO_STATE.qCraftsman)}')">🌟 يشتغل في مشروع تاني؟ دوس هنا</button>
-          ${draft.blocks.length > 1 ? `<div class="msg" style="display:block;font-size:11.5px;margin-top:6px;">ملحوظة: النهارده 9 ساعات — اتقسّموا بنفسك بين المشاريع فوق</div>` : ''}
-          <div style="margin-top:12px;">
-            ${draft.eveningOpen ? toRosterEveningHtml_(TO_STATE.qCraftsman, draft) : `<button type="button" class="btn btn-outline btn-sm" onclick="toRosterToggleEvening_('${qEscJs(TO_STATE.qCraftsman)}')">🌙 في سهرة؟ دوس هنا</button>`}
+      ${TO_QF.selected.size ? `
+        <div class="grid2" style="margin-bottom:10px;padding:10px;background:var(--cream);border-radius:9px;">
+          <div class="field"><label>المشروع</label><input class="d-input" list="to-dl-projects" id="toqf_project" value="${qEsc(TO_QF.project)}" oninput="TO_QF.project=this.value"></div>
+          <div class="field"><label>وقت الشغل (ساعات)</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="toqf_hours" value="${qEsc(TO_QF.hours)}" placeholder="مثال: 9" onkeypress="return /[0-9.]/.test(event.key)" oninput="TO_QF.hours=this.value"></div>
+          <div class="field" style="grid-column:1/-1;"><label>المطلوب</label><input class="d-input" id="toqf_title" value="${qEsc(TO_QF.title)}" placeholder="مثال: تركيب أبواب" oninput="TO_QF.title=this.value"></div>
+          <div class="field" style="grid-column:1/-1;">
+            <label>ملاحظات</label>
+            <input class="d-input" id="toqf_notes" value="${qEsc(TO_QF.notes)}" oninput="TO_QF.notes=this.value">
+            <div style="color:var(--red);font-size:11px;margin-top:4px;">⚠️ لو حد غاب فجأة: شيله من الاختيار فوق واكتب "غياب" أو "إجازة" هنا — أي ملحوظة فيها الكلمتين دول متتسجلش كشغل ولا تكلفة خالص، بتتسجل كملاحظة بس</div>
           </div>
-          <div style="margin-top:14px;">
-            <button type="button" class="btn btn-primary" id="toSaveEntryBtn-${id}" onclick="toQuickformSave_()">حفظ السطر</button>
-            <div class="msg" id="toSaveEntryMsg-${id}"></div>
-          </div>
-        `;
-      })() : `<div class="empty">اختار الصنيعي الأول</div>`}
+        </div>
+
+        ${toQfExtrasListHtml_()}
+        <button type="button" class="btn-roster-glow" onclick="toQfOpenExtraForm_()">🌟 يشتغل في مشروع تاني؟ دوس هنا</button>
+        <div class="msg" style="display:block;font-size:11.5px;margin:6px 0 14px;">ملحوظة: النهارده 9 ساعات — اتقسّموا بنفسك بين المشاريع</div>
+
+        ${toQfEveningsListHtml_()}
+        <button type="button" class="btn-roster-glow" onclick="toQfOpenEveningForm_()">🌙 في سهرة؟ دوس هنا</button>
+
+        <div style="margin-top:16px;">
+          <button type="button" class="btn btn-primary" id="toSaveEntryBtn" onclick="toQuickformSave_()">حفظ السطر</button>
+          <div class="msg" id="toSaveEntryMsg"></div>
+        </div>
+      ` : `<div class="empty">اختار صنيعي واحد أو أكتر الأول</div>`}
     </div>
 
     <div class="panel" id="to-ww-panel">
@@ -10307,6 +10325,8 @@ function toItemHTML(it) {
           ${it.notes?`<div style="font-size:12.5px;color:var(--muted);margin-top:4px;">&#128221; ${qEsc(it.notes)}</div>`:''}
         </div>
         <div class="to-status-row">
+          <button type="button" class="mat-icon-btn" title="تعديل" onclick="toWfItemEdit_('${qEscJs(it.id)}','${qEscJs(it.project)}','${qEscJs(it.title||'')}','${qEscJs(it.notes||'')}')">✏️</button>
+          <button type="button" class="mat-icon-btn" title="حذف" onclick="toWfItemDelete_('${qEscJs(it.id)}')">🗑️</button>
           <button type="button" class="to-status-btn ${it.status==='blocked'?'blocked-active':''}" data-statusid="${it.id}" data-status="blocked">
             <span class="ic">&#10005;</span><span class="lbl">متعطل</span>
           </button>
@@ -10318,6 +10338,52 @@ function toItemHTML(it) {
       ${it.status==='blocked' ? `<div class="field to-blocked-note"><input class="d-input" placeholder="سبب التعطل (اختياري)" data-blockednote="${it.id}" value="${qEsc(it.blockedNote||'')}"></div>` : ''}
     </div>
   `;
+}
+// ⚠️ إضافة: تعديل/حذف أي بند شغل من أي مكان في الموقع بيستخدم toItemHTML (مين
+// فين، الجدول الأسبوعي...) — بياخد القيم مباشرة من الكارت (مش من كاش معيّن)،
+// عشان يشتغل صح مهما كان المصدر اللي البند ده جاي منه.
+function toWfItemEdit_(id, project, title, notes){
+  openCardModal(`
+    <div class="cd-head"><h3>✏️ تعديل بند</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div class="field"><label>المشروع</label><input class="d-input" id="wfItem-edit-project" list="to-dl-projects" value="${qEsc(project)}"></div>
+    <div class="field"><label>المطلوب</label><input class="d-input" id="wfItem-edit-title" value="${qEsc(title)}"></div>
+    <div class="field"><label>ملاحظات</label><input class="d-input" id="wfItem-edit-notes" value="${qEsc(notes)}"></div>
+    <button type="button" class="btn btn-primary btn-sm" id="wfItem-edit-save-btn" onclick="toWfItemSaveEdit_('${qEscJs(id)}')">حفظ التعديل</button>
+    <div class="msg" id="wfItem-edit-msg"></div>
+  `);
+}
+async function toWfItemSaveEdit_(id){
+  const project = document.getElementById('wfItem-edit-project').value.trim();
+  const title = document.getElementById('wfItem-edit-title').value.trim();
+  const notes = document.getElementById('wfItem-edit-notes').value.trim();
+  const msg = document.getElementById('wfItem-edit-msg');
+  const btn = document.getElementById('wfItem-edit-save-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
+  try {
+    await apiPost('updateWorkflowEntry', { entry: { id, project, title, notes } });
+    closeCardModal();
+    showToast('✅ اتعدل');
+    await toWfRefreshCurrentView_();
+  } catch(err){ msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); btn.disabled = false; btn.textContent = 'حفظ التعديل'; }
+}
+async function toWfItemDelete_(id){
+  try {
+    await apiPost('deleteWorkflowEntry', { id });
+    showToast('🗑️ اتحذف البند');
+    await toWfRefreshCurrentView_();
+  } catch(err){ showError(err); }
+}
+// بترجّع تحدّث أي واجهة كانت شايف فيها البند (مين فين / الجدول الأسبوعي /
+// الروستر) — كلهم بيعتمدوا على كاش محلي، فلازم نمسحه ونجيب البيانات تاني
+async function toWfRefreshCurrentView_(){
+  delete TO_STATE.dailyCache[TO_STATE.formDate];
+  delete TO_STATE.dailyCache[TO_STATE.wwDate];
+  TO_ROSTER.loadedDate = null;
+  if (TO_STATE.activeTab === 'week') { await toLoadWeekTab(undefined, { force: true }); }
+  else {
+    await toLoadWhoWhere(undefined, { force: true });
+    if (TO_DAILY_VIEW === 'roster') await toRenderRosterView();
+  }
 }
 
 const WORKFLOW_SPECIALTIES_FALLBACK = ['نجار','دهان','ألوميتال','جبس بورد','كهربائي','سباك','استورجي','عامل','أخرى'];
@@ -10373,15 +10439,116 @@ function toBuildSizesString_(){
   if (D) parts.push('عمق:' + D);
   return parts.join(' × ');
 }
+function toQfToggleEmployee_(name, checked){
+  if (checked) TO_QF.selected.add(name); else TO_QF.selected.delete(name);
+  toRenderDailyForm();
+}
+function toQfExtrasListHtml_(){
+  if (!TO_QF.extras.length) return '';
+  return `<div style="margin-bottom:10px;">` + TO_QF.extras.map((e,i) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--cream);border-radius:8px;margin-bottom:6px;">
+      <div style="font-size:12.5px;">🌟 <b>${qEsc(e.employee)}</b> — ${qEsc(e.project)} (${fmt(e.hours)} ساعة)</div>
+      <button type="button" class="mat-icon-btn" onclick="toQfRemoveExtra_(${i})">✕</button>
+    </div>`).join('') + `</div>`;
+}
+function toQfRemoveExtra_(i){ TO_QF.extras.splice(i, 1); toRenderDailyForm(); }
+function toQfOpenExtraForm_(){
+  const employees = Array.from(TO_QF.selected);
+  if (!employees.length) return;
+  openCardModal(`
+    <div class="cd-head"><h3>🌟 يشتغل في مشروع تاني</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div class="field"><label>مين؟</label>
+      <select class="d-input" id="qfExtraEmp">${employees.map(e => `<option value="${qEsc(e)}">${qEsc(e)}</option>`).join('')}</select>
+    </div>
+    <div class="field"><label>المشروع</label><input class="d-input" list="to-dl-projects" id="qfExtraProject"></div>
+    <div class="field"><label>الساعات</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="qfExtraHours" onkeypress="return /[0-9.]/.test(event.key)"></div>
+    <button type="button" class="btn btn-primary btn-sm" onclick="toQfConfirmExtra_()">إضافة</button>
+    <div class="msg" id="qfExtraMsg"></div>
+  `);
+}
+function toQfConfirmExtra_(){
+  const employee = document.getElementById('qfExtraEmp').value;
+  const project = document.getElementById('qfExtraProject').value.trim();
+  const hours = document.getElementById('qfExtraHours').value.trim();
+  const msg = document.getElementById('qfExtraMsg');
+  if (!project || !hours || Number(hours) <= 0) { msg.className = 'msg err'; msg.textContent = 'المشروع والساعات مطلوبين'; return; }
+  TO_QF.extras.push({ employee, project, hours });
+  closeCardModal();
+  toRenderDailyForm();
+}
+function toQfEveningsListHtml_(){
+  if (!TO_QF.evenings.length) return '';
+  return `<div style="margin-bottom:10px;">` + TO_QF.evenings.map((e,i) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--cream);border-radius:8px;margin-bottom:6px;">
+      <div style="font-size:12.5px;">🌙 <b>${qEsc(e.employee)}</b>${e.project ? ' — ' + qEsc(e.project) : ''} (${fmt(e.hours)} ساعة سهرة)</div>
+      <button type="button" class="mat-icon-btn" onclick="toQfRemoveEvening_(${i})">✕</button>
+    </div>`).join('') + `</div>`;
+}
+function toQfRemoveEvening_(i){ TO_QF.evenings.splice(i, 1); toRenderDailyForm(); }
+function toQfOpenEveningForm_(){
+  const employees = Array.from(TO_QF.selected);
+  if (!employees.length) return;
+  openCardModal(`
+    <div class="cd-head"><h3>🌙 في سهرة</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div class="field"><label>مين؟</label>
+      <select class="d-input" id="qfEveningEmp">${employees.map(e => `<option value="${qEsc(e)}">${qEsc(e)}</option>`).join('')}</select>
+    </div>
+    <div class="field"><label>عدد ساعات السهرة</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="qfEveningHours" onkeypress="return /[0-9.]/.test(event.key)"></div>
+    <div class="field"><label>مشروع السهرة (اختياري)</label><input class="d-input" list="to-dl-projects" id="qfEveningProject"></div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">ساعات السهرة بتتسجل للعلم بس — مش بتتحسب في التكلفة ولا المرتب</div>
+    <button type="button" class="btn btn-primary btn-sm" onclick="toQfConfirmEvening_()">إضافة</button>
+    <div class="msg" id="qfEveningMsg"></div>
+  `);
+}
+function toQfConfirmEvening_(){
+  const employee = document.getElementById('qfEveningEmp').value;
+  const hours = document.getElementById('qfEveningHours').value.trim();
+  const project = document.getElementById('qfEveningProject').value.trim();
+  const msg = document.getElementById('qfEveningMsg');
+  if (!hours || Number(hours) <= 0) { msg.className = 'msg err'; msg.textContent = 'عدد الساعات مطلوب'; return; }
+  TO_QF.evenings.push({ employee, hours, project });
+  closeCardModal();
+  toRenderDailyForm();
+}
 async function toQuickformSave_() {
-  const craftsman = (TO_STATE.qCraftsman || '').trim();
-  if (!craftsman) { showToast('اختار الصنيعي الأول', 'error'); return; }
-  const id = toRosterId_(craftsman);
-  await toSaveEmployeeBlocks_(craftsman, TO_STATE.formDate, 'toSaveEntryMsg-' + id, 'toSaveEntryBtn-' + id, 'حفظ السطر', async () => {
+  if (!TO_QF.selected.size) { showToast('اختار صنيعي واحد على الأقل', 'error'); return; }
+  const msg = document.getElementById('toSaveEntryMsg');
+  const btn = document.getElementById('toSaveEntryBtn');
+  // ⚠️ إضافة: لو الملاحظات فيها "غياب" أو "إجازة"، الساعات متتسجلش خالص (يعني
+  // مفيش تكلفة على المشروع)، بس الملاحظة نفسها بتتسجل في سجل الشغل للتوثيق —
+  // بالظبط زي ما اتحدد.
+  const isAbsence = /غياب|اجازة|إجازة/.test(TO_QF.notes || '');
+  const hasBaseBlock = TO_QF.project.trim() && Number(TO_QF.hours) > 0;
+  if (!hasBaseBlock && !TO_QF.extras.length && !TO_QF.evenings.length) {
+    if (msg) { msg.className = 'msg err'; msg.textContent = 'لازم تدخل مشروع وساعات على الأقل، أو تضيف مشروع تاني/سهرة'; }
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...'; }
+  if (msg) { msg.className = 'msg'; msg.textContent = ''; }
+  try {
+    const entries = [];
+    TO_QF.selected.forEach(employee => {
+      if (hasBaseBlock) {
+        entries.push({
+          employee, project: TO_QF.project.trim(),
+          hours: isAbsence ? 0 : TO_QF.hours, // غياب/إجازة — الساعات صفر يعني مفيش تكلفة
+          date: TO_STATE.formDate, title: TO_QF.title.trim(), notes: TO_QF.notes.trim()
+        });
+      }
+    });
+    TO_QF.extras.forEach(e => entries.push({ employee: e.employee, project: e.project, hours: e.hours, date: TO_STATE.formDate, title: '', notes: '' }));
+    TO_QF.evenings.forEach(e => entries.push({ employee: e.employee, project: e.project || '', hours: 0, date: TO_STATE.formDate, title: '', notes: 'سهرة', eveningHours: e.hours }));
+
+    await apiPost('addRosterEntries', { entries });
+    showToast('✅ اتسجل الشغل');
+    TO_QF = { selected: new Set(), project: '', hours: '', title: '', notes: '', extras: [], evenings: [] };
     delete TO_STATE.dailyCache[TO_STATE.formDate]; // البيانات اتغيرت فعلاً — لازم نجيبها تاني من السيرفر
     await toLoadDailyTab(undefined, { force: true });
     toRenderStatStrip();
-  });
+  } catch (err) {
+    if (msg) { msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
+    if (btn) { btn.disabled = false; btn.textContent = 'حفظ السطر'; }
+  }
 }
 
 // تحديث "تفاؤلي": بنغيّر الحالة في الشاشة فورًا من غير ما نستنى السيرفر ولا نعمل أي فيتش،
