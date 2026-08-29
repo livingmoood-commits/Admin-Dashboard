@@ -1550,6 +1550,10 @@ document.addEventListener('keydown', (e) => {
 // الصفحة/المودال المفتوح دلوقتي، من أي مكان في الشاشة (حتى لو واقف جوه حقل
 // كتابة). كل زرار حفظ رئيسي في الموقع معلّم بـ data-hotkey-save. لو فيه مودال
 // مفتوح فيه زرار حفظ، بياخد الأولوية عن أي زرار حفظ تاني وراه في الصفحة.
+// ⚠️ تعديل: capture:true — بيخلي الـ Listener ده يشتغل قبل أي حاجة تانية على
+// الصفحة (حتى لو فيه أي كود تاني بيسجل keydown listener وبيوقف الانتشار)،
+// وبيضمن إن Ctrl+S منع المتصفح من فتح نافذة "حفظ الصفحة" الافتراضية بتاعته
+// بشكل أوثق وأضمن.
 document.addEventListener('keydown', (e) => {
   const ctrlOrCmd = e.ctrlKey || e.metaKey;
   if (!ctrlOrCmd || e.key.toLowerCase() !== 's') return;
@@ -1561,7 +1565,7 @@ document.addEventListener('keydown', (e) => {
   // أولوية 2: أول زرار حفظ ظاهر في الصفحة نفسها
   const candidates = document.querySelectorAll('[data-hotkey-save]');
   for (const btn of candidates) { if (isVisible(btn)) { btn.click(); return; } }
-});
+}, { capture: true });
 
 document.addEventListener('paste', (e) => {
   const active = document.activeElement;
@@ -6230,7 +6234,10 @@ async function renderProducts(token) {
   } catch(err){ showError(err); }
 }
 function renderDynRows(){
-  document.getElementById('materialsBox').innerHTML = materialRows.map((m,i) => `
+  const mBox = document.getElementById('materialsBox');
+  const lBox = document.getElementById('laborBox');
+  if (!mBox || !lBox) return; // ⚠️ راجع كومنت renderCostDynRows — نفس الحماية
+  mBox.innerHTML = materialRows.map((m,i) => `
     <div class="dyn-row material">
       <input autocomplete="off" placeholder="اسم المادة" value="${m.name}" oninput="materialRows[${i}].name=this.value; updateProdTotal();">
       <input autocomplete="off" type="number" placeholder="الكمية" value="${m.qty}" oninput="materialRows[${i}].qty=this.value; updateProdTotal();">
@@ -6239,7 +6246,7 @@ function renderDynRows(){
       <span class="dyn-row-cost" id="matCost-${i}">—</span>
       <button type="button" class="btn btn-sm btn-danger" onclick="materialRows.splice(${i},1); renderDynRows();">✕</button>
     </div>`).join('');
-  document.getElementById('laborBox').innerHTML = laborRows.map((l,i) => `
+  lBox.innerHTML = laborRows.map((l,i) => `
     <div class="dyn-row labor">
       <select onchange="laborRows[${i}].employee=this.value; updateProdTotal();"><option value="">اختار الموظف</option>${(window._empOptionsHtml||'').replace(`value="${l.employee}"`, `value="${l.employee}" selected`)}</select>
       <input autocomplete="off" type="number" placeholder="ساعات" value="${l.hours}" oninput="laborRows[${i}].hours=this.value; updateProdTotal();">
@@ -6363,7 +6370,10 @@ async function renderInstall(token) {
   } catch(err){ showError(err); }
 }
 function renderInsDynRows(){
-  document.getElementById('insItemsBox').innerHTML = insItemRows.map((m,i) => `
+  const iBox = document.getElementById('insItemsBox');
+  const lBox = document.getElementById('insLaborBox');
+  if (!iBox || !lBox) return; // ⚠️ راجع كومنت renderCostDynRows — نفس الحماية
+  iBox.innerHTML = insItemRows.map((m,i) => `
     <div class="dyn-row material">
       <input autocomplete="off" placeholder="اسم البند (نقل، تحميل...)" value="${m.name}" oninput="insItemRows[${i}].name=this.value; updateInsTotal();">
       <input autocomplete="off" type="number" placeholder="الكمية" value="${m.qty}" oninput="insItemRows[${i}].qty=this.value; updateInsTotal();">
@@ -6372,7 +6382,7 @@ function renderInsDynRows(){
       <span class="dyn-row-cost" id="insItemCost-${i}">—</span>
       <button type="button" class="btn btn-sm btn-danger" onclick="insItemRows.splice(${i},1); renderInsDynRows();">✕</button>
     </div>`).join('');
-  document.getElementById('insLaborBox').innerHTML = insLaborRows.map((l,i) => `
+  lBox.innerHTML = insLaborRows.map((l,i) => `
     <div class="dyn-row labor">
       <select onchange="insLaborRows[${i}].employee=this.value; updateInsTotal();"><option value="">اختار الموظف</option>${(window._insEmpOptionsHtml||'').replace(`value="${l.employee}"`, `value="${l.employee}" selected`)}</select>
       <input autocomplete="off" type="number" placeholder="ساعات" value="${l.hours}" oninput="insLaborRows[${i}].hours=this.value; updateInsTotal();">
@@ -6554,7 +6564,16 @@ async function renderCostsEntriesTab() {
   });
 }
 function renderCostDynRows(){
-  document.getElementById('costItemsBox').innerHTML = costItemRows.map((m,i) => `
+  const itemsBox = document.getElementById('costItemsBox');
+  const laborBox = document.getElementById('costLaborBox');
+  // ⚠️ إصلاح: "Cannot set properties of null (setting 'innerHTML')" — كانت الدالة
+  // دي بتفترض إن العنصرين دول موجودين دايمًا، بس لو المستخدم غيّر التاب/الصفحة
+  // (زي "التكاليف" لـ"المشاريع" مثلًا) في نفس اللحظة اللي فيها حاجة عملت نداء
+  // لـrenderCostDynRows (زي إضافة/حذف بند أو موظف)، العنصرين دول يكونوا اتشالوا
+  // من الـDOM بالفعل، فالكود كان بيحاول يكتب في عنصر مش موجود ويطلع الصفحة كلها
+  // عالقة على رسالة خطأ. دلوقتي لو أي عنصر منهم مش موجود، بنوقف بهدوء من غير كراش.
+  if (!itemsBox || !laborBox) return;
+  itemsBox.innerHTML = costItemRows.map((m,i) => `
     <div class="dyn-row material">
       <input autocomplete="off" placeholder="اسم البند (خامة، نقل، تحميل...)" value="${m.name}" oninput="costItemRows[${i}].name=this.value; updateCostTotal();">
       <input autocomplete="off" type="number" placeholder="الكمية" value="${m.qty}" oninput="costItemRows[${i}].qty=this.value; updateCostTotal();">
@@ -6563,7 +6582,7 @@ function renderCostDynRows(){
       <span class="dyn-row-cost" id="costItemCost-${i}">—</span>
       <button type="button" class="btn btn-sm btn-danger" onclick="costItemRows.splice(${i},1); renderCostDynRows();">✕</button>
     </div>`).join('');
-  document.getElementById('costLaborBox').innerHTML = costLaborRows.map((l,i) => `
+  laborBox.innerHTML = costLaborRows.map((l,i) => `
     <div class="dyn-row labor">
       <select onchange="costLaborRows[${i}].employee=this.value; updateCostTotal();"><option value="">اختار الموظف</option>${(window._costEmpOptionsHtml||'').replace(`value="${l.employee}"`, `value="${l.employee}" selected`)}</select>
       <input autocomplete="off" type="number" id="costLaborHours-${i}" placeholder="ساعات (افتراضي 9)" value="${l.hours}" oninput="costLaborRows[${i}].hours=this.value; updateCostTotal();">
@@ -8134,6 +8153,21 @@ async function qSaveQuotation(){
   const btn = document.getElementById('qSaveBtn'); const msg = document.getElementById('qSaveMsg');
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
   try {
+    // ⚠️ إضافة: اسم العميل (اللي هو كمان اسم تاب الكوتيشن نفسها) متبني على
+    // "موجه إلى" + "العنوان". لو المستخدم غيّرهم بعد ما الكوتيشن كانت متعملة
+    // بالفعل، لازم نعيد تسمية التاب نفسه (مش بس نحدّث الخلايا) عشان الاسم
+    // يفضل معبّر عن اللي مكتوب فعليًا — وإلا هيتعمل تاب جديد فاضي بدل التعديل
+    // على القديم، ويفضل القديم موجود يتيم.
+    const newName = [QSTATE.customer.engineer, QSTATE.customer.address].filter(Boolean).join(' - ');
+    if (newName && QSTATE.customer.name && newName !== QSTATE.customer.name) {
+      const renameRes = await apiPost('quoteRenameCustomer', { oldName: QSTATE.customer.name, newName });
+      if (!renameRes.success) {
+        msg.className = 'msg err'; msg.textContent = 'تعذّر تحديث اسم العميل: ' + (renameRes.error || 'غير معروف');
+        btn.disabled = false; btn.textContent = '💾 حفظ في الشيت'; return;
+      }
+      QSTATE.customer.name = newName;
+      qSaveSession();
+    }
     const dlr = QSTATE.dollar || QCFG.defaultDollar;
     const d = await apiPost('quoteSaveQuotation', {
       customer: QSTATE.customer,
@@ -8889,6 +8923,17 @@ async function pSaveCashFlow(){
   PSTATE.customer.date = pToEnGB(document.getElementById('p-b-date').value);
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
   try {
+    // ⚠️ راجع كومنت qSaveQuotation — نفس الفكرة بالظبط هنا
+    const newName = [PSTATE.customer.engineer, PSTATE.customer.address].filter(Boolean).join(' - ');
+    if (newName && PSTATE.customer.name && newName !== PSTATE.customer.name) {
+      const renameRes = await apiPost('payRenameCustomer', { oldName: PSTATE.customer.name, newName });
+      if (!renameRes.success) {
+        msg.className = 'msg err'; msg.textContent = 'تعذّر تحديث اسم العميل: ' + (renameRes.error || 'غير معروف');
+        btn.disabled = false; btn.textContent = '💾 حفظ في الشيت'; return;
+      }
+      PSTATE.customer.name = newName;
+      pSaveSession();
+    }
     const d = await apiPost('paySaveCashFlow', { customer: PSTATE.customer, rows: PSTATE.rows, received: pReceived() });
     d.success !== false
       ? (msg.className='msg ok', msg.textContent='✔ تم الحفظ في Google Sheets بنجاح')
