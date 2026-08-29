@@ -187,6 +187,7 @@
   .to-cs-option{ padding:9px 12px; border-radius:7px; font-size:13.5px; cursor:pointer; transition:background .12s; }
   .to-cs-option:hover{ background:var(--cream); }
   .to-cs-option.selected{ background:var(--gold); color:var(--dark); font-weight:800; }
+  .to-cs-divider{ padding:6px 12px 4px; font-size:10.5px; font-weight:700; color:var(--muted); border-top:1px solid var(--border); margin-top:4px; }
 
   .to-extra-toggle{ all:unset; box-sizing:border-box; width:100%; display:flex; align-items:center; justify-content:space-between;
     gap:10px; background:var(--cream); border:1.5px solid var(--border); border-radius:10px; padding:12px 14px;
@@ -1768,6 +1769,18 @@ async function apiPost(action, payload) {
   return data;
 }
 function fmt(n){ return (Number(n)||0).toLocaleString('en-US', {maximumFractionDigits:0}); }
+// ⚠️ إضافة: قايمة موظفين مقسّمة اسبوعي/شهري بخط فاصل — optgroup بيرندرها
+// المتصفح تلقائي كخط فاصل واضح (بولد، مش قابل للاختيار) من غير أي CSS إضافي.
+function buildEmployeeOptGroupsHtml_(employees, labelFn){
+  const fn = labelFn || (e => `${e.name} — ${fmt(e.hourlyRate)} ج/س`);
+  const weekly = employees.filter(e => e.paymentType !== 'شهري');
+  const monthly = employees.filter(e => e.paymentType === 'شهري');
+  const opt = e => `<option value="${qEsc(e.name)}">${qEsc(fn(e))}</option>`;
+  let html = '';
+  if (weekly.length) html += `<optgroup label="اسبوعي">${weekly.map(opt).join('')}</optgroup>`;
+  if (monthly.length) html += `<optgroup label="شهري">${monthly.map(opt).join('')}</optgroup>`;
+  return html;
+}
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function monthStartStr(){ const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-01`; }
 function yesterdayStr(){ const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0,10); }
@@ -5061,7 +5074,7 @@ async function deleteTreasuryMoveConfirm(id){
 function _noAutofill(prefix){ return prefix + '-' + Math.random().toString(36).slice(2, 10); }
 
 let DSTATE = { rows: [], date: lastWorkingDayStr(), days: [] };
-function dNewRow(){ return { _id: Math.random(), desc: '', amount: '', project: '', note: '' }; }
+function dNewRow(){ return { _id: Math.random(), desc: '', amount: '', project: '', note: '', debtAllocation: null }; }
 function dTotal(){ return DSTATE.rows.reduce((s, r) => s + qNum(r.amount), 0); }
 
 // ===== حماية من فقدان البيانات لو النت فصل / حصل Reload قبل الحفظ =====
@@ -5197,7 +5210,7 @@ function dPreloadEmployeesQuietly(token){
   if (DEMPLOYEE_NAMES_LOADED) return;
   apiGet('listEmployees').then(res => {
     if (isStaleNav(token)) return; // لو المستخدم غيّر الصفحة قبل ما الطلب يخلص، منحدّثش حاجة
-    DEMPLOYEE_NAMES = (res.employees || []).map(e => String(e.name || '').trim()).filter(Boolean);
+    DEMPLOYEE_NAMES = (res.employees || []).map(e => ({ name: String(e.name || '').trim(), paymentType: e.paymentType === 'شهري' ? 'شهري' : 'اسبوعي' })).filter(e => e.name);
     DEMPLOYEE_NAMES_LOADED = true;
   }).catch(() => { /* فشل التحميل الصامت في الخلفية مش مشكلة — هيتجاب تاني عادي أول ما حد يدوس على 🧑 */ });
 }
@@ -5255,8 +5268,8 @@ async function dLoadDayLog(dateStr){
 let DPROJECT_NAMES = [];
 let DEMPLOYEE_NAMES = []; // ⚠️ إضافة: أسماء الموظفين — لزرار 🧑 اللي بيكتب "(الاسم) - مسحوبات" في خانة الوصف
 let DEMPLOYEE_NAMES_LOADED = false; // بنجيبها كسلًا (lazy) أول مرة تدوس على 🧑 بس، مش وقت فتح الصفحة
-const D_QUICK_TAGS = ['مسحوبات', 'مسحوبات ش ق', 'مرتبات', 'أكل', 'مشتريات', 'صيانة', 'مواصلات', 'بنزين', 'أخرى'];
-const D_QUICK_TAG_ICONS = { 'مسحوبات':'💸', 'مسحوبات ش ق':'🗓️', 'مرتبات':'💰', 'أكل':'🍔', 'مشتريات':'🛒', 'صيانة':'🔧', 'مواصلات':'🚗',  'بنزين':'⛽', 'أخرى':'✨' };
+const D_QUICK_TAGS = ['مسحوبات', 'مسحوبات ش ق', 'مرتبات', 'أكل', 'مشتريات', 'صيانة', 'مواصلات', 'بنزين', 'سداد دين', 'أخرى'];
+const D_QUICK_TAG_ICONS = { 'مسحوبات':'💸', 'مسحوبات ش ق':'🗓️', 'مرتبات':'💰', 'أكل':'🍔', 'مشتريات':'🛒', 'صيانة':'🔧', 'مواصلات':'🚗',  'بنزين':'⛽', 'سداد دين':'📕', 'أخرى':'✨' };
 function dRenderRows(){
   const tb = document.getElementById('d-body'); if (!tb) return;
   tb.innerHTML = DSTATE.rows.map((r, i) => `
@@ -5424,7 +5437,7 @@ function dToggleQuickTag(id, btnEl){
   dCloseAllQuickTags();
   if (wasOpenForThisRow) return;
   box.innerHTML = '<div class="d-pop-items">' + D_QUICK_TAGS.map(t =>
-    `<div class="d-quick-item" onmousedown="event.preventDefault();dPickQuickTag(${id}, '${t.replace(/'/g, "\\'")}')"><span class="d-pop-icon">${D_QUICK_TAG_ICONS[t] || '📌'}</span><span class="d-pop-label">${qEsc(t)}</span></div>`
+    `<div class="d-quick-item" onmousedown="event.preventDefault();${t==='سداد دين' ? `dCloseAllQuickTags();dOpenDebtPicker(${id})` : `dPickQuickTag(${id}, '${t.replace(/'/g, "\\'")}')`}"><span class="d-pop-icon">${D_QUICK_TAG_ICONS[t] || '📌'}</span><span class="d-pop-label">${qEsc(t)}</span></div>`
   ).join('') + '</div><div class="d-pop-hint">↑↓ للتنقل · Enter للاختيار</div>';
   box.dataset.rowId = id;
   const r = btnEl.getBoundingClientRect();
@@ -5517,7 +5530,7 @@ function dToggleEmployeeTag(id, btnEl){
     box.classList.add('open');
     btnEl.classList.add('open');
     apiGet('listEmployees').then(res => {
-      DEMPLOYEE_NAMES = (res.employees || []).map(e => String(e.name || '').trim()).filter(Boolean);
+      DEMPLOYEE_NAMES = (res.employees || []).map(e => ({ name: String(e.name || '').trim(), paymentType: e.paymentType === 'شهري' ? 'شهري' : 'اسبوعي' })).filter(e => e.name);
       DEMPLOYEE_NAMES_LOADED = true;
       // لو المستخدم لسه واقف فاتح نفس الصف، حدّث المحتوى بعد ما توصل البيانات
       if (box.classList.contains('open') && String(box.dataset.rowId) === String(id)) dRenderEmployeeList_(box, id);
@@ -5535,9 +5548,13 @@ function dRenderEmployeeList_(box, id){
   if (!DEMPLOYEE_NAMES.length){
     box.innerHTML = '<div class="d-pop-hint" style="border-top:none;">مفيش موظفين متسجلين</div>';
   } else {
-    box.innerHTML = '<div class="d-pop-items">' + DEMPLOYEE_NAMES.map(name =>
-      `<div class="d-quick-item" onmousedown="event.preventDefault();dPickEmployeeTag(${id}, '${name.replace(/'/g, "\\'")}')"><span class="d-pop-icon">🧑</span><span class="d-pop-label">${qEsc(name)}</span></div>`
-    ).join('') + '</div><div class="d-pop-hint">هيتكتب: الاسم - مسحوبات</div>';
+    const weekly = DEMPLOYEE_NAMES.filter(e => e.paymentType !== 'شهري');
+    const monthly = DEMPLOYEE_NAMES.filter(e => e.paymentType === 'شهري');
+    const itemHtml = e => `<div class="d-quick-item" onmousedown="event.preventDefault();dPickEmployeeTag(${id}, '${e.name.replace(/'/g, "\\'")}')"><span class="d-pop-icon">🧑</span><span class="d-pop-label">${qEsc(e.name)}</span></div>`;
+    let items = weekly.map(itemHtml).join('');
+    if (weekly.length && monthly.length) items += `<div class="to-cs-divider">شهري</div>`;
+    items += monthly.map(itemHtml).join('');
+    box.innerHTML = '<div class="d-pop-items">' + items + '</div><div class="d-pop-hint">هيتكتب: الاسم - مسحوبات</div>';
   }
 }
 function dPickEmployeeTag(id, name){
@@ -5555,6 +5572,129 @@ function dPickEmployeeTag(id, name){
   if (!inserted) { if (input) input.value = newVal; }
   r.desc = newVal;
   dScheduleDraftSave();
+}
+// ═══ سداد دين من صف مصروف يومي — راجع _applyDebtWaterfall_ في الباك إند ═══
+// المستخدم لازم يكتب المبلغ في خانة "المبلغ" الأول، عشان دي القيمة اللي هتتوزع
+// على البنود المختارة. بنجيب الديون، نعرض الجهات اللي عندها بنود لسه مفتوحة،
+// المستخدم يختار جهة وبعدين يشيّك على بند/بنود، وبنعمل توزيع تقريبي في الفرونت
+// إند (نفس منطق الباك إند بالظبط) عشان نعرضله فورًا هيدفع كام لكل بند قبل الحفظ.
+// ⚠️ _debtsCache متغيّر مشترك مع صفحة "ديون" نفسها (معرّف تحت في الملف) — بنعيد
+// استخدامه بدل ما نعمل كاش منفصل، فلو الديون كانت متحمّلة بالفعل نستخدمها على طول.
+async function dOpenDebtPicker(id){
+  const r = DSTATE.rows.find(r => r._id === id); if (!r) return;
+  const amount = qNum(r.amount);
+  if (!amount || amount <= 0) { showToast('اكتب المبلغ في خانة "المبلغ" الأول', 'error'); return; }
+  openCardModal(`<div class="cd-head"><h3>📕 سداد دين</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="loading-row">جاري التحميل...</div>`);
+  try {
+    const { debts } = await apiGet('listDebts');
+    _debtsCache = debts || [];
+    dRenderDebtCreditorPicker_(id, amount);
+  } catch(err){ showError(err); }
+}
+function _debtOpenItemsByCreditor_(){
+  const map = {};
+  (_debtsCache || []).forEach(d => {
+    if (d.remaining <= 0.01) return; // بند مقفول بالكامل — يتجاهل
+    const key = d.creditor || 'بدون اسم';
+    if (!map[key]) map[key] = [];
+    map[key].push(d);
+  });
+  return map;
+}
+function dRenderDebtCreditorPicker_(rowId, amount){
+  const byCreditor = _debtOpenItemsByCreditor_();
+  const creditors = Object.keys(byCreditor).sort((a,b) => a.localeCompare(b, 'ar'));
+  if (!creditors.length) {
+    openCardModal(`<div class="cd-head"><h3>📕 سداد دين</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="empty">مفيش ديون مفتوحة حاليًا</div>`);
+    return;
+  }
+  openCardModal(`
+    <div class="cd-head"><h3>📕 سداد دين — اختار الجهة</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <input type="text" class="d-input" id="debt-creditor-search" placeholder="دوّر على اسم الجهة..." autocomplete="off" oninput="dFilterDebtCreditors_()" style="margin-bottom:10px;">
+    <div id="debt-creditor-list" style="max-height:340px;overflow-y:auto;">
+      ${creditors.map(c => {
+        const total = byCreditor[c].reduce((s,d)=>s+d.remaining,0);
+        return `<div class="d-quick-item debt-creditor-row" data-search="${qEsc(c)}" onmousedown="event.preventDefault();dRenderDebtItemsPicker_(${rowId}, '${qEscJs(c)}', ${amount})">
+          <span class="d-pop-icon">🏢</span><span class="d-pop-label">${qEsc(c)}</span>
+          <span style="margin-inline-start:auto;color:var(--red);font-weight:700;font-size:12.5px;">${fmt(total)} ج</span>
+        </div>`;
+      }).join('')}
+    </div>
+  `);
+  setTimeout(() => { const el = document.getElementById('debt-creditor-search'); if (el) el.focus(); }, 50);
+}
+function dFilterDebtCreditors_(){
+  const q = (document.getElementById('debt-creditor-search').value || '').trim();
+  document.querySelectorAll('.debt-creditor-row').forEach(el => {
+    el.style.display = !q || el.dataset.search.includes(q) ? '' : 'none';
+  });
+}
+function dRenderDebtItemsPicker_(rowId, creditor, amount){
+  const items = (_debtOpenItemsByCreditor_()[creditor] || []);
+  openCardModal(`
+    <div class="cd-head"><h3>📕 ${qEsc(creditor)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">المبلغ اللي هيتسدد: <b style="color:var(--dark);">${fmt(amount)} ج</b> — شيّك على البنود اللي هتتسدد بيه (بالترتيب اللي بتشيّكهم بيه)</div>
+    <div id="debt-items-list">
+      ${items.map((d,i) => `
+        <label class="print-opt-row" style="align-items:flex-start;">
+          <input type="checkbox" class="debt-item-cb" value="${qEsc(d.id)}" data-remaining="${d.remaining}" data-desc="${qEsc(d.desc)}" onchange="dUpdateDebtPreview_(${amount})">
+          <span style="flex:1;">
+            <span style="display:block;">${qEsc(d.desc || 'بدون وصف')}</span>
+            <span style="font-size:11px;color:var(--muted);">الباقي: ${fmt(d.remaining)} ج${d.project ? ' — ' + qEsc(d.project) : ''}</span>
+          </span>
+        </label>`).join('')}
+    </div>
+    <div id="debt-preview-box" style="margin-top:10px;font-size:12.5px;"></div>
+    <div style="display:flex;gap:8px;justify-content:space-between;margin-top:12px;">
+      <button class="btn btn-sm btn-outline" onclick="dRenderDebtCreditorPicker_(${rowId}, ${amount})">← رجوع للجهات</button>
+      <button class="btn btn-sm btn-primary" id="debt-confirm-btn" onclick="dConfirmDebtAllocation_(${rowId}, '${qEscJs(creditor)}', ${amount})" disabled>تأكيد السداد</button>
+    </div>
+  `);
+}
+// بتحاكي منطق _applyDebtWaterfall_ في الباك إند بالظبط، عشان نعرض معاينة فورية
+// قبل الحفظ (السيرفر هو اللي هيطبّق الفعلي وقت الحفظ، ده بس للعرض).
+function _debtWaterfallPreview_(selectedItems, amount){
+  let remaining = amount;
+  const applied = [];
+  selectedItems.forEach(it => {
+    if (remaining <= 0.001) return;
+    const pay = Math.min(it.remaining, remaining);
+    if (pay <= 0) return;
+    remaining -= pay;
+    applied.push({ desc: it.desc, pay });
+  });
+  return { applied, leftover: remaining };
+}
+function dUpdateDebtPreview_(amount){
+  const boxes = Array.from(document.querySelectorAll('.debt-item-cb:checked'));
+  const box = document.getElementById('debt-preview-box');
+  const btn = document.getElementById('debt-confirm-btn');
+  if (!boxes.length) { box.innerHTML = ''; btn.disabled = true; return; }
+  const items = boxes.map(cb => ({ desc: cb.dataset.desc, remaining: Number(cb.dataset.remaining) }));
+  const { applied, leftover } = _debtWaterfallPreview_(items, amount);
+  box.innerHTML = `
+    <div style="background:var(--cream);border-radius:9px;padding:8px 10px;">
+      <div style="font-weight:700;margin-bottom:4px;">توزيع السداد:</div>
+      ${applied.map(a => `<div>${qEsc(a.desc)}: <b>${fmt(a.pay)} ج</b></div>`).join('')}
+      ${leftover > 0.5 ? `<div style="color:var(--red);margin-top:4px;">⚠️ فاضل ${fmt(leftover)} ج من المبلغ متسددش (زوّد بنود تانية أو قلل المبلغ)</div>` : ''}
+    </div>`;
+  btn.disabled = false;
+}
+function dConfirmDebtAllocation_(rowId, creditor, amount){
+  const boxes = Array.from(document.querySelectorAll('.debt-item-cb:checked'));
+  if (!boxes.length) return;
+  const items = boxes.map(cb => ({ id: cb.value, desc: cb.dataset.desc, remaining: Number(cb.dataset.remaining) }));
+  const { applied } = _debtWaterfallPreview_(items, amount);
+  const r = DSTATE.rows.find(r => r._id === rowId); if (!r) return;
+  r.debtAllocation = { creditor, itemIds: items.map(it => it.id) };
+  const distText = applied.map(a => `${a.desc} (${fmt(a.pay)} ج)`).join('، ');
+  r.note = `سداد دين — ${creditor} — اتوزع على: ${distText}`;
+  const currentDesc = String(r.desc || '').trim();
+  if (!currentDesc) r.desc = `سداد دين - ${creditor}`;
+  closeCardModal();
+  dRenderRows();
+  dScheduleDraftSave();
+  showToast('✅ اتحدد توزيع السداد — هيتسجل فعليًا لما تدوس "حفظ"');
 }
 document.addEventListener('click', function(e){
   if (!e.target.closest('.d-quick-wrap') && !e.target.closest('.d-quick-popover') && !e.target.closest('.d-note-popover')) dCloseAllQuickTags();
@@ -5621,7 +5761,7 @@ async function dSaveAll(){
   const msg = document.getElementById('d-msg'); const btn = document.getElementById('d-save-all');
   if (!valid.length){ msg.className = 'msg err'; msg.textContent = 'من فضلك اكتب وصف ومبلغ لسطر واحد على الأقل'; return; }
   btn.disabled = true; msg.className = 'msg'; msg.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
-  const rows = valid.map(r => ({ desc: String(r.desc).trim(), amount: qNum(r.amount), project: String(r.project || '').trim() || 'مصروفات عامة', date: DSTATE.date, note: String(r.note || '').trim() }));
+  const rows = valid.map(r => ({ desc: String(r.desc).trim(), amount: qNum(r.amount), project: String(r.project || '').trim() || 'مصروفات عامة', date: DSTATE.date, note: String(r.note || '').trim(), debtAllocation: r.debtAllocation || null }));
   const total = rows.reduce((s, r) => s + r.amount, 0);
   let saved = 0;
   // بنتجمع فيها رد المزامنة مع المرتبات لكل سطر (payrollSync)، عشان لو سطر بصيغة
@@ -5658,6 +5798,7 @@ async function dSaveAll(){
     } else {
       msg.className = 'msg ok'; msg.textContent = `✔ اتسجل ${saved} مصروف بإجمالي ${fmt(total)} ج`;
     }
+    if (rows.some(r => r.debtAllocation)) _debtsCache = null; // ⚠️ الديون اتغيرت — لازم تتجاب تاني المرة الجاية
     const log = await apiGet('getDailyExpenses', { date: DSTATE.date });
     dRenderTodayLog(log.rows || []);
     DSTATE.rows = [dNewRow(), dNewRow(), dNewRow()];
@@ -6350,7 +6491,7 @@ async function renderProducts(token) {
         </div>
       </div>
     `;
-    const empOptions = employees.map(e=>`<option value="${e.name}">${e.name} — ${fmt(e.hourlyRate)} ج/س</option>`).join('');
+    const empOptions = buildEmployeeOptGroupsHtml_(employees);
     window._empOptionsHtml = empOptions;
     const empRateMap = {}; employees.forEach(e=>{ empRateMap[e.name] = Number(e.hourlyRate)||0; });
     window._empRateMap = empRateMap;
@@ -6486,7 +6627,7 @@ async function renderInstall(token) {
         </div>
       </div>
     `;
-    const empOptions = employees.map(e=>`<option value="${e.name}">${e.name} — ${fmt(e.hourlyRate)} ج/س</option>`).join('');
+    const empOptions = buildEmployeeOptGroupsHtml_(employees);
     window._insEmpOptionsHtml = empOptions;
     const empRateMap = {}; employees.forEach(e=>{ empRateMap[e.name] = Number(e.hourlyRate)||0; });
     window._insEmpRateMap = empRateMap;
@@ -6671,7 +6812,7 @@ async function renderCostsEntriesTab() {
         </div>
       </div>
   `;
-  const empOptions = employees.map(e=>`<option value="${e.name}">${e.name} — ${fmt(e.hourlyRate)} ج/س</option>`).join('');
+  const empOptions = buildEmployeeOptGroupsHtml_(employees);
   window._costEmpOptionsHtml = empOptions;
   const empRateMap = {}; employees.forEach(e=>{ empRateMap[e.name] = Number(e.hourlyRate)||0; });
   window._costEmpRateMap = empRateMap;
@@ -8991,7 +9132,7 @@ function pRenderRows(){
       <td style="text-align:center;color:var(--muted);font-size:11px;">${i+1}</td>
       <td><input type="text" autocomplete="off" name="p-name-${r._id}" value="${qEsc(r.name)}" onchange="pSetField(${r._id},'name',this.value)" placeholder="${qEsc(pOrdinalName(i))}"></td>
       <td><input type="text" autocomplete="off" name="p-amount-${r._id}" class="ltr-num" inputmode="numeric" value="${r.amount||''}" onchange="pSetAmount(${r._id},this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
-      <td class="num-cell">${pct!==''?pct.toFixed(0)+'%':'—'}</td>
+      <td class="num-cell" style="text-align:center;">${pct!==''?pct.toFixed(0)+'%':'—'}</td>
       <td><input autocomplete="off" type="date" value="${pToISO(r.date)}" onchange="pSetDate(${r._id},this.value)" style="direction:ltr;width:132px;"></td>
       <td><input type="text" autocomplete="off" name="p-method-${r._id}" value="${qEsc(r.method||'')}" onchange="pSetField(${r._id},'method',this.value)" placeholder="اختياري"></td>
       <td><button type="button" class="btn btn-sm btn-danger" onmousedown="event.preventDefault(); pDelRow(${r._id});">✕</button></td>
@@ -9552,7 +9693,7 @@ async function renderTaskOrganize(token) {
     TO_STATE.projects = projects || [];
     TO_STATE.craftsmen = craftsmenRes.craftsmen || [];
     TO_STATE.missingSummary = summary || [];
-    if (!TO_STATE.qCraftsman && TO_STATE.craftsmen.length) TO_STATE.qCraftsman = TO_STATE.craftsmen[0];
+    if (!TO_STATE.qCraftsman && TO_STATE.craftsmen.length) TO_STATE.qCraftsman = TO_STATE.craftsmen[0].name;
     TO_STATE.loaded = true;
 
     document.getElementById('toTabs').addEventListener('click', e => {
@@ -9709,6 +9850,17 @@ async function toLoadWhoWhere(token, opts) {
 
 // رندر بس — من غير أي فيتش — بيتستخدم لأي تفاعل UI محلي (فتح/قفل الليستة، اختيار صنيعي،
 // فتح الحقول الإضافية، تحديث حالة بند...) عشان مفيش داعي نكلم السيرفر ولا نمسح الشاشة كل ما نضغط حاجة.
+// ⚠️ إضافة: بتبني HTML قايمة الصنايعية مقسّمة (اسبوعيين فوق — خط فاصل صغير —
+// شهريين تحت). TO_STATE.craftsmen بقت {name, paymentType} بدل نص عادي.
+function toRenderCraftsmenOptionsHtml_(craftsmen, selected){
+  const weekly = craftsmen.filter(c => c.paymentType !== 'شهري');
+  const monthly = craftsmen.filter(c => c.paymentType === 'شهري');
+  const optHtml = c => `<div class="to-cs-option ${c.name===selected?'selected':''}" data-name="${qEsc(c.name)}">${qEsc(c.name)}</div>`;
+  let html = weekly.map(optHtml).join('');
+  if (weekly.length && monthly.length) html += `<div class="to-cs-divider">شهري</div>`;
+  html += monthly.map(optHtml).join('');
+  return html;
+}
 function toRenderDailyForm() {
   const box = document.getElementById('to-tab-content'); if (!box) return;
   box.innerHTML = `
@@ -9721,7 +9873,7 @@ function toRenderDailyForm() {
               <span>${qEsc(TO_STATE.qCraftsman || 'اختار صنيعي')}</span><span class="arrow">&#9662;</span>
             </button>
             <div class="to-cs-list ${TO_STATE.csOpen?'open':''}" id="toCsList">
-              ${TO_STATE.craftsmen.map(c => `<div class="to-cs-option ${c===TO_STATE.qCraftsman?'selected':''}" data-name="${qEsc(c)}">${qEsc(c)}</div>`).join('')}
+              ${toRenderCraftsmenOptionsHtml_(TO_STATE.craftsmen, TO_STATE.qCraftsman)}
             </div>
           </div>
         </div>
@@ -9796,7 +9948,7 @@ function toRenderDailyForm() {
 // تغيير فلتر التاريخ هنا ميمسحش أي حاجة المستخدم كاتبها في فورم "تسجيل شغل".
 function toRenderWhoWhereBlock() {
   const body = document.getElementById('to-ww-body'); if (!body) return;
-  const wwGrouped = TO_STATE.craftsmen.map(name => ({ name, items: TO_STATE.wwEntries.filter(e => e.craftsman === name) })).filter(g => g.items.length);
+  const wwGrouped = TO_STATE.craftsmen.map(c => ({ name: c.name, items: TO_STATE.wwEntries.filter(e => e.craftsman === c.name) })).filter(g => g.items.length);
   body.innerHTML = `
     <div class="sub" style="margin-bottom:8px;">شغل ${toDateQuickLabel(TO_STATE.wwDate)} <span style="color:var(--muted);">(${TO_STATE.wwDate})</span></div>
     ${wwGrouped.length ? wwGrouped.map(g => `
@@ -10013,7 +10165,7 @@ function toRenderWeekGrid(dates, from, to) {
             ${dates.map((dt,i) => `<th class="${toISO(dt)===todayIso?'today':''}"><div class="dname">${TO_DAY_NAMES[i]}</div><div class="ddate">${toFmtDayDate(dt)}</div></th>`).join('')}
           </tr></thead>
           <tbody>
-            ${TO_STATE.craftsmen.map(emp => `
+            ${TO_STATE.craftsmen.map(c => c.name).map(emp => `
               <tr>
                 <td class="to-emp-col">${qEsc(emp)}</td>
                 ${dates.map(dt => {
@@ -10520,11 +10672,19 @@ async function renderMissingItems(token) {
     }
     MISTATE.filter = 'all';
     document.getElementById('content').innerHTML = `
-      <div class="proj-tabs-row">
-        <div class="proj-tabs" id="miProjTabs"></div>
-        <div class="proj-add">
-          <input type="text" id="miNewProjName" placeholder="اسم مشروع جديد...">
-          <button type="button" id="miAddProjBtn">+ مشروع</button>
+      <div class="panel" style="margin-bottom:14px;">
+        <button type="button" id="miProjTabsToggle" onclick="miToggleProjTabs()" style="all:unset;cursor:pointer;display:flex;justify-content:space-between;align-items:center;width:100%;">
+          <h3 style="margin:0;">تايم بلانج — بنود المشاريع <span style="font-weight:400;color:var(--muted);font-size:13px;">(${qEsc(MISTATE.project || '')})</span></h3>
+          <span id="miProjTabsArrow" style="transition:transform .2s;">&#9662;</span>
+        </button>
+        <div id="miProjTabsBody" style="display:none;margin-top:12px;">
+          <div class="proj-tabs-row">
+            <div class="proj-tabs" id="miProjTabs"></div>
+            <div class="proj-add">
+              <input type="text" id="miNewProjName" placeholder="اسم مشروع جديد...">
+              <button type="button" id="miAddProjBtn">+ مشروع</button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="msg" id="miShowFinishedRow" style="margin:0 0 10px;"></div>
@@ -10677,12 +10837,26 @@ function miRenderProjTabs() {
   });
 }
 
+function miToggleProjTabs(){
+  const body = document.getElementById('miProjTabsBody');
+  const arrow = document.getElementById('miProjTabsArrow');
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : '';
+  if (arrow) arrow.style.transform = isOpen ? '' : 'rotate(180deg)';
+}
+function miUpdateProjTabsHeaderLabel_(){
+  const el = document.querySelector('#miProjTabsToggle h3 span');
+  if (el) el.textContent = `(${MISTATE.project || ''})`;
+}
 function miSelectProject(name) {
   MISTATE.project = name;
   MISTATE.filter = 'all';
   document.querySelectorAll('#miItemFilter button').forEach(b => b.classList.toggle('active', b.dataset.f === 'all'));
   const sel = document.getElementById('mi_project'); if (sel) sel.value = name;
   miRenderProjTabs();
+  miUpdateProjTabsHeaderLabel_();
+  miToggleProjTabs(); // ⚠️ إضافة: قفل القايمة تلقائي بعد ما تختار — مش محتاج تفضل مفتوحة
   miLoadList();
 }
 
