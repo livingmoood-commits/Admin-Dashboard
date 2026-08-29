@@ -1220,6 +1220,7 @@
   <div class="q-steps p-filter-tabs" id="expSwitchTabs" style="display:none;margin-bottom:16px;">
     <div class="step" id="exp-tab-daily" data-page="dailyExpenses"><span class="icon" style="margin-inline-end:6px;">&#128221;</span>مصاريف يومية</div>
     <div class="step" id="exp-tab-fixed" data-page="fixedExp"><span class="icon" style="margin-inline-end:6px;">&#128203;</span>المصاريف الثابتة</div>
+    <div class="step" id="exp-tab-projects" data-page="projectsPage"><span class="icon" style="margin-inline-end:6px;">&#127959;</span>المشاريع</div>
   </div>
   <div class="q-steps p-filter-tabs" id="wfSwitchTabs" style="display:none;margin-bottom:16px;">
     <div class="step" id="wf-tab-taskOrganize" data-page="taskOrganize"><span class="icon" style="margin-inline-end:6px;">&#128221;</span>تنظيم المهام</div>
@@ -1836,7 +1837,7 @@ function checkApiConfigured(){
 const QP_GROUP_PAGES = ['quotation', 'debtors'];
 // صفحتين "مصاريف يومية" و"المصاريف الثابتة" بقوا مجمّعين تحت زرار واحد في القائمة
 // الجانبية (data-exp-group) بنفس فكرة QP_GROUP_PAGES فوق بالظبط.
-const EXP_GROUP_PAGES = ['dailyExpenses', 'fixedExp'];
+const EXP_GROUP_PAGES = ['dailyExpenses', 'fixedExp', 'projectsPage'];
 // نفس الفكرة لصفحات Work Flow — بقيت صفحتين بس (تنظيم المهام والخامات)؛ "تقرير يومي
 // بالصنايعية" و"بنود المشاريع" اتشالوا كصفحات مستقلة لأن نفس الوظيفة موجودة بالظبط
 // جوه تابات "تنظيم المهام" (تاب "شغل يومي"/"اسبوعي" فيهم زرار تقرير، وتاب "تايم بلاننج"
@@ -1849,6 +1850,7 @@ const PAGES = {
   dailyExpenses:{ title:'مصاريف يومية', sub:'سجّل كل مصاريف اليوم سطر سطر — بتتسجل في شيت اليوم بتاعك مباشرة', render: renderDailyExpenses },
   costs:        { title:'التكاليف', sub:'خامات + عمالة + إيرادات — تابين جنب بعض لكل مشروع', render: renderCosts },
   fixedExp:     { title:'المصاريف الثابتة', sub:'إيجار / كهرباء / إلخ — وطريقة توزيعها على المشاريع', render: renderFixedExp },
+  projectsPage: { title:'المشاريع', sub:'كل المشاريع في مكان واحد — إضافة، تعديل، أرشفة، وإيرادات موحّدة من التكاليف والمصاريف', render: renderProjectsPage },
   quotation:    { title:'Quotations', sub:'قائمة العملاء وعروض الأسعار', render: renderQuotation },
   debtors:      { title:'Payment Statements', sub:'متابعة تحصيل الدفعات من العملاء — كل حاجة عن المستحق والمتبقي', render: renderDebtors },
   debts:        { title:'ديون', sub:'المبالغ اللي المصنع مديون بيها لجهات تانية ومتابعة سدادها', render: renderDebts },
@@ -1932,6 +1934,7 @@ function expSyncTabsBar(page){
   if (!show) return;
   document.getElementById('exp-tab-daily').classList.toggle('active', page === 'dailyExpenses');
   document.getElementById('exp-tab-fixed').classList.toggle('active', page === 'fixedExp');
+  document.getElementById('exp-tab-projects').classList.toggle('active', page === 'projectsPage');
 }
 // نفس الفكرة لتابات صفحات Work Flow (بقيت 2 بس: تنظيم المهام + الخامات)
 function wfSyncTabsBar(page){
@@ -5976,6 +5979,151 @@ async function showProjectDetail(name){
   } catch(err){ box.innerHTML = `<div class="panel"><div class="msg err" style="display:block;">خطأ: ${err.message||err}</div></div>`; }
 }
 // بيفتح مودال فيه تفصيل كل خامة استخدمت في كل منتج بالمشروع ده (بيتفتح من كارت "تكلفة الخامات")
+/* ═══════════════════════════════════════════════════════════════════════
+ *  صفحة "المشاريع" — نقطة موحّدة لكل المشاريع: إضافة/أرشفة/إلغاء أرشفة/حذف
+ *  نهائي، والإيراد المعروض هنا موحّد من مصدرين (مصاريف + التكاليف) — راجع
+ *  كومنت _allProjectFinancials في الباك إند لتفاصيل قاعدة الدمج.
+ * ═══════════════════════════════════════════════════════════════════════ */
+let PJSTATE = { tab: 'active', active: [], archived: [] };
+async function renderProjectsPage(token){
+  const box = document.getElementById('content');
+  box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  try {
+    const [{ projects: active }, { projects: archivedNames }] = await Promise.all([
+      apiGet('listProjectsSummary'), apiGet('listArchivedProjects')
+    ]);
+    if (isStaleNav(token)) return;
+    PJSTATE.active = active; PJSTATE.archived = archivedNames;
+    pjRenderPage();
+  } catch(err){ showError(err); }
+}
+function pjRenderPage(){
+  const box = document.getElementById('content'); if (!box) return;
+  box.innerHTML = `
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+        <h3 style="margin:0;">كل المشاريع</h3>
+        <button class="btn btn-primary btn-sm" onclick="pjOpenCreateModal2()">+ مشروع جديد</button>
+      </div>
+      <div class="q-steps" style="margin-bottom:14px;">
+        <div class="step ${PJSTATE.tab==='active'?'active':''}" onclick="pjSwitchTab('active')">المشاريع النشطة (${PJSTATE.active.length})</div>
+        <div class="step ${PJSTATE.tab==='archived'?'active':''}" onclick="pjSwitchTab('archived')">الأرشيف (${PJSTATE.archived.length})</div>
+      </div>
+      <div id="pjTabBody"></div>
+    </div>
+    <div id="projectDetailBox"></div>
+  `;
+  pjRenderTabBody();
+}
+function pjSwitchTab(tab){ PJSTATE.tab = tab; pjRenderPage(); }
+function pjRenderTabBody(){
+  const body = document.getElementById('pjTabBody'); if (!body) return;
+  if (PJSTATE.tab === 'archived') {
+    body.innerHTML = PJSTATE.archived.length ? `
+      <div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th></th></tr></thead>
+      <tbody>${PJSTATE.archived.map(name => `
+        <tr><td>${qEsc(name)}</td>
+          <td style="text-align:left;"><button class="btn btn-sm btn-outline" onclick="pjUnarchive('${qEscJs(name)}')">♻️ إلغاء الأرشفة</button></td>
+        </tr>`).join('')}</tbody></table></div>
+    ` : `<div class="empty">مفيش مشاريع مؤرشفة</div>`;
+    return;
+  }
+  body.innerHTML = PJSTATE.active.length ? `
+    <div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>إجمالي التكلفة</th><th>الإيرادات</th><th>المصدر</th><th>صافي الربح</th><th></th></tr></thead>
+    <tbody>${PJSTATE.active.map(p => `
+      <tr>
+        <td class="row-clickable" onclick="showProjectDetail('${qEscJs(p.project)}')">${qEsc(p.project)}</td>
+        <td><b>${fmt(p.totalCost)} ج</b></td>
+        <td>${p.financials ? fmt(p.financials.revenue)+' ج' : '—'}</td>
+        <td style="font-size:11.5px;color:var(--muted);">${p.financials && p.financials.revenueSource ? qEsc(p.financials.revenueSource) : '—'}</td>
+        <td>${p.netProfit===null ? '—' : `<b style="color:${p.netProfit>=0?'var(--green)':'var(--red)'}">${fmt(p.netProfit)} ج</b>`}</td>
+        <td style="text-align:left;white-space:nowrap;">
+          <button class="btn btn-sm btn-outline" title="أرشفة" onclick="pjArchive('${qEscJs(p.project)}')">🗄</button>
+          <button class="btn btn-sm btn-danger" title="حذف نهائي" onclick="pjConfirmDelete('${qEscJs(p.project)}')">🗑</button>
+        </td>
+      </tr>`).join('')}</tbody></table></div>
+  ` : `<div class="empty">مفيش مشاريع نشطة — دوس "+ مشروع جديد"</div>`;
+}
+function pjOpenCreateModal2(){
+  openCardModal(`
+    <h3 style="margin-bottom:14px;">+ مشروع جديد</h3>
+    <div class="field">
+      <label>اسم المشروع</label>
+      <input type="text" id="pj2-new-name" autocomplete="off" placeholder="مثال: Al Andalus" onkeydown="if(event.key==='Enter'){event.preventDefault();pjSubmitCreate2();}">
+    </div>
+    <div class="msg" id="pj2-new-msg"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">
+      <button type="button" class="btn btn-outline" onclick="closeCardModal()">إلغاء</button>
+      <button type="button" class="btn btn-primary" id="pj2-new-submit" onclick="pjSubmitCreate2()">إنشاء المشروع</button>
+    </div>
+  `);
+  setTimeout(() => { const el = document.getElementById('pj2-new-name'); if (el) el.focus(); }, 50);
+}
+async function pjSubmitCreate2(){
+  const input = document.getElementById('pj2-new-name');
+  const msg = document.getElementById('pj2-new-msg');
+  const btn = document.getElementById('pj2-new-submit');
+  const name = String(input.value || '').trim();
+  if (!name){ msg.className = 'msg err'; msg.textContent = 'اكتب اسم المشروع الأول'; input.focus(); return; }
+  btn.disabled = true; msg.className = 'msg'; msg.innerHTML = '<span class="spinner"></span>جاري الإنشاء...';
+  try {
+    await apiPost('createProject', { name });
+    closeCardModal();
+    showToast('✅ اتعمل المشروع');
+    await renderProjectsPage(_navToken);
+  } catch(err){
+    msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err);
+  } finally { btn.disabled = false; }
+}
+async function pjArchive(name){
+  try {
+    await apiPost('archiveProject', { name });
+    showToast('🗄 اتعمل أرشفة للمشروع');
+    await renderProjectsPage(_navToken);
+  } catch(err){ showError(err); }
+}
+async function pjUnarchive(name){
+  try {
+    await apiPost('unarchiveProject', { name });
+    showToast('♻️ رجع المشروع للنشطة');
+    await renderProjectsPage(_navToken);
+  } catch(err){ showError(err); }
+}
+// ⚠️ حذف نهائي حقيقي — بيمسح شيتات المشروع بالكامل من الملفين (مصاريف
+// وتكاليف). محتاج المستخدم يكتب اسم المشروع بالظبط قبل ما يتفعل، عشان يبقى
+// أمان حقيقي مش بس دوسة زرار بالغلط.
+function pjConfirmDelete(name){
+  openCardModal(`
+    <h3 style="margin-bottom:10px;">🗑️ حذف نهائي: ${qEsc(name)}</h3>
+    <div style="margin-bottom:14px;color:var(--red);font-weight:600;">
+      تحذير: ده حذف نهائي لكل بيانات المشروع (التكاليف والإيرادات والصرف) — مينفعش يترجع.
+      لو عايز تشيله من القوايم بس مع الحفاظ على البيانات، استخدم "🗄 أرشفة" بدل ده.
+    </div>
+    <div class="field"><label>اكتب اسم المشروع بالظبط للتأكيد</label><input type="text" id="pj-del-confirm-input" autocomplete="off" placeholder="${qEsc(name)}"></div>
+    <div class="msg" id="pj-del-confirm-msg"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">
+      <button type="button" class="btn btn-outline" onclick="closeCardModal()">إلغاء</button>
+      <button type="button" class="btn btn-danger" id="pj-del-confirm-btn" onclick="pjDoDelete('${qEscJs(name)}')">تأكيد الحذف النهائي</button>
+    </div>
+  `);
+}
+async function pjDoDelete(name){
+  const input = document.getElementById('pj-del-confirm-input');
+  const msg = document.getElementById('pj-del-confirm-msg');
+  const btn = document.getElementById('pj-del-confirm-btn');
+  if (String(input.value || '').trim() !== name) {
+    msg.className = 'msg err'; msg.textContent = 'الاسم اللي كتبته مش مطابق — اكتبه زي ما هو بالظبط';
+    return;
+  }
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحذف...';
+  try {
+    await apiPost('deleteProjectPermanently', { name });
+    closeCardModal();
+    showToast('🗑️ اتحذف المشروع نهائيًا');
+    await renderProjectsPage(_navToken);
+  } catch(err){ msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); btn.disabled = false; btn.textContent = 'تأكيد الحذف النهائي'; }
+}
+
 function showProjectMaterialsModal(d){
   if (!d) return;
   const products = d.products || [];
