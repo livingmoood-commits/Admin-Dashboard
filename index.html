@@ -9900,7 +9900,7 @@ function toRenderCraftsmenOptionsHtml_(craftsmen, selected){
   html += monthly.map(optHtml).join('');
   return html;
 }
-let TO_DAILY_VIEW = sessionStorage.getItem('lm_toDailyView') || 'roster'; // 'roster' | 'quickform'
+let TO_DAILY_VIEW = sessionStorage.getItem('lm_toDailyView') || 'quickform'; // 'roster' | 'quickform'
 function toSetDailyView(view){
   TO_DAILY_VIEW = view;
   try { sessionStorage.setItem('lm_toDailyView', view); } catch(e){}
@@ -9998,8 +9998,17 @@ function toRosterRowHtml_(name){
 }
 function toRosterExpandedHtml_(name, draft){
   const id = toRosterId_(name);
+  const myHours = TO_ROSTER.hoursToday.filter(h => h.employee === name);
+  const myWf = TO_ROSTER.workflowToday.filter(w => w.craftsman === name);
   return `
     <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px;">
+      ${(myHours.length || myWf.length) ? `
+        <div style="margin-bottom:14px;">
+          <div style="font-weight:700;font-size:12.5px;margin-bottom:6px;">الشغل المسجّل النهاردة — عدّل أو احذف أي بند لوحده</div>
+          ${myHours.map(h => toRosterSavedHoursRowHtml_(h)).join('')}
+          ${myWf.map(w => toRosterSavedWfRowHtml_(w)).join('')}
+        </div>
+      ` : ''}
       ${draft.blocks.map((b,i) => toRosterBlockHtml_(name, b, i, draft.blocks.length)).join('')}
       <button type="button" class="btn-roster-glow" onclick="toRosterAddProjectBlock_('${qEscJs(name)}')">🌟 يشتغل في مشروع تاني؟ دوس هنا</button>
       ${draft.blocks.length > 1 ? `<div class="msg" style="display:block;font-size:11.5px;margin-top:6px;">ملحوظة: النهارده 9 ساعات — اتقسّموا بنفسك بين المشاريع فوق</div>` : ''}
@@ -10007,12 +10016,101 @@ function toRosterExpandedHtml_(name, draft){
         ${draft.eveningOpen ? toRosterEveningHtml_(name, draft) : `<button type="button" class="btn btn-outline btn-sm" onclick="toRosterToggleEvening_('${qEscJs(name)}')">🌙 في سهرة؟ دوس هنا</button>`}
       </div>
       <div style="display:flex;gap:8px;margin-top:14px;">
-        <button type="button" class="btn btn-primary btn-sm" id="rosterSaveBtn-${id}" onclick="toRosterSave_('${qEscJs(name)}')">💾 حفظ</button>
-        ${toRosterStatusFor_(name)==='registered' ? `<button type="button" class="btn btn-danger btn-sm" onclick="toRosterConfirmCancel_('${qEscJs(name)}')">🗑 إلغاء تسجيلات اليوم</button>` : ''}
+        <button type="button" class="btn btn-primary btn-sm" id="rosterSaveBtn-${id}" onclick="toRosterSave_('${qEscJs(name)}')">💾 حفظ الجديد</button>
       </div>
       <div class="msg" id="rosterMsg-${id}"></div>
     </div>
   `;
+}
+// صف بند "ساعات" واحد متسجل بالفعل — مشروع + ساعات + تكلفة، بزرار تعديل وحذف
+// لوحده بس (مش هيمسح باقي بنود اليوم للصنيعي ده)
+function toRosterSavedHoursRowHtml_(h){
+  return `
+    <div class="roster-saved-row" id="rosterHours-${qEsc(h.id)}" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;background:var(--cream);border-radius:8px;margin-bottom:6px;">
+      <div style="font-size:12.5px;">⏱ <b>${qEsc(h.project)}</b> — ${fmt(h.hours)} ساعة (${fmt(h.cost)} ج)</div>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button type="button" class="mat-icon-btn" title="تعديل" onclick="toRosterEditHours_('${qEscJs(h.id)}')">✏️</button>
+        <button type="button" class="mat-icon-btn" title="حذف" onclick="toRosterDeleteHours_('${qEscJs(h.id)}')">🗑️</button>
+      </div>
+    </div>`;
+}
+// صف بند "سجل شغل" واحد (المطلوب/ملاحظات) — نفس الفكرة، تعديل وحذف مستقل
+function toRosterSavedWfRowHtml_(w){
+  return `
+    <div class="roster-saved-row" id="rosterWf-${qEsc(w.id)}" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;background:var(--cream);border-radius:8px;margin-bottom:6px;">
+      <div style="font-size:12.5px;">📝 <b>${qEsc(w.project)}</b>${w.title ? ' — ' + qEsc(w.title) : ''}${w.notes ? ' — ' + qEsc(w.notes) : ''}</div>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button type="button" class="mat-icon-btn" title="تعديل" onclick="toRosterEditWf_('${qEscJs(w.id)}')">✏️</button>
+        <button type="button" class="mat-icon-btn" title="حذف" onclick="toRosterDeleteWf_('${qEscJs(w.id)}')">🗑️</button>
+      </div>
+    </div>`;
+}
+function toRosterEditHours_(id){
+  const h = TO_ROSTER.hoursToday.find(x => x.id === id); if (!h) return;
+  openCardModal(`
+    <div class="cd-head"><h3>✏️ تعديل ساعات — ${qEsc(h.employee)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div class="field"><label>المشروع</label><input class="d-input" id="rh-edit-project" list="to-dl-projects" value="${qEsc(h.project)}"></div>
+    <div class="field"><label>الساعات</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="rh-edit-hours" value="${h.hours}" onkeypress="return /[0-9.]/.test(event.key)"></div>
+    <button type="button" class="btn btn-primary btn-sm" id="rh-edit-save-btn" onclick="toRosterSaveHoursEdit_('${qEscJs(id)}','${qEscJs(h.employee)}','${qEscJs(h.date)}')">حفظ التعديل</button>
+    <div class="msg" id="rh-edit-msg"></div>
+  `);
+}
+async function toRosterSaveHoursEdit_(id, employee, date){
+  const project = document.getElementById('rh-edit-project').value.trim();
+  const hours = document.getElementById('rh-edit-hours').value.trim();
+  const msg = document.getElementById('rh-edit-msg');
+  const btn = document.getElementById('rh-edit-save-btn');
+  if (!project || !hours || Number(hours) <= 0) { msg.className = 'msg err'; msg.textContent = 'المشروع والساعات مطلوبين'; return; }
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
+  try {
+    await apiPost('updateHoursEntry', { entry: { id, employee, project, hours, date } });
+    closeCardModal();
+    showToast('✅ اتعدلت الساعات');
+    TO_ROSTER.loadedDate = null;
+    await toRenderRosterView();
+  } catch(err){ msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); btn.disabled = false; btn.textContent = 'حفظ التعديل'; }
+}
+async function toRosterDeleteHours_(id){
+  try {
+    await apiPost('deleteHoursEntry', { id });
+    showToast('🗑️ اتحذفت الساعات');
+    TO_ROSTER.loadedDate = null;
+    await toRenderRosterView();
+  } catch(err){ showError(err); }
+}
+function toRosterEditWf_(id){
+  const w = TO_ROSTER.workflowToday.find(x => x.id === id); if (!w) return;
+  openCardModal(`
+    <div class="cd-head"><h3>✏️ تعديل — ${qEsc(w.craftsman)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div class="field"><label>المشروع</label><input class="d-input" id="rw-edit-project" list="to-dl-projects" value="${qEsc(w.project)}"></div>
+    <div class="field"><label>المطلوب</label><input class="d-input" id="rw-edit-title" value="${qEsc(w.title)}"></div>
+    <div class="field"><label>ملاحظات</label><input class="d-input" id="rw-edit-notes" value="${qEsc(w.notes)}"></div>
+    <button type="button" class="btn btn-primary btn-sm" id="rw-edit-save-btn" onclick="toRosterSaveWfEdit_('${qEscJs(id)}')">حفظ التعديل</button>
+    <div class="msg" id="rw-edit-msg"></div>
+  `);
+}
+async function toRosterSaveWfEdit_(id){
+  const project = document.getElementById('rw-edit-project').value.trim();
+  const title = document.getElementById('rw-edit-title').value.trim();
+  const notes = document.getElementById('rw-edit-notes').value.trim();
+  const msg = document.getElementById('rw-edit-msg');
+  const btn = document.getElementById('rw-edit-save-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
+  try {
+    await apiPost('updateWorkflowEntry', { entry: { id, project, title, notes } });
+    closeCardModal();
+    showToast('✅ اتعدل');
+    TO_ROSTER.loadedDate = null;
+    await toRenderRosterView();
+  } catch(err){ msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); btn.disabled = false; btn.textContent = 'حفظ التعديل'; }
+}
+async function toRosterDeleteWf_(id){
+  try {
+    await apiPost('deleteWorkflowEntry', { id });
+    showToast('🗑️ اتحذف');
+    TO_ROSTER.loadedDate = null;
+    await toRenderRosterView();
+  } catch(err){ showError(err); }
 }
 function toRosterBlockHtml_(name, block, idx, totalBlocks){
   return `
@@ -10040,35 +10138,50 @@ function toRosterEveningHtml_(name, draft){
     </div>
   `;
 }
-function toRosterToggleOpen_(name){ toRosterDraftFor_(name).open = !toRosterDraftFor_(name).open; toRenderRosterBody_(); }
+// بترندر تاني أي واجهة بتعرض بلوكات المشاريع دلوقتي — الروستر (لو TO_DAILY_VIEW
+// روستر) أو فورم "تسجيل شغل" اليدوي (لو quickform)، عشان دوال التعديل على
+// البلوكات تحت تشتغل صح من غير ما تعرف هي مستخدمة منين
+function toRosterRerenderCurrentView_(){
+  if (TO_DAILY_VIEW === 'roster') toRenderRosterBody_();
+  else toRenderDailyForm();
+}
+function toRosterToggleOpen_(name){ toRosterDraftFor_(name).open = !toRosterDraftFor_(name).open; toRosterRerenderCurrentView_(); }
 function toRosterUpdateBlock_(name, idx, field, value){ const d = toRosterDraftFor_(name); if (d.blocks[idx]) d.blocks[idx][field] = value; }
-function toRosterAddProjectBlock_(name){ toRosterDraftFor_(name).blocks.push({project:'',hours:'',title:'',notes:''}); toRenderRosterBody_(); }
-function toRosterRemoveBlock_(name, idx){ toRosterDraftFor_(name).blocks.splice(idx, 1); toRenderRosterBody_(); }
-function toRosterToggleEvening_(name){ toRosterDraftFor_(name).eveningOpen = true; toRenderRosterBody_(); }
+function toRosterAddProjectBlock_(name){ toRosterDraftFor_(name).blocks.push({project:'',hours:'',title:'',notes:''}); toRosterRerenderCurrentView_(); }
+function toRosterRemoveBlock_(name, idx){ toRosterDraftFor_(name).blocks.splice(idx, 1); toRosterRerenderCurrentView_(); }
+function toRosterToggleEvening_(name){ toRosterDraftFor_(name).eveningOpen = true; toRosterRerenderCurrentView_(); }
 function toRosterUpdateEvening_(name, field, value){ toRosterDraftFor_(name)[field] = value; }
-async function toRosterSave_(name){
+// ⚠️ مشترك بين الروستر والفورم اليدوي — بتجمع بلوكات المشاريع (draft.blocks)
+// وساعات السهرة (لو مفتوحة) وتبعتهم لـaddRosterEntries. name/date بيتحددوا
+// من اللي بينادي عليها، وonDone بترجّع أي refresh لازم يحصل بعد الحفظ.
+async function toSaveEmployeeBlocks_(name, date, msgElId, btnElId, btnLabel, onDone){
   const draft = toRosterDraftFor_(name);
-  const id = toRosterId_(name);
-  const msg = document.getElementById('rosterMsg-' + id);
-  const btn = document.getElementById('rosterSaveBtn-' + id);
+  const msg = document.getElementById(msgElId);
+  const btn = document.getElementById(btnElId);
   const validBlocks = draft.blocks.filter(b => b.project.trim() && Number(b.hours) > 0);
   if (!validBlocks.length) { msg.className = 'msg err'; msg.textContent = 'لازم مشروع وساعات (أكبر من صفر) على الأقل لبلوك واحد'; return; }
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
   try {
     const entries = validBlocks.map(b => ({
-      employee: name, project: b.project.trim(), hours: b.hours, date: TO_ROSTER.date,
+      employee: name, project: b.project.trim(), hours: b.hours, date,
       title: b.title.trim(), notes: b.notes.trim(),
       eveningHours: draft.eveningOpen ? draft.eveningHours : ''
     }));
     if (draft.eveningOpen && draft.eveningProject.trim() && !entries.some(e => e.project === draft.eveningProject.trim())) {
-      entries.push({ employee: name, project: draft.eveningProject.trim(), hours: 0, date: TO_ROSTER.date, title: '', notes: 'سهرة', eveningHours: draft.eveningHours });
+      entries.push({ employee: name, project: draft.eveningProject.trim(), hours: 0, date, title: '', notes: 'سهرة', eveningHours: draft.eveningHours });
     }
     await apiPost('addRosterEntries', { entries });
     showToast('✅ اتسجل شغل ' + name);
     delete TO_ROSTER.draft[name];
+    if (onDone) await onDone();
+  } catch(err){ msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); btn.disabled = false; btn.textContent = btnLabel; }
+}
+async function toRosterSave_(name){
+  const id = toRosterId_(name);
+  await toSaveEmployeeBlocks_(name, TO_ROSTER.date, 'rosterMsg-' + id, 'rosterSaveBtn-' + id, '💾 حفظ الجديد', async () => {
     TO_ROSTER.loadedDate = null;
     await toRenderRosterView();
-  } catch(err){ msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); btn.disabled = false; btn.textContent = '💾 حفظ'; }
+  });
 }
 function toRosterConfirmCancel_(name){
   openCardModal(`
@@ -10097,23 +10210,18 @@ function toRenderDailyForm() {
       <button type="button" class="btn btn-outline btn-sm" onclick="toSetDailyView('roster')">📋 عرض كل الصنايعية</button>
     </div>
     <div class="panel">
-      <h3>تسجيل شغل <span class="sub">هيتسجل في شيت "سجل الشغل اليومي" مباشرة</span></h3>
-      <div class="grid2">
-        <div class="field"><label>الصنيعي</label>
-          <div class="to-cs" id="toCraftsmanCs">
-            <button type="button" class="to-cs-trigger ${TO_STATE.csOpen?'open':''}" id="toCsTrigger">
-              <span>${qEsc(TO_STATE.qCraftsman || 'اختار صنيعي')}</span><span class="arrow">&#9662;</span>
-            </button>
-            <div class="to-cs-list ${TO_STATE.csOpen?'open':''}" id="toCsList">
-              ${toRenderCraftsmenOptionsHtml_(TO_STATE.craftsmen, TO_STATE.qCraftsman)}
-            </div>
+      <h3>تسجيل شغل <span class="sub">هيتسجل في شيت "سجل الشغل اليومي" مباشرة، وأي ساعات بتتحمّل على تكلفة المشروع أوتوماتيك</span></h3>
+      <div class="field"><label>الصنيعي</label>
+        <div class="to-cs" id="toCraftsmanCs">
+          <button type="button" class="to-cs-trigger ${TO_STATE.csOpen?'open':''}" id="toCsTrigger">
+            <span>${qEsc(TO_STATE.qCraftsman || 'اختار صنيعي')}</span><span class="arrow">&#9662;</span>
+          </button>
+          <div class="to-cs-list ${TO_STATE.csOpen?'open':''}" id="toCsList">
+            ${toRenderCraftsmenOptionsHtml_(TO_STATE.craftsmen, TO_STATE.qCraftsman)}
           </div>
         </div>
-        <div class="field"><label>المشروع</label>
-          <input class="d-input" id="to_project" list="to-dl-projects" placeholder="اسم المشروع">
-          <datalist id="to-dl-projects">${TO_STATE.projects.map(p => `<option value="${qEsc(p)}">`).join('')}</datalist>
-        </div>
       </div>
+      <datalist id="to-dl-projects">${TO_STATE.projects.map(p => `<option value="${qEsc(p)}">`).join('')}</datalist>
       <div class="field">
         <label>اليوم اللي بتنظم شغله</label>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -10122,43 +10230,23 @@ function toRenderDailyForm() {
           <button type="button" class="btn btn-outline btn-sm" data-quickdate="${(() => { const t = new Date(); t.setDate(t.getDate()+1); return toISO(t); })()}">بكرة</button>
         </div>
       </div>
-      <div class="grid2">
-        <div class="field"><label>الموقع / الدور</label><input class="d-input" id="to_location" placeholder="مثال: الدور الأول"></div>
-        <div class="field"><label>المطلوب</label><input class="d-input" id="to_title" placeholder="مثال: تركيب أبواب"></div>
-      </div>
-      <div class="field"><label>فيد باك / آخر حالة الشغل</label><input class="d-input" id="to_feedback" placeholder="مثال: خلص 3 من 5 أبواب"></div>
-      <div class="field"><label>ملاحظات</label><input class="d-input" id="to_notes" placeholder="ملاحظات"></div>
 
-      <button type="button" class="to-extra-toggle ${TO_STATE.moreOpen?'open':''}" id="toExtraToggleBtn" aria-expanded="${TO_STATE.moreOpen?'true':'false'}">
-        <span class="et-left">
-          <span class="et-icon">${TO_STATE.moreOpen?'−':'+'}</span>
-          <span class="et-text">حقول إضافية</span>
-          <span class="et-hint">(اختياري)</span>
-        </span>
-        <span class="et-chev">&#9662;</span>
-      </button>
-      <div class="to-extra-body ${TO_STATE.moreOpen?'open':''}" id="toExtraBody">
-        <div class="to-bs-grid">
-          <div class="field"><label>التخصص</label><input class="d-input" id="to_specialty" list="to-dl-spec" placeholder="التخصص"><datalist id="to-dl-spec">${WORKFLOW_SPECIALTIES_FALLBACK.map(s => `<option value="${qEsc(s)}">`).join('')}</datalist></div>
-          <div class="field"><label>الحضور</label><input class="d-input" id="to_attendance" placeholder="8ص"></div>
-          <div class="field"><label>الكمية</label><input class="d-input" id="to_qty" placeholder="الكمية"></div>
-          <div class="field"><label>اشراف</label><input class="d-input" id="to_supervision" placeholder="اشراف"></div>
-          <div class="field wf-form-full" style="grid-column:1/-1;">
-            <label>المقاسات (كل خانة اختيارية)</label>
-            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
-              <input class="d-input" id="to_size_length" placeholder="طول">
-              <input class="d-input" id="to_size_width" placeholder="عرض">
-              <input class="d-input" id="to_size_height" placeholder="ارتفاع">
-              <input class="d-input" id="to_size_depth" placeholder="عمق">
-            </div>
+      ${TO_STATE.qCraftsman ? (() => {
+        const draft = toRosterDraftFor_(TO_STATE.qCraftsman);
+        const id = toRosterId_(TO_STATE.qCraftsman);
+        return `
+          ${draft.blocks.map((b,i) => toRosterBlockHtml_(TO_STATE.qCraftsman, b, i, draft.blocks.length)).join('')}
+          <button type="button" class="btn-roster-glow" onclick="toRosterAddProjectBlock_('${qEscJs(TO_STATE.qCraftsman)}')">🌟 يشتغل في مشروع تاني؟ دوس هنا</button>
+          ${draft.blocks.length > 1 ? `<div class="msg" style="display:block;font-size:11.5px;margin-top:6px;">ملحوظة: النهارده 9 ساعات — اتقسّموا بنفسك بين المشاريع فوق</div>` : ''}
+          <div style="margin-top:12px;">
+            ${draft.eveningOpen ? toRosterEveningHtml_(TO_STATE.qCraftsman, draft) : `<button type="button" class="btn btn-outline btn-sm" onclick="toRosterToggleEvening_('${qEscJs(TO_STATE.qCraftsman)}')">🌙 في سهرة؟ دوس هنا</button>`}
           </div>
-        </div>
-      </div>
-
-      <div style="margin-top:14px;">
-        <button type="button" class="btn btn-primary" id="toSaveEntryBtn">حفظ السطر</button>
-        <div class="msg" id="to-save-msg"></div>
-      </div>
+          <div style="margin-top:14px;">
+            <button type="button" class="btn btn-primary" id="toSaveEntryBtn-${id}" onclick="toQuickformSave_()">حفظ السطر</button>
+            <div class="msg" id="toSaveEntryMsg-${id}"></div>
+          </div>
+        `;
+      })() : `<div class="empty">اختار الصنيعي الأول</div>`}
     </div>
 
     <div class="panel" id="to-ww-panel">
@@ -10259,8 +10347,6 @@ function toWireDailyTab() {
   document.querySelectorAll('[data-blockednote]').forEach(inp => {
     inp.addEventListener('change', () => toSaveBlockedNote(inp.dataset.blockednote, inp.value));
   });
-  const saveBtn = document.getElementById('toSaveEntryBtn');
-  if (saveBtn) saveBtn.addEventListener('click', toSaveEntry);
 
   // فلتر تاريخ بانل "مين فين" — منفصل عن تاريخ فورم التسجيل، دفولته النهاردة
   const wwDateInput = document.getElementById('ww_date');
@@ -10287,36 +10373,15 @@ function toBuildSizesString_(){
   if (D) parts.push('عمق:' + D);
   return parts.join(' × ');
 }
-async function toSaveEntry() {
-  const msg = document.getElementById('to-save-msg');
+async function toQuickformSave_() {
   const craftsman = (TO_STATE.qCraftsman || '').trim();
-  const project = document.getElementById('to_project').value.trim();
-  if (!craftsman) { msg.className = 'msg err'; msg.textContent = 'اختار الصنيعي الأول'; return; }
-  if (!project) { msg.className = 'msg err'; msg.textContent = 'محتاج تكتب اسم المشروع'; return; }
-  const entry = {
-    date: TO_STATE.formDate, craftsman, project,
-    location: document.getElementById('to_location').value.trim(),
-    title: document.getElementById('to_title').value.trim(),
-    feedback: document.getElementById('to_feedback').value.trim(),
-    specialty: document.getElementById('to_specialty')?.value.trim() || '',
-    attendance: document.getElementById('to_attendance')?.value.trim() || '',
-    sizes: toBuildSizesString_(),
-    qty: document.getElementById('to_qty')?.value.trim() || '',
-    supervision: document.getElementById('to_supervision')?.value.trim() || '',
-    notes: document.getElementById('to_notes')?.value.trim() || '',
-  };
-  const btn = document.getElementById('toSaveEntryBtn');
-  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
-  msg.className = 'msg'; msg.textContent = '';
-  try {
-    await apiPost('addWorkflowEntries', { entries: [entry] });
-    msg.className = 'msg ok'; msg.textContent = '&#9989; اتحفظ السطر';
-    TO_STATE.moreOpen = false;
+  if (!craftsman) { showToast('اختار الصنيعي الأول', 'error'); return; }
+  const id = toRosterId_(craftsman);
+  await toSaveEmployeeBlocks_(craftsman, TO_STATE.formDate, 'toSaveEntryMsg-' + id, 'toSaveEntryBtn-' + id, 'حفظ السطر', async () => {
     delete TO_STATE.dailyCache[TO_STATE.formDate]; // البيانات اتغيرت فعلاً — لازم نجيبها تاني من السيرفر
     await toLoadDailyTab(undefined, { force: true });
     toRenderStatStrip();
-  } catch (err) { msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
-  finally { btn.disabled = false; btn.textContent = 'حفظ السطر'; }
+  });
 }
 
 // تحديث "تفاؤلي": بنغيّر الحالة في الشاشة فورًا من غير ما نستنى السيرفر ولا نعمل أي فيتش،
