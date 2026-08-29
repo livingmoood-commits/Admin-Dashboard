@@ -148,6 +148,18 @@
   .to-tabs button:hover{ color:#fff; }
   .to-tabs button.active{ background:var(--gold); color:var(--dark); animation:toPop .35s var(--bounce); }
   @keyframes toPop{ 0%{transform:scale(.9);} 55%{transform:scale(1.04);} 100%{transform:scale(1);} }
+  /* ⚠️ إضافة: روستر الصنايعية — شغل يومي */
+  .roster-row{ cursor:default; }
+  .btn-roster-glow{
+    all:unset; cursor:pointer; display:block; width:100%; text-align:center;
+    background:var(--gold); color:var(--dark); font-weight:700; padding:11px 14px;
+    border-radius:10px; font-size:13.5px; box-sizing:border-box;
+    animation:rosterGlow 1.8s ease-in-out infinite;
+  }
+  @keyframes rosterGlow{
+    0%,100%{ box-shadow:0 0 0 0 rgba(184,151,90,.55); }
+    50%{ box-shadow:0 0 0 8px rgba(184,151,90,0); }
+  }
   .to-tabs .ico{ margin-inline-end:6px; }
   .cost-day-group{ margin-bottom:22px; }
   .cost-day-head{ display:flex; align-items:baseline; gap:10px; padding:8px 12px; background:var(--dark); color:#fff; border-radius:10px 10px 0 0; }
@@ -1987,6 +1999,19 @@ function goTo(page, costTab) {
   if (!checkApiConfigured()) return;
   document.getElementById('content').innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   PAGES[page].render(token);
+  // ⚠️ إضافة: لو الصفحة فضلت عالقة على "جاري التحميل..." أكتر من 12 ثانية
+  // (طلب اتأخر جدًا أو حصل خطأ متمسكش صح)، نوريه زرار "أعد المحاولة" جوه
+  // الصفحة نفسها بدل ما يحتاج يعمل Reload كامل للموقع كله.
+  setTimeout(() => {
+    if (isStaleNav(token)) return; // المستخدم غيّر الصفحة فعلاً، مفيش داعي نعمل حاجة
+    const box = document.getElementById('content');
+    if (box && box.querySelector('.loading-row')) {
+      box.innerHTML = `<div class="panel"><div class="msg err" style="display:block;">الصفحة بتاخد وقت أطول من المتوقع.</div>
+        <button class="btn btn-sm" id="watchdogRetryBtn" style="margin-top:10px;">🔄 أعد المحاولة</button></div>`;
+      const btn = document.getElementById('watchdogRetryBtn');
+      if (btn) btn.addEventListener('click', () => goTo(page));
+    }
+  }, 12000);
 }
 function isStaleNav(token){ return token !== undefined && token !== _navToken; }
 /* Role-based access: Role="Lead" (شيت users، عمود C) بيشوف النظام كله، أي
@@ -6172,19 +6197,31 @@ function pjRenderTabBody(){
     return;
   }
   body.innerHTML = PJSTATE.active.length ? `
-    <div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>إجمالي التكلفة</th><th>الإيرادات</th><th>المصدر</th><th>صافي الربح</th><th></th></tr></thead>
-    <tbody>${PJSTATE.active.map(p => `
+    <div class="tbl-wrap"><table><thead><tr>
+      <th>المشروع</th><th>إجمالي التكلفة</th><th>إجمالي المصاريف</th>
+      <th>الإيرادات</th><th>المصدر</th>
+      <th>صافي الربح (تكاليف)</th><th>صافي الربح (مصاريف)</th><th></th>
+    </tr></thead>
+    <tbody>${PJSTATE.active.map(p => {
+      const cashExpenses = p.financials ? p.financials.cashExpenses : null;
+      const netCosts = p.netProfitCosts;
+      const netCash = p.financials ? p.financials.netProfitCash : null;
+      const netCell = v => v===null || v===undefined ? '—' : `<b style="color:${v>=0?'var(--green)':'var(--red)'}">${fmt(v)} ج</b>`;
+      return `
       <tr>
         <td class="row-clickable" onclick="showProjectDetail('${qEscJs(p.project)}')">${qEsc(p.project)}</td>
         <td><b>${fmt(p.totalCost)} ج</b></td>
+        <td>${cashExpenses===null ? '—' : fmt(cashExpenses)+' ج'}</td>
         <td>${p.financials ? fmt(p.financials.revenue)+' ج' : '—'}</td>
         <td style="font-size:11.5px;color:var(--muted);">${p.financials && p.financials.revenueSource ? qEsc(p.financials.revenueSource) : '—'}</td>
-        <td>${p.netProfit===null ? '—' : `<b style="color:${p.netProfit>=0?'var(--green)':'var(--red)'}">${fmt(p.netProfit)} ج</b>`}</td>
+        <td>${netCell(netCosts)}</td>
+        <td>${netCell(netCash)}</td>
         <td style="text-align:left;white-space:nowrap;">
           <button class="btn btn-sm btn-outline" title="أرشفة" onclick="pjArchive('${qEscJs(p.project)}')">🗄</button>
           <button class="btn btn-sm btn-danger" title="حذف نهائي" onclick="pjConfirmDelete('${qEscJs(p.project)}')">🗑</button>
         </td>
-      </tr>`).join('')}</tbody></table></div>
+      </tr>`;
+    }).join('')}</tbody></table></div>
   ` : `<div class="empty">مفيش مشاريع نشطة — دوس "+ مشروع جديد"</div>`;
 }
 function pjOpenCreateModal2(){
@@ -9757,7 +9794,7 @@ async function toWarmupBackground(token) {
         TO_STATE.dailyCache[d] = entries || [];
         if (TO_STATE.activeTab === 'daily' && TO_STATE.formDate === d) {
           TO_STATE.todayEntries = TO_STATE.dailyCache[d];
-          toRenderDailyForm();
+          toRenderDailyTabContent();
           toRenderStatStrip();
         }
       } catch (e) { /* تجاهل — التحميل المسبق مش حرج، هيتجاب عادي أول ما يتفتح فعليًا */ }
@@ -9817,7 +9854,7 @@ async function toLoadDailyTab(token, opts) {
   if (cached && !opts.force) {
     TO_STATE.todayEntries = cached;
     if (TO_STATE.wwDate === date) TO_STATE.wwEntries = cached;
-    toRenderDailyForm(); // فوري من الكاش، من غير أي طلب سيرفر
+    toRenderDailyTabContent(); // فوري من الكاش، من غير أي طلب سيرفر
     return;
   }
   if (!cached) box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
@@ -9827,7 +9864,7 @@ async function toLoadDailyTab(token, opts) {
     TO_STATE.todayEntries = entries || [];
     TO_STATE.dailyCache[date] = TO_STATE.todayEntries;
     if (TO_STATE.wwDate === date) TO_STATE.wwEntries = TO_STATE.todayEntries;
-    toRenderDailyForm();
+    toRenderDailyTabContent();
   } catch (err) { box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
 }
 
@@ -9863,9 +9900,202 @@ function toRenderCraftsmenOptionsHtml_(craftsmen, selected){
   html += monthly.map(optHtml).join('');
   return html;
 }
+let TO_DAILY_VIEW = sessionStorage.getItem('lm_toDailyView') || 'roster'; // 'roster' | 'quickform'
+function toSetDailyView(view){
+  TO_DAILY_VIEW = view;
+  try { sessionStorage.setItem('lm_toDailyView', view); } catch(e){}
+  toRenderDailyTabContent();
+}
+// بيقرر يعرض إيه في تاب "شغل يومي": الروستر (الافتراضي — كل الصنايعية
+// الأسبوعيين تحت بعض) ولا الفورم السريع القديم (لأي حالة خاصة/تسجيل يدوي)
+function toRenderDailyTabContent(){
+  if (TO_DAILY_VIEW === 'quickform') toRenderDailyForm();
+  else toRenderRosterView();
+}
+/* ═══════════════════════════════════════════════════════════════════════
+ *  روستر الصنايعية — العرض الافتراضي لتاب "شغل يومي": كل الصنايعية
+ *  الأسبوعيين تحت بعض، كل واحد بياخد بلوك (مشروع + ساعات + المطلوب) —
+ *  وممكن يشتغل في أكتر من مشروع في نفس اليوم (بلوكات إضافية، الساعات
+ *  بتتقسم يدوي)، وسهرة اختيارية (للعلم بس، مش بتتحسب تكلفة ولا مرتب).
+ *  بيتسجل في شيتين مع بعض: "ساعات_وسهرات" (للتكلفة، بتتحمّل على المشروع
+ *  أوتوماتيك) و"سجل الشغل اليومي" (للمتابعة الوصفية).
+ * ═══════════════════════════════════════════════════════════════════════ */
+let TO_ROSTER = { date: todayStr(), loadedDate: null, hoursToday: [], workflowToday: [], draft: {} };
+
+async function toRenderRosterView(){
+  const box = document.getElementById('to-tab-content'); if (!box) return;
+  if (TO_ROSTER.loadedDate !== TO_ROSTER.date) {
+    box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+    try {
+      const [hoursRes, wfRes] = await Promise.all([
+        apiGet('listHoursEntries', { filters: { from: TO_ROSTER.date, to: TO_ROSTER.date } }),
+        apiGet('listWorkflowEntries', { filters: { date: TO_ROSTER.date } })
+      ]);
+      TO_ROSTER.hoursToday = hoursRes.entries || [];
+      TO_ROSTER.workflowToday = wfRes.entries || [];
+      TO_ROSTER.loadedDate = TO_ROSTER.date;
+    } catch(err){ showError(err); return; }
+  }
+  toRenderRosterBody_();
+}
+function toRosterEmployeesFor_(){
+  return TO_STATE.craftsmen.filter(c => c.paymentType !== 'شهري'); // أسبوعيين بس — الشهريين مش بيتسجلولهم شغل يومي بالطريقة دي
+}
+function toRosterStatusFor_(name){
+  const has = TO_ROSTER.hoursToday.some(h => h.employee === name) || TO_ROSTER.workflowToday.some(w => w.craftsman === name);
+  return has ? 'registered' : 'pending';
+}
+function toRosterDraftFor_(name){
+  if (!TO_ROSTER.draft[name]) TO_ROSTER.draft[name] = { open:false, blocks:[{project:'',hours:'',title:'',notes:''}], eveningOpen:false, eveningHours:'', eveningProject:'' };
+  return TO_ROSTER.draft[name];
+}
+function toRosterId_(name){ return String(name).replace(/[^a-zA-Z0-9\u0600-\u06FF]/g, '_'); }
+function toRosterChangeDate_(delta){
+  const d = new Date(TO_ROSTER.date);
+  d.setDate(d.getDate() + delta);
+  TO_ROSTER.date = toISO(d);
+  toRenderRosterView();
+}
+function toRenderRosterBody_(){
+  const box = document.getElementById('to-tab-content'); if (!box) return;
+  const employees = toRosterEmployeesFor_();
+  const registeredCount = employees.filter(e => toRosterStatusFor_(e.name) === 'registered').length;
+  box.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button type="button" class="btn btn-outline btn-sm" onclick="toRosterChangeDate_(-1)">◀</button>
+        <input type="date" class="d-input" id="rosterDateInput" value="${TO_ROSTER.date}" style="width:160px;">
+        <button type="button" class="btn btn-outline btn-sm" onclick="toRosterChangeDate_(1)">▶</button>
+      </div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="toSetDailyView('quickform')">📝 فورم سريع / تسجيل يدوي</button>
+    </div>
+    <div class="panel" style="margin-bottom:10px;padding:12px 16px;">
+      <div style="font-size:13px;">تسجيل <b>${registeredCount}</b> من <b>${employees.length}</b> صنيعي أسبوعي — يوم ${qEsc(toDateQuickLabel(TO_ROSTER.date))}</div>
+    </div>
+    <div id="rosterList">
+      ${employees.length ? employees.map(e => toRosterRowHtml_(e.name)).join('') : '<div class="empty">مفيش صنايعية أسبوعيين متسجلين في شيت المرتبات</div>'}
+    </div>
+    <datalist id="to-dl-projects">${TO_STATE.projects.map(p => `<option value="${qEsc(p)}">`).join('')}</datalist>
+  `;
+  const dateInput = document.getElementById('rosterDateInput');
+  if (dateInput) dateInput.addEventListener('change', e => { TO_ROSTER.date = e.target.value; toRenderRosterView(); });
+}
+function toRosterRowHtml_(name){
+  const status = toRosterStatusFor_(name);
+  const draft = toRosterDraftFor_(name);
+  return `
+    <div class="panel roster-row" style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="toRosterToggleOpen_('${qEscJs(name)}')">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:18px;">${status==='registered' ? '✅' : '⬜'}</span>
+          <b>${qEsc(name)}</b>
+        </div>
+        <span style="transition:transform .2s;transform:rotate(${draft.open?180:0}deg);">&#9662;</span>
+      </div>
+      ${draft.open ? toRosterExpandedHtml_(name, draft) : ''}
+    </div>
+  `;
+}
+function toRosterExpandedHtml_(name, draft){
+  const id = toRosterId_(name);
+  return `
+    <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px;">
+      ${draft.blocks.map((b,i) => toRosterBlockHtml_(name, b, i, draft.blocks.length)).join('')}
+      <button type="button" class="btn-roster-glow" onclick="toRosterAddProjectBlock_('${qEscJs(name)}')">🌟 يشتغل في مشروع تاني؟ دوس هنا</button>
+      ${draft.blocks.length > 1 ? `<div class="msg" style="display:block;font-size:11.5px;margin-top:6px;">ملحوظة: النهارده 9 ساعات — اتقسّموا بنفسك بين المشاريع فوق</div>` : ''}
+      <div style="margin-top:12px;">
+        ${draft.eveningOpen ? toRosterEveningHtml_(name, draft) : `<button type="button" class="btn btn-outline btn-sm" onclick="toRosterToggleEvening_('${qEscJs(name)}')">🌙 في سهرة؟ دوس هنا</button>`}
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button type="button" class="btn btn-primary btn-sm" id="rosterSaveBtn-${id}" onclick="toRosterSave_('${qEscJs(name)}')">💾 حفظ</button>
+        ${toRosterStatusFor_(name)==='registered' ? `<button type="button" class="btn btn-danger btn-sm" onclick="toRosterConfirmCancel_('${qEscJs(name)}')">🗑 إلغاء تسجيلات اليوم</button>` : ''}
+      </div>
+      <div class="msg" id="rosterMsg-${id}"></div>
+    </div>
+  `;
+}
+function toRosterBlockHtml_(name, block, idx, totalBlocks){
+  return `
+    <div class="grid2" style="margin-bottom:10px;padding:10px;background:var(--cream);border-radius:9px;">
+      <div class="field"><label>المشروع${idx>0?' (تاني)':''}</label>
+        <input class="d-input" list="to-dl-projects" value="${qEsc(block.project)}" oninput="toRosterUpdateBlock_('${qEscJs(name)}',${idx},'project',this.value)"></div>
+      <div class="field"><label>وقت الشغل (ساعات)</label>
+        <input type="text" inputmode="decimal" class="d-input ltr-num" value="${qEsc(block.hours)}" placeholder="مثال: 9" onkeypress="return /[0-9.]/.test(event.key)" oninput="toRosterUpdateBlock_('${qEscJs(name)}',${idx},'hours',this.value)"></div>
+      <div class="field" style="grid-column:1/-1;"><label>المطلوب</label>
+        <input class="d-input" value="${qEsc(block.title)}" placeholder="مثال: تركيب أبواب" oninput="toRosterUpdateBlock_('${qEscJs(name)}',${idx},'title',this.value)"></div>
+      <div class="field" style="grid-column:1/-1;"><label>ملاحظات</label>
+        <input class="d-input" value="${qEsc(block.notes)}" oninput="toRosterUpdateBlock_('${qEscJs(name)}',${idx},'notes',this.value)"></div>
+      ${totalBlocks>1 ? `<div style="grid-column:1/-1;text-align:left;"><button type="button" class="btn btn-sm btn-danger" onclick="toRosterRemoveBlock_('${qEscJs(name)}',${idx})">✕ شيل المشروع ده</button></div>` : ''}
+    </div>
+  `;
+}
+function toRosterEveningHtml_(name, draft){
+  return `
+    <div class="grid2" style="padding:10px;background:var(--cream);border-radius:9px;">
+      <div class="field"><label>عدد ساعات السهرة</label>
+        <input type="text" inputmode="decimal" class="d-input ltr-num" value="${qEsc(draft.eveningHours)}" onkeypress="return /[0-9.]/.test(event.key)" oninput="toRosterUpdateEvening_('${qEscJs(name)}','eveningHours',this.value)"></div>
+      <div class="field"><label>مشروع السهرة</label>
+        <input class="d-input" list="to-dl-projects" value="${qEsc(draft.eveningProject)}" oninput="toRosterUpdateEvening_('${qEscJs(name)}','eveningProject',this.value)"></div>
+      <div style="grid-column:1/-1;font-size:11px;color:var(--muted);">ساعات السهرة بتتسجل للعلم بس — مش بتتحسب في التكلفة ولا المرتب</div>
+    </div>
+  `;
+}
+function toRosterToggleOpen_(name){ toRosterDraftFor_(name).open = !toRosterDraftFor_(name).open; toRenderRosterBody_(); }
+function toRosterUpdateBlock_(name, idx, field, value){ const d = toRosterDraftFor_(name); if (d.blocks[idx]) d.blocks[idx][field] = value; }
+function toRosterAddProjectBlock_(name){ toRosterDraftFor_(name).blocks.push({project:'',hours:'',title:'',notes:''}); toRenderRosterBody_(); }
+function toRosterRemoveBlock_(name, idx){ toRosterDraftFor_(name).blocks.splice(idx, 1); toRenderRosterBody_(); }
+function toRosterToggleEvening_(name){ toRosterDraftFor_(name).eveningOpen = true; toRenderRosterBody_(); }
+function toRosterUpdateEvening_(name, field, value){ toRosterDraftFor_(name)[field] = value; }
+async function toRosterSave_(name){
+  const draft = toRosterDraftFor_(name);
+  const id = toRosterId_(name);
+  const msg = document.getElementById('rosterMsg-' + id);
+  const btn = document.getElementById('rosterSaveBtn-' + id);
+  const validBlocks = draft.blocks.filter(b => b.project.trim() && Number(b.hours) > 0);
+  if (!validBlocks.length) { msg.className = 'msg err'; msg.textContent = 'لازم مشروع وساعات (أكبر من صفر) على الأقل لبلوك واحد'; return; }
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
+  try {
+    const entries = validBlocks.map(b => ({
+      employee: name, project: b.project.trim(), hours: b.hours, date: TO_ROSTER.date,
+      title: b.title.trim(), notes: b.notes.trim(),
+      eveningHours: draft.eveningOpen ? draft.eveningHours : ''
+    }));
+    if (draft.eveningOpen && draft.eveningProject.trim() && !entries.some(e => e.project === draft.eveningProject.trim())) {
+      entries.push({ employee: name, project: draft.eveningProject.trim(), hours: 0, date: TO_ROSTER.date, title: '', notes: 'سهرة', eveningHours: draft.eveningHours });
+    }
+    await apiPost('addRosterEntries', { entries });
+    showToast('✅ اتسجل شغل ' + name);
+    delete TO_ROSTER.draft[name];
+    TO_ROSTER.loadedDate = null;
+    await toRenderRosterView();
+  } catch(err){ msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); btn.disabled = false; btn.textContent = '💾 حفظ'; }
+}
+function toRosterConfirmCancel_(name){
+  openCardModal(`
+    <div class="cd-head"><h3>🗑️ إلغاء تسجيلات اليوم</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div style="margin-bottom:14px;">متأكد إنك عايز تلغي كل تسجيلات <b>${qEsc(name)}</b> ليوم ${qEsc(TO_ROSTER.date)}؟ هيتشال من الشغل اليومي ومن حساب التكلفة مع بعض.</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn btn-sm btn-outline" onclick="closeCardModal()">تراجع</button>
+      <button class="btn btn-sm btn-danger" onclick="toRosterDoCancel_('${qEscJs(name)}')">تأكيد الإلغاء</button>
+    </div>
+  `);
+}
+async function toRosterDoCancel_(name){
+  closeCardModal();
+  try {
+    await apiPost('cancelDayRegistration', { employee: name, date: TO_ROSTER.date });
+    showToast('🗑️ اتلغت تسجيلات ' + name);
+    TO_ROSTER.loadedDate = null;
+    await toRenderRosterView();
+  } catch(err){ showError(err); }
+}
+
 function toRenderDailyForm() {
   const box = document.getElementById('to-tab-content'); if (!box) return;
   box.innerHTML = `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+      <button type="button" class="btn btn-outline btn-sm" onclick="toSetDailyView('roster')">📋 عرض كل الصنايعية</button>
+    </div>
     <div class="panel">
       <h3>تسجيل شغل <span class="sub">هيتسجل في شيت "سجل الشغل اليومي" مباشرة</span></h3>
       <div class="grid2">
