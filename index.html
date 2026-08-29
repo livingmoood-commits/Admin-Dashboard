@@ -775,7 +775,7 @@
   .q-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; margin-bottom:14px; }
   table.q-tbl{ width:100%; border-collapse:collapse; font-size:15px; min-width:1300px; table-layout:fixed; }
   .q-tbl thead tr{ background:var(--green); color:#fff; }
-  .q-tbl thead th{ padding:13px 12px; font-weight:600; text-align:right; white-space:nowrap; font-size:14px; }
+  .q-tbl thead th{ padding:13px 12px; font-weight:600; text-align:right; white-space:nowrap; font-size:14px; overflow:hidden; text-overflow:ellipsis; }
   .q-tbl tbody tr{ border-bottom:1px solid var(--border); }
   .q-tbl tbody tr:hover{ background:#faf7f3; }
   .q-tbl td{ padding:12px 10px; vertical-align:middle; }
@@ -8881,9 +8881,9 @@ function pRenderEditor(){
       <div class="q-wrap">
         <table class="q-tbl">
           <thead><tr>
-            <th style="width:30px;">#</th><th>اسم الدفعة</th><th style="width:120px;">المبلغ</th>
-            <th style="width:90px;">النسبة من الإجمالي</th><th style="width:120px;">تاريخ الدفع</th>
-            <th style="width:130px;">طريقة الدفع <span style="font-weight:400;color:var(--muted);">(اختياري)</span></th><th style="width:36px;"></th>
+            <th style="width:30px;">#</th><th>اسم الدفعة</th><th style="width:130px;">المبلغ</th>
+            <th style="width:150px;">النسبة من الإجمالي</th><th style="width:150px;">تاريخ الدفع</th>
+            <th style="width:170px;">طريقة الدفع <span style="font-weight:400;color:var(--muted);">(اختياري)</span></th><th style="width:36px;"></th>
           </tr></thead>
           <tbody id="p-body"></tbody>
         </table>
