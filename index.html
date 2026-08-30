@@ -10597,8 +10597,15 @@ async function toWfItemEdit_(id, project, title, notes, craftsman, date){
   } catch(e) { /* لو فشل الجلب، هنكمل بدون قسم الساعات بس */ }
   toRenderWfItemEditModal_(id, project, title, notes, craftsman, date, hoursEntry);
 }
+// ⚠️ إضافة: بلوكات إضافية (مشروع تاني بساعات منفصلة) داخل مودال التعديل نفسه —
+// حالة محلية بسيطة للمودال ده بس، بتتصفر كل مرة يتفتح فيها من جديد.
+let _wfEditExtraBlocks = [];
 function toRenderWfItemEditModal_(id, project, title, notes, craftsman, date, hoursEntry){
-  openCardModal(`
+  _wfEditExtraBlocks = [];
+  openCardModal(toWfItemEditModalHtml_(id, project, title, notes, craftsman, date, hoursEntry));
+}
+function toWfItemEditModalHtml_(id, project, title, notes, craftsman, date, hoursEntry){
+  return `
     <div class="cd-head"><h3>✏️ تعديل بند${craftsman?' — '+qEsc(craftsman):''}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
     <div class="field"><label>المشروع</label>${toProjDropdownHtmlForModal_('wfItemEditProj', 'wfItem-edit-project', project)}</div>
     <div class="field"><label>التاريخ</label><input type="date" class="d-input" id="wfItem-edit-date" value="${qEsc(date || '')}"></div>
@@ -10606,12 +10613,52 @@ function toRenderWfItemEditModal_(id, project, title, notes, craftsman, date, ho
     <div class="field"><label>ملاحظات</label><input class="d-input" id="wfItem-edit-notes" value="${qEsc(notes)}"></div>
     <div class="field"><label>ساعات الشغل${hoursEntry?'':' (مفيش ساعات متسجلة — سيبها فاضية أو دخّل عدد لو عايز تضيفها)'}</label>
       <input type="text" inputmode="decimal" class="d-input ltr-num" id="wfItem-edit-hours" value="${hoursEntry?hoursEntry.hours:''}" placeholder="مثال: 9" onkeypress="return /[0-9.]/.test(event.key)"></div>
-    <div class="field"><label>ساعات السهرة (للعلم بس — مش بتتحسب في التكلفة ولا المرتب)</label>
-      <input type="text" inputmode="decimal" class="d-input ltr-num" id="wfItem-edit-evening" value="${hoursEntry?(hoursEntry.eveningHours||''):''}" onkeypress="return /[0-9.]/.test(event.key)"></div>
     <input type="hidden" id="wfItem-edit-hoursid" value="${hoursEntry?qEsc(hoursEntry.id):''}">
-    <button type="button" class="btn btn-primary btn-sm" id="wfItem-edit-save-btn" onclick="toWfItemSaveEdit_('${qEscJs(id)}','${qEscJs(craftsman||'')}','${qEscJs(date||'')}')">حفظ التعديل</button>
-    <div class="msg" id="wfItem-edit-msg"></div>
-  `);
+
+    ${_wfEditExtraBlocks.map((b,i) => `
+      <div class="grid2" style="margin-bottom:10px;padding:10px;background:var(--cream);border-radius:9px;">
+        <div class="field"><label>المشروع (تاني)</label>${toProjDropdownHtmlForModal_('wfEditExtra'+i+'Proj', 'wfEditExtraProject'+i, b.project)}</div>
+        <div class="field"><label>الساعات</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="wfEditExtraHours${i}" value="${qEsc(b.hours)}" onkeypress="return /[0-9.]/.test(event.key)" oninput="_wfEditExtraBlocks[${i}].hours=this.value"></div>
+        <div style="grid-column:1/-1;text-align:left;"><button type="button" class="btn btn-sm btn-danger" onclick="toWfEditRemoveExtra_(${i},'${qEscJs(id)}','${qEscJs(craftsman||'')}','${qEscJs(date||'')}')">✕ شيل المشروع ده</button></div>
+      </div>
+    `).join('')}
+    <button type="button" class="btn-roster-glow" onclick="toWfEditAddExtra_('${qEscJs(id)}','${qEscJs(craftsman||'')}','${qEscJs(date||'')}','${qEscJs(project)}','${qEscJs(title)}','${qEscJs(notes)}',${hoursEntry?`'${qEscJs(hoursEntry.id)}'`:'null'})">🌟 يشتغل في مشروع تاني؟ دوس هنا</button>
+    ${_wfEditExtraBlocks.length ? `<div class="msg" style="display:block;font-size:11.5px;margin-top:6px;">ملحوظة: اقسم الساعات بنفسك بين المشاريع فوق</div>` : ''}
+
+    <div style="margin-top:14px;">
+      <label style="font-size:12px;font-weight:700;color:var(--muted);">ساعات السهرة (للعلم بس — مش بتتحسب في التكلفة ولا المرتب)</label>
+      <input type="text" inputmode="decimal" class="d-input ltr-num" id="wfItem-edit-evening" value="${hoursEntry?(hoursEntry.eveningHours||''):''}" onkeypress="return /[0-9.]/.test(event.key)">
+    </div>
+
+    <div style="margin-top:14px;">
+      <button type="button" class="btn btn-primary btn-sm" id="wfItem-edit-save-btn" onclick="toWfItemSaveEdit_('${qEscJs(id)}','${qEscJs(craftsman||'')}','${qEscJs(date||'')}')">حفظ التعديل</button>
+      <div class="msg" id="wfItem-edit-msg"></div>
+    </div>
+  `;
+}
+function toWfEditAddExtra_(id, craftsman, date, project, title, notes, hoursId){
+  // ⚠️ بنلقط القيم اللي المستخدم كتبها في الحقول الحالية (مش الأصلية) قبل ما نعيد الرسم، عشان متضيعش
+  const curProject = document.getElementById('wfItem-edit-project') ? document.getElementById('wfItem-edit-project').value : project;
+  const curDate = document.getElementById('wfItem-edit-date') ? document.getElementById('wfItem-edit-date').value : date;
+  const curTitle = document.getElementById('wfItem-edit-title') ? document.getElementById('wfItem-edit-title').value : title;
+  const curNotes = document.getElementById('wfItem-edit-notes') ? document.getElementById('wfItem-edit-notes').value : notes;
+  const curHours = document.getElementById('wfItem-edit-hours') ? document.getElementById('wfItem-edit-hours').value : '';
+  const curEvening = document.getElementById('wfItem-edit-evening') ? document.getElementById('wfItem-edit-evening').value : '';
+  _wfEditExtraBlocks.push({ project: '', hours: '' });
+  const hoursEntry = hoursId ? { id: hoursId, hours: curHours, eveningHours: curEvening } : (curHours ? { id: null, hours: curHours, eveningHours: curEvening } : null);
+  openCardModal(toWfItemEditModalHtml_(id, curProject, curTitle, curNotes, craftsman, curDate, hoursEntry));
+}
+function toWfEditRemoveExtra_(i, id, craftsman, date){
+  const curProject = document.getElementById('wfItem-edit-project').value;
+  const curDate = document.getElementById('wfItem-edit-date').value;
+  const curTitle = document.getElementById('wfItem-edit-title').value;
+  const curNotes = document.getElementById('wfItem-edit-notes').value;
+  const curHours = document.getElementById('wfItem-edit-hours').value;
+  const curEvening = document.getElementById('wfItem-edit-evening').value;
+  const hoursId = document.getElementById('wfItem-edit-hoursid').value;
+  _wfEditExtraBlocks.splice(i, 1);
+  const hoursEntry = hoursId ? { id: hoursId, hours: curHours, eveningHours: curEvening } : (curHours ? { id: null, hours: curHours, eveningHours: curEvening } : null);
+  openCardModal(toWfItemEditModalHtml_(id, curProject, curTitle, curNotes, craftsman, curDate, hoursEntry));
 }
 async function toWfItemSaveEdit_(id, craftsman, oldDate){
   const project = document.getElementById('wfItem-edit-project').value.trim();
@@ -10634,6 +10681,16 @@ async function toWfItemSaveEdit_(id, craftsman, oldDate){
         await apiPost('updateHoursEntry', { entry: { id: hoursId, employee: craftsman, project, hours: hours || 0, eveningHours: evening || 0, eveningAmount: 0, date } });
       } else if (!hoursId && hours && Number(hours) > 0) {
         await apiPost('addHoursEntry', { entry: { employee: craftsman, project, hours, eveningHours: evening, eveningAmount: 0, date } });
+      }
+      // ⚠️ إضافة: أي بلوكات "مشروع تاني" — كل واحد بيتسجل كسطر ساعات منفصل جديد
+      for (let i = 0; i < _wfEditExtraBlocks.length; i++) {
+        const projEl = document.getElementById('wfEditExtraProject' + i);
+        const hoursEl = document.getElementById('wfEditExtraHours' + i);
+        const bProject = projEl ? projEl.value.trim() : '';
+        const bHours = hoursEl ? hoursEl.value.trim() : '';
+        if (bProject && Number(bHours) > 0) {
+          await apiPost('addHoursEntry', { entry: { employee: craftsman, project: bProject, hours: bHours, eveningHours: '', eveningAmount: 0, date } });
+        }
       }
     } else if (isAbsence && hoursId) {
       await apiPost('deleteHoursEntry', { id: hoursId }); // بقى غياب — أي ساعات كانت متسجلة تترجع
