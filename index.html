@@ -7122,16 +7122,25 @@ async function renderCostSummaryBody_(){
   if (!project) { box.innerHTML = '<div class="empty">مفيش مشاريع لسه</div>'; return; }
   box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
-    const [d, rev, distRes, hoursRes] = await Promise.all([
+    // ⚡ إصلاح: كان بينادي getDistributionReport و listHoursEntries مع بعض —
+    // الاتنين بيقروا نفس بيانات "ساعات_وسهرات" بالظبط (تكرار حقيقي، مش مجرد
+    // نداءين مختلفين). دلوقتي بنجيب listHoursEntries مرة واحدة بس، وملخص كل
+    // موظف (الأيام/الساعات/التكلفة) بيتحسب من نفس البيانات دي في المتصفح —
+    // ده بيقلل عدد الطلبات المتزامنة لصفحة "تفاصيل المشاريع" من 4 لـ3.
+    const [d, rev, hoursRes] = await Promise.all([
       apiGet('getProjectFullSummary', { name: project }),
       apiGet('listProjectRevenueEntries', { name: project }),
-      apiGet('getDistributionReport', { filters: { project } }),
       apiGet('listHoursEntries', { filters: { project } })
     ]);
     const empRateMap = window._costEmpRateMap || {};
-    const projDist = (distRes.projects || []).find(p => p.project === project);
-    const employeeRows = projDist ? projDist.employees : [];
     const hoursEntries = hoursRes.entries || [];
+    const employeeMap = {};
+    hoursEntries.forEach(e => {
+      if (!employeeMap[e.employee]) employeeMap[e.employee] = { employee: e.employee, entries: 0, hours: 0, eveningHours: 0, cost: 0 };
+      const m = employeeMap[e.employee];
+      m.entries++; m.hours += Number(e.hours) || 0; m.eveningHours += Number(e.eveningHours) || 0; m.cost += Number(e.cost) || 0;
+    });
+    const employeeRows = Object.values(employeeMap).sort((a, b) => b.cost - a.cost);
     const products = d.products || [];
     const revenueTotal = d.financials ? d.financials.revenue : (rev.total || 0);
     const archiveCost = (d.materialsCost || 0) + (d.installCost || 0);
