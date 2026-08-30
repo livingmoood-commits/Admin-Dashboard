@@ -7108,6 +7108,7 @@ async function renderCostSummaryTab(){
   const projects = window._costsProjects || [];
   if (!SUMMARY_STATE.project && projects.length) SUMMARY_STATE.project = projects[0];
   box.innerHTML = `
+    <div id="backfillBanner"></div>
     <div class="panel" style="margin-bottom:16px;">
       <div class="filters"><select id="summary_project">${projects.map(pr=>`<option value="${qEsc(pr)}" ${pr===SUMMARY_STATE.project?'selected':''}>${qEsc(pr)}</option>`).join('')}</select></div>
     </div>
@@ -7115,6 +7116,47 @@ async function renderCostSummaryTab(){
   `;
   document.getElementById('summary_project').addEventListener('change', e => { SUMMARY_STATE.project = e.target.value; renderCostSummaryBody_(); });
   renderCostSummaryBody_();
+  toCheckBackfillOpportunity_(); // منفصل عن الرسم الأساسي عمدًا — مش لازم نستنى الفحص ده عشان الصفحة تظهر
+}
+// ⚠️ إضافة: بتفحص لو فيه بنود شغل قديمة اتسجلت من غير ما تتحسب كتكلفة على
+// المشروع (قبل ما نظام الروستر الحالي يربط الاتنين مع بعض)، وتعرض بانر لو
+// لقت حاجة — من غير ما تعطّل باقي الصفحة لحد ما الفحص يخلص.
+async function toCheckBackfillOpportunity_(){
+  const banner = document.getElementById('backfillBanner'); if (!banner) return;
+  try {
+    const { items } = await apiGet('previewBackfillHours');
+    if (!document.getElementById('backfillBanner')) return; // المستخدم غيّر الصفحة قبل ما الفحص يخلص
+    if (!items || !items.length) return;
+    const totalHours = items.reduce((s, it) => s + (Number(it.hours) || 9), 0);
+    banner.innerHTML = `
+      <div class="panel" style="background:#fff8e6;border:1.5px solid var(--gold);margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+          <div style="font-size:13px;">⚠️ فيه <b>${items.length}</b> سطر شغل متسجل في "Work Flow" من غير ما يتحسب كتكلفة على المشروع (إجمالي تقريبي: ${fmt(totalHours)} ساعة). اللي مالوش ساعات محددة هياخد يوم كامل افتراضي (9 ساعات).</div>
+          <button type="button" class="btn btn-primary btn-sm" onclick="toOpenBackfillModal_()">اسحبهم للتكلفة</button>
+        </div>
+      </div>`;
+  } catch(e) { /* الفحص ده اختياري — لو فشل لأي سبب منعرضش حاجة، مش نوقف الصفحة */ }
+}
+function toOpenBackfillModal_(){
+  openCardModal(`
+    <div class="cd-head"><h3>سحب البنود الناقصة للتكلفة</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div style="margin-bottom:14px;font-size:13px;">هيتم إنشاء سطر ساعات لكل بند مالوش تكلفة متسجلة، وهيتحمّل على المشروع بتاريخه الأصلي مباشرة. العملية دي مأمونة (بتضيف بس، مبتعدلش ولا بتمسح حاجة موجودة).</div>
+    <button type="button" class="btn btn-primary btn-sm" id="backfillConfirmBtn" onclick="toConfirmBackfill_()">تأكيد السحب</button>
+    <div class="msg" id="backfillMsg"></div>
+  `);
+}
+async function toConfirmBackfill_(){
+  const btn = document.getElementById('backfillConfirmBtn');
+  const msg = document.getElementById('backfillMsg');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري السحب...';
+  try {
+    const { items } = await apiGet('previewBackfillHours'); // نجيب القايمة تاني وقت التنفيذ (مش المخزنة من قبل) لضمان الدقة
+    const res = await apiPost('backfillMissingHours', { items });
+    closeCardModal();
+    showToast(`✅ اتسحب ${res.count} سطر — إجمالي التكلفة المضافة: ${fmt(res.totalCost)} ج`);
+    const banner = document.getElementById('backfillBanner'); if (banner) banner.innerHTML = '';
+    renderCostSummaryBody_();
+  } catch(err){ msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); btn.disabled = false; btn.textContent = 'تأكيد السحب'; }
 }
 async function renderCostSummaryBody_(){
   const box = document.getElementById('costSummaryBody'); if (!box) return;
