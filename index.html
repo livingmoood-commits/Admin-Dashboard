@@ -200,6 +200,8 @@
   .to-cs-option:hover{ background:var(--cream); }
   .to-cs-option.selected{ background:var(--gold); color:var(--dark); font-weight:800; }
   .to-cs-divider{ padding:6px 12px 4px; font-size:10.5px; font-weight:700; color:var(--muted); border-top:1px solid var(--border); margin-top:4px; }
+  .toqf-emp-divider{ display:flex; align-items:center; gap:8px; margin:8px 4px; font-size:11.5px; font-weight:800; color:var(--gold); }
+  .toqf-emp-divider::before, .toqf-emp-divider::after{ content:''; flex:1; height:2px; background:var(--gold); border-radius:2px; }
 
   .to-extra-toggle{ all:unset; box-sizing:border-box; width:100%; display:flex; align-items:center; justify-content:space-between;
     gap:10px; background:var(--cream); border:1.5px solid var(--border); border-radius:10px; padding:12px 14px;
@@ -10224,10 +10226,10 @@ function toRenderDailyForm() {
     <div class="panel">
       <h3>تسجيل شغل <span class="sub">هيتسجل في شيت "سجل الشغل اليومي" مباشرة، وأي ساعات بتتحمّل على تكلفة المشروع أوتوماتيك</span></h3>
       <div class="field"><label>الصنايعية (تقدر تختار أكتر من واحد لو كلهم شغالين في نفس الحاجة)</label>
-        <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;padding:4px;">
-          ${weekly.map(empCheckHtml).join('')}
-          ${weekly.length && monthly.length ? `<div class="to-cs-divider">شهري</div>` : ''}
-          ${monthly.map(empCheckHtml).join('')}
+        <div style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;padding:6px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">${weekly.map(empCheckHtml).join('')}</div>
+          ${weekly.length && monthly.length ? `<div class="toqf-emp-divider">شهري</div>` : ''}
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">${monthly.map(empCheckHtml).join('')}</div>
         </div>
         ${TO_QF.selected.size ? `<div style="font-size:11.5px;color:var(--muted);margin-top:6px;">مختار: ${Array.from(TO_QF.selected).map(qEsc).join('، ')}</div>` : ''}
       </div>
