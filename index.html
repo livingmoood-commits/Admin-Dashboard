@@ -202,6 +202,11 @@
   .to-cs-divider{ padding:6px 12px 4px; font-size:10.5px; font-weight:700; color:var(--muted); border-top:1px solid var(--border); margin-top:4px; }
   .toqf-emp-divider{ display:flex; align-items:center; gap:8px; margin:8px 4px; font-size:11.5px; font-weight:800; color:var(--gold); }
   .toqf-emp-divider::before, .toqf-emp-divider::after{ content:''; flex:1; height:2px; background:var(--gold); border-radius:2px; }
+  .toqf-absence-banner{
+    display:flex; align-items:center; gap:10px; background:#fdeaea; border:1.5px solid var(--red);
+    color:var(--red); font-weight:700; font-size:13px; padding:12px 14px; border-radius:10px; margin:12px 0;
+  }
+  .toqf-absence-icon{ font-size:20px; flex-shrink:0; }
 
   .to-extra-toggle{ all:unset; box-sizing:border-box; width:100%; display:flex; align-items:center; justify-content:space-between;
     gap:10px; background:var(--cream); border:1.5px solid var(--border); border-radius:10px; padding:12px 14px;
@@ -250,6 +255,7 @@
     background:#eee6d6; color:var(--dark); line-height:1.35; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .to-cell-chip.status-done{ background:#dcece1; color:var(--green); }
   .to-cell-chip.status-blocked{ background:#fbe2e2; color:var(--red); }
+  .to-cell-chip.to-cell-absence{ background:#fbe2e2; color:var(--red); border:1px solid var(--red); }
   .to-cell-empty{ display:block; text-align:center; color:#cbbfae; font-size:14px; padding-top:4px; }
 
   .to-week-toolbar{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
@@ -9908,6 +9914,16 @@ let TO_DAILY_VIEW = sessionStorage.getItem('lm_toDailyView') || 'quickform'; // 
 // بيتطبق على كل المختارين، extras: مشاريع إضافية مربوطة بصنيعي معيّن (مش
 // كلهم بالضرورة)، evenings: سهرات مربوطة بصنيعي معيّن كمان.
 let TO_QF = { selected: new Set(), project: '', hours: '', title: '', notes: '', extras: [], evenings: [] };
+// ⚠️ إضافة: دروب داون صارم للمشروع — مينفعش تكتب اسم حر، لازم تختار من قايمة
+// المشاريع الفعلية (نفس المصدر الموحّد listProjects() المستخدم في كل الموقع).
+// ده بيمنع إن يوم شغل يتسجل بغلطة إملائية أو اسم مشروع مش موجود أصلًا.
+function toProjectOptionsHtml_(selected, includeEmpty){
+  let html = includeEmpty ? `<option value="">— اختياري —</option>` : (selected ? '' : `<option value="" disabled selected>اختار مشروع...</option>`);
+  const projects = TO_STATE.projects.slice();
+  if (selected && !projects.includes(selected)) projects.unshift(selected); // القيمة القديمة (لو اتشالت من القايمة النشطة) تفضل ظاهرة بدل ما تختفي فجأة
+  html += projects.map(p => `<option value="${qEsc(p)}" ${p===selected?'selected':''}>${qEsc(p)}</option>`).join('');
+  return html;
+}
 function toSetDailyView(view){
   TO_DAILY_VIEW = view;
   try { sessionStorage.setItem('lm_toDailyView', view); } catch(e){}
@@ -9953,7 +9969,7 @@ function toRosterStatusFor_(name){
   return has ? 'registered' : 'pending';
 }
 function toRosterDraftFor_(name){
-  if (!TO_ROSTER.draft[name]) TO_ROSTER.draft[name] = { open:false, blocks:[{project:'',hours:'',title:'',notes:''}], eveningOpen:false, eveningHours:'', eveningProject:'' };
+  if (!TO_ROSTER.draft[name]) TO_ROSTER.draft[name] = { open:false, blocks:[{project:'',hours:'',title:'',notes:''}], eveningOpen:false, eveningHours:'', eveningProject:'', eveningNotes:'' };
   return TO_ROSTER.draft[name];
 }
 function toRosterId_(name){ return String(name).replace(/[^a-zA-Z0-9\u0600-\u06FF]/g, '_'); }
@@ -9975,6 +9991,10 @@ function toRenderRosterBody_(){
         <button type="button" class="btn btn-outline btn-sm" onclick="toRosterChangeDate_(1)">▶</button>
       </div>
       <button type="button" class="btn btn-outline btn-sm" onclick="toSetDailyView('quickform')">📝 فورم سريع / تسجيل يدوي</button>
+    </div>
+    <div class="toqf-absence-banner">
+      <span class="toqf-absence-icon">⚠️</span>
+      <span>لو حد غاب فجأة: شيله من الاختيار واكتب "غياب" أو "إجازة" في الملاحظات — أي ملحوظة فيها الكلمتين دول متتسجلش كشغل ولا تكلفة خالص، بتتسجل كملاحظة بس</span>
     </div>
     <div class="panel" style="margin-bottom:10px;padding:12px 16px;">
       <div style="font-size:13px;">تسجيل <b>${registeredCount}</b> من <b>${employees.length}</b> صنيعي أسبوعي — يوم ${qEsc(toDateQuickLabel(TO_ROSTER.date))}</div>
@@ -10042,10 +10062,15 @@ function toRosterSavedHoursRowHtml_(h){
     </div>`;
 }
 // صف بند "سجل شغل" واحد (المطلوب/ملاحظات) — نفس الفكرة، تعديل وحذف مستقل
+// ⚠️ إضافة: بتتأكد إن الملاحظة فيها "غياب" أو "إجازة" — نفس الشرط بالظبط
+// المستخدم وقت الحفظ (toQuickformSave_) عشان أي مكان بيعرض بند شغل يقدر
+// يبيّنه بالأحمر لو غياب/إجازة، بدل ما يتلخبط مع شغل حقيقي متسجل.
+function toIsAbsenceNote_(notes){ return /غياب|اجازة|إجازة/.test(notes || ''); }
 function toRosterSavedWfRowHtml_(w){
+  const isAbsence = toIsAbsenceNote_(w.notes);
   return `
-    <div class="roster-saved-row" id="rosterWf-${qEsc(w.id)}" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;background:var(--cream);border-radius:8px;margin-bottom:6px;">
-      <div style="font-size:12.5px;">📝 <b>${qEsc(w.project)}</b>${w.title ? ' — ' + qEsc(w.title) : ''}${w.notes ? ' — ' + qEsc(w.notes) : ''}</div>
+    <div class="roster-saved-row" id="rosterWf-${qEsc(w.id)}" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;background:${isAbsence?'#fdeaea':'var(--cream)'};border-radius:8px;margin-bottom:6px;${isAbsence?'border:1px solid var(--red);':''}">
+      <div style="font-size:12.5px;${isAbsence?'color:var(--red);font-weight:700;':''}">${isAbsence?'🚫':'📝'} <b>${qEsc(w.project)}</b>${w.title ? ' — ' + qEsc(w.title) : ''}${w.notes ? ' — ' + qEsc(w.notes) : ''}</div>
       <div style="display:flex;gap:6px;flex-shrink:0;">
         <button type="button" class="mat-icon-btn" title="تعديل" onclick="toRosterEditWf_('${qEscJs(w.id)}')">✏️</button>
         <button type="button" class="mat-icon-btn" title="حذف" onclick="toRosterDeleteWf_('${qEscJs(w.id)}')">🗑️</button>
@@ -10056,7 +10081,7 @@ function toRosterEditHours_(id){
   const h = TO_ROSTER.hoursToday.find(x => x.id === id); if (!h) return;
   openCardModal(`
     <div class="cd-head"><h3>✏️ تعديل ساعات — ${qEsc(h.employee)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
-    <div class="field"><label>المشروع</label><input class="d-input" id="rh-edit-project" list="to-dl-projects" value="${qEsc(h.project)}"></div>
+    <div class="field"><label>المشروع</label><select class="d-input" id="rh-edit-project">${toProjectOptionsHtml_(h.project)}</select></div>
     <div class="field"><label>الساعات</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="rh-edit-hours" value="${h.hours}" onkeypress="return /[0-9.]/.test(event.key)"></div>
     <button type="button" class="btn btn-primary btn-sm" id="rh-edit-save-btn" onclick="toRosterSaveHoursEdit_('${qEscJs(id)}','${qEscJs(h.employee)}','${qEscJs(h.date)}')">حفظ التعديل</button>
     <div class="msg" id="rh-edit-msg"></div>
@@ -10089,7 +10114,7 @@ function toRosterEditWf_(id){
   const w = TO_ROSTER.workflowToday.find(x => x.id === id); if (!w) return;
   openCardModal(`
     <div class="cd-head"><h3>✏️ تعديل — ${qEsc(w.craftsman)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
-    <div class="field"><label>المشروع</label><input class="d-input" id="rw-edit-project" list="to-dl-projects" value="${qEsc(w.project)}"></div>
+    <div class="field"><label>المشروع</label><select class="d-input" id="rw-edit-project">${toProjectOptionsHtml_(w.project)}</select></div>
     <div class="field"><label>المطلوب</label><input class="d-input" id="rw-edit-title" value="${qEsc(w.title)}"></div>
     <div class="field"><label>ملاحظات</label><input class="d-input" id="rw-edit-notes" value="${qEsc(w.notes)}"></div>
     <button type="button" class="btn btn-primary btn-sm" id="rw-edit-save-btn" onclick="toRosterSaveWfEdit_('${qEscJs(id)}')">حفظ التعديل</button>
@@ -10104,9 +10129,13 @@ async function toRosterSaveWfEdit_(id){
   const btn = document.getElementById('rw-edit-save-btn');
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
   try {
-    await apiPost('updateWorkflowEntry', { entry: { id, project, title, notes } });
+    const res = await apiPost('updateWorkflowEntry', { entry: { id, project, title, notes } });
     closeCardModal();
-    showToast('✅ اتعدل');
+    if (res.reversedCost && res.reversedCost.reversedCount > 0) {
+      showToast(`✅ اتعدل — وترجّعت تكلفة ${fmt(res.reversedCost.reversedCost)} ج كانت متسجلة (${res.reversedCost.reversedCount} سطر) لأنه بقى غياب/إجازة`);
+    } else {
+      showToast('✅ اتعدل');
+    }
     TO_ROSTER.loadedDate = null;
     await toRenderRosterView();
   } catch(err){ msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); btn.disabled = false; btn.textContent = 'حفظ التعديل'; }
@@ -10123,7 +10152,7 @@ function toRosterBlockHtml_(name, block, idx, totalBlocks){
   return `
     <div class="grid2" style="margin-bottom:10px;padding:10px;background:var(--cream);border-radius:9px;">
       <div class="field"><label>المشروع${idx>0?' (تاني)':''}</label>
-        <input class="d-input" list="to-dl-projects" value="${qEsc(block.project)}" oninput="toRosterUpdateBlock_('${qEscJs(name)}',${idx},'project',this.value)"></div>
+        <select class="d-input" onchange="toRosterUpdateBlock_('${qEscJs(name)}',${idx},'project',this.value)">${toProjectOptionsHtml_(block.project)}</select></div>
       <div class="field"><label>وقت الشغل (ساعات)</label>
         <input type="text" inputmode="decimal" class="d-input ltr-num" value="${qEsc(block.hours)}" placeholder="مثال: 9" onkeypress="return /[0-9.]/.test(event.key)" oninput="toRosterUpdateBlock_('${qEscJs(name)}',${idx},'hours',this.value)"></div>
       <div class="field" style="grid-column:1/-1;"><label>المطلوب</label>
@@ -10140,7 +10169,9 @@ function toRosterEveningHtml_(name, draft){
       <div class="field"><label>عدد ساعات السهرة</label>
         <input type="text" inputmode="decimal" class="d-input ltr-num" value="${qEsc(draft.eveningHours)}" onkeypress="return /[0-9.]/.test(event.key)" oninput="toRosterUpdateEvening_('${qEscJs(name)}','eveningHours',this.value)"></div>
       <div class="field"><label>مشروع السهرة</label>
-        <input class="d-input" list="to-dl-projects" value="${qEsc(draft.eveningProject)}" oninput="toRosterUpdateEvening_('${qEscJs(name)}','eveningProject',this.value)"></div>
+        <select class="d-input" onchange="toRosterUpdateEvening_('${qEscJs(name)}','eveningProject',this.value)">${toProjectOptionsHtml_(draft.eveningProject, true)}</select></div>
+      <div class="field" style="grid-column:1/-1;"><label>ملاحظات</label>
+        <input class="d-input" value="${qEsc(draft.eveningNotes||'')}" oninput="toRosterUpdateEvening_('${qEscJs(name)}','eveningNotes',this.value)"></div>
       <div style="grid-column:1/-1;font-size:11px;color:var(--muted);">ساعات السهرة بتتسجل للعلم بس — مش بتتحسب في التكلفة ولا المرتب</div>
     </div>
   `;
@@ -10174,8 +10205,9 @@ async function toSaveEmployeeBlocks_(name, date, msgElId, btnElId, btnLabel, onD
       title: b.title.trim(), notes: b.notes.trim(),
       eveningHours: draft.eveningOpen ? draft.eveningHours : ''
     }));
-    if (draft.eveningOpen && draft.eveningProject.trim() && !entries.some(e => e.project === draft.eveningProject.trim())) {
-      entries.push({ employee: name, project: draft.eveningProject.trim(), hours: 0, date, title: '', notes: 'سهرة', eveningHours: draft.eveningHours });
+    if (draft.eveningOpen && Number(draft.eveningHours) > 0) {
+      const eveningNoteText = ['سهرة', draft.eveningNotes.trim()].filter(Boolean).join(' — ');
+      entries.push({ employee: name, project: draft.eveningProject.trim(), hours: 0, date, title: '', notes: eveningNoteText, eveningHours: draft.eveningHours });
     }
     await apiPost('addRosterEntries', { entries });
     showToast('✅ اتسجل شغل ' + name);
@@ -10225,6 +10257,10 @@ function toRenderDailyForm() {
     </div>
     <div class="panel">
       <h3>تسجيل شغل <span class="sub">هيتسجل في شيت "سجل الشغل اليومي" مباشرة، وأي ساعات بتتحمّل على تكلفة المشروع أوتوماتيك</span></h3>
+      <div class="toqf-absence-banner">
+        <span class="toqf-absence-icon">⚠️</span>
+        <span>لو حد غاب فجأة: شيله من الاختيار تحت واكتب "غياب" أو "إجازة" في الملاحظات — أي ملحوظة فيها الكلمتين دول متتسجلش كشغل ولا تكلفة خالص، بتتسجل كملاحظة بس</span>
+      </div>
       <div class="field"><label>الصنايعية (تقدر تختار أكتر من واحد لو كلهم شغالين في نفس الحاجة)</label>
         <div style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;padding:6px;">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">${weekly.map(empCheckHtml).join('')}</div>
@@ -10245,13 +10281,12 @@ function toRenderDailyForm() {
 
       ${TO_QF.selected.size ? `
         <div class="grid2" style="margin-bottom:10px;padding:10px;background:var(--cream);border-radius:9px;">
-          <div class="field"><label>المشروع</label><input class="d-input" list="to-dl-projects" id="toqf_project" value="${qEsc(TO_QF.project)}" oninput="TO_QF.project=this.value"></div>
+          <div class="field"><label>المشروع</label><select class="d-input" id="toqf_project" onchange="TO_QF.project=this.value">${toProjectOptionsHtml_(TO_QF.project)}</select></div>
           <div class="field"><label>وقت الشغل (ساعات)</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="toqf_hours" value="${qEsc(TO_QF.hours)}" placeholder="مثال: 9" onkeypress="return /[0-9.]/.test(event.key)" oninput="TO_QF.hours=this.value"></div>
           <div class="field" style="grid-column:1/-1;"><label>المطلوب</label><input class="d-input" id="toqf_title" value="${qEsc(TO_QF.title)}" placeholder="مثال: تركيب أبواب" oninput="TO_QF.title=this.value"></div>
           <div class="field" style="grid-column:1/-1;">
             <label>ملاحظات</label>
             <input class="d-input" id="toqf_notes" value="${qEsc(TO_QF.notes)}" oninput="TO_QF.notes=this.value">
-            <div style="color:var(--red);font-size:11px;margin-top:4px;">⚠️ لو حد غاب فجأة: شيله من الاختيار فوق واكتب "غياب" أو "إجازة" هنا — أي ملحوظة فيها الكلمتين دول متتسجلش كشغل ولا تكلفة خالص، بتتسجل كملاحظة بس</div>
           </div>
         </div>
 
@@ -10313,8 +10348,9 @@ function toRenderWhoWhereBlock() {
 
 // شكل بند شغل واحد (مستخدم في تاب "شغل يومي" وتفاصيل خلية تاب "اسبوعي")
 function toItemHTML(it) {
+  const isAbsence = toIsAbsenceNote_(it.notes);
   return `
-    <div class="to-wf-item status-${it.status||'working'}">
+    <div class="to-wf-item status-${it.status||'working'}" style="${isAbsence?'background:#fdeaea;border:1px solid var(--red);border-radius:8px;':''}">
       <div class="to-wf-item-head">
         <div style="flex:1;min-width:0;">
           <div class="wf-item-row">
@@ -10322,9 +10358,10 @@ function toItemHTML(it) {
             ${it.location?`<span><b>الموقع:</b> ${qEsc(it.location)}</span>`:''}
             ${it.attendance?`<span><b>الحضور:</b> ${qEsc(it.attendance)}</span>`:''}
           </div>
+          ${isAbsence?`<div style="font-weight:700;font-size:13px;color:var(--red);margin-bottom:2px;">🚫 غياب/إجازة — مفيش تكلفة متسجلة</div>`:''}
           ${it.title?`<div class="to-wf-item-title" style="font-weight:700;font-size:13px;margin-bottom:2px;">${qEsc(it.title)}</div>`:''}
           ${it.feedback?`<div class="wf-feedback">&#128172; ${qEsc(it.feedback)}</div>`:''}
-          ${it.notes?`<div style="font-size:12.5px;color:var(--muted);margin-top:4px;">&#128221; ${qEsc(it.notes)}</div>`:''}
+          ${it.notes?`<div style="font-size:12.5px;${isAbsence?'color:var(--red);font-weight:600;':'color:var(--muted);'}margin-top:4px;">&#128221; ${qEsc(it.notes)}</div>`:''}
         </div>
         <div class="to-status-row">
           <button type="button" class="mat-icon-btn" title="تعديل" onclick="toWfItemEdit_('${qEscJs(it.id)}','${qEscJs(it.project)}','${qEscJs(it.title||'')}','${qEscJs(it.notes||'')}')">✏️</button>
@@ -10347,7 +10384,7 @@ function toItemHTML(it) {
 function toWfItemEdit_(id, project, title, notes){
   openCardModal(`
     <div class="cd-head"><h3>✏️ تعديل بند</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
-    <div class="field"><label>المشروع</label><input class="d-input" id="wfItem-edit-project" list="to-dl-projects" value="${qEsc(project)}"></div>
+    <div class="field"><label>المشروع</label><select class="d-input" id="wfItem-edit-project">${toProjectOptionsHtml_(project)}</select></div>
     <div class="field"><label>المطلوب</label><input class="d-input" id="wfItem-edit-title" value="${qEsc(title)}"></div>
     <div class="field"><label>ملاحظات</label><input class="d-input" id="wfItem-edit-notes" value="${qEsc(notes)}"></div>
     <button type="button" class="btn btn-primary btn-sm" id="wfItem-edit-save-btn" onclick="toWfItemSaveEdit_('${qEscJs(id)}')">حفظ التعديل</button>
@@ -10362,9 +10399,13 @@ async function toWfItemSaveEdit_(id){
   const btn = document.getElementById('wfItem-edit-save-btn');
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
   try {
-    await apiPost('updateWorkflowEntry', { entry: { id, project, title, notes } });
+    const res = await apiPost('updateWorkflowEntry', { entry: { id, project, title, notes } });
     closeCardModal();
-    showToast('✅ اتعدل');
+    if (res.reversedCost && res.reversedCost.reversedCount > 0) {
+      showToast(`✅ اتعدل — وترجّعت تكلفة ${fmt(res.reversedCost.reversedCost)} ج كانت متسجلة (${res.reversedCost.reversedCount} سطر) لأنه بقى غياب/إجازة`);
+    } else {
+      showToast('✅ اتعدل');
+    }
     await toWfRefreshCurrentView_();
   } catch(err){ msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); btn.disabled = false; btn.textContent = 'حفظ التعديل'; }
 }
@@ -10462,7 +10503,7 @@ function toQfOpenExtraForm_(){
     <div class="field"><label>مين؟</label>
       <select class="d-input" id="qfExtraEmp">${employees.map(e => `<option value="${qEsc(e)}">${qEsc(e)}</option>`).join('')}</select>
     </div>
-    <div class="field"><label>المشروع</label><input class="d-input" list="to-dl-projects" id="qfExtraProject"></div>
+    <div class="field"><label>المشروع</label><select class="d-input" id="qfExtraProject">${toProjectOptionsHtml_('')}</select></div>
     <div class="field"><label>الساعات</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="qfExtraHours" onkeypress="return /[0-9.]/.test(event.key)"></div>
     <button type="button" class="btn btn-primary btn-sm" onclick="toQfConfirmExtra_()">إضافة</button>
     <div class="msg" id="qfExtraMsg"></div>
@@ -10482,7 +10523,7 @@ function toQfEveningsListHtml_(){
   if (!TO_QF.evenings.length) return '';
   return `<div style="margin-bottom:10px;">` + TO_QF.evenings.map((e,i) => `
     <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--cream);border-radius:8px;margin-bottom:6px;">
-      <div style="font-size:12.5px;">🌙 <b>${qEsc(e.employee)}</b>${e.project ? ' — ' + qEsc(e.project) : ''} (${fmt(e.hours)} ساعة سهرة)</div>
+      <div style="font-size:12.5px;">🌙 <b>${qEsc(e.employee)}</b>${e.project ? ' — ' + qEsc(e.project) : ''} (${fmt(e.hours)} ساعة سهرة)${e.notes ? ' — ' + qEsc(e.notes) : ''}</div>
       <button type="button" class="mat-icon-btn" onclick="toQfRemoveEvening_(${i})">✕</button>
     </div>`).join('') + `</div>`;
 }
@@ -10496,7 +10537,8 @@ function toQfOpenEveningForm_(){
       <select class="d-input" id="qfEveningEmp">${employees.map(e => `<option value="${qEsc(e)}">${qEsc(e)}</option>`).join('')}</select>
     </div>
     <div class="field"><label>عدد ساعات السهرة</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="qfEveningHours" onkeypress="return /[0-9.]/.test(event.key)"></div>
-    <div class="field"><label>مشروع السهرة (اختياري)</label><input class="d-input" list="to-dl-projects" id="qfEveningProject"></div>
+    <div class="field"><label>مشروع السهرة (اختياري)</label><select class="d-input" id="qfEveningProject">${toProjectOptionsHtml_('', true)}</select></div>
+    <div class="field"><label>ملاحظات</label><input class="d-input" id="qfEveningNotes"></div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">ساعات السهرة بتتسجل للعلم بس — مش بتتحسب في التكلفة ولا المرتب</div>
     <button type="button" class="btn btn-primary btn-sm" onclick="toQfConfirmEvening_()">إضافة</button>
     <div class="msg" id="qfEveningMsg"></div>
@@ -10506,9 +10548,10 @@ function toQfConfirmEvening_(){
   const employee = document.getElementById('qfEveningEmp').value;
   const hours = document.getElementById('qfEveningHours').value.trim();
   const project = document.getElementById('qfEveningProject').value.trim();
+  const notes = document.getElementById('qfEveningNotes').value.trim();
   const msg = document.getElementById('qfEveningMsg');
   if (!hours || Number(hours) <= 0) { msg.className = 'msg err'; msg.textContent = 'عدد الساعات مطلوب'; return; }
-  TO_QF.evenings.push({ employee, hours, project });
+  TO_QF.evenings.push({ employee, hours, project, notes });
   closeCardModal();
   toRenderDailyForm();
 }
@@ -10539,7 +10582,7 @@ async function toQuickformSave_() {
       }
     });
     TO_QF.extras.forEach(e => entries.push({ employee: e.employee, project: e.project, hours: e.hours, date: TO_STATE.formDate, title: '', notes: '' }));
-    TO_QF.evenings.forEach(e => entries.push({ employee: e.employee, project: e.project || '', hours: 0, date: TO_STATE.formDate, title: '', notes: 'سهرة', eveningHours: e.hours }));
+    TO_QF.evenings.forEach(e => entries.push({ employee: e.employee, project: e.project || '', hours: 0, date: TO_STATE.formDate, title: '', notes: ['سهرة', (e.notes||'').trim()].filter(Boolean).join(' — '), eveningHours: e.hours }));
 
     await apiPost('addRosterEntries', { entries });
     showToast('✅ اتسجل الشغل');
@@ -10638,8 +10681,8 @@ function toRenderWeekGrid(dates, from, to) {
                   const iso = toISO(dt);
                   const items = TO_STATE.weekEntries.filter(e => e.craftsman === emp && e.date === iso);
                   const isSel = TO_STATE.selectedCell && TO_STATE.selectedCell.emp === emp && TO_STATE.selectedCell.date === iso;
-                  const chipIcon = it2 => it2.status==='done' ? '&#10003;' : (it2.status==='blocked' ? '&#9940;' : '&#128205;');
-                  const inner = items.length ? items.map(it => `<span class="to-cell-chip status-${it.status||'working'}">${chipIcon(it)} ${qEsc(it.project)}</span>`).join('') : `<span class="to-cell-empty">—</span>`;
+                  const chipIcon = it2 => toIsAbsenceNote_(it2.notes) ? '&#128683;' : (it2.status==='done' ? '&#10003;' : (it2.status==='blocked' ? '&#9940;' : '&#128205;'));
+                  const inner = items.length ? items.map(it => `<span class="to-cell-chip ${toIsAbsenceNote_(it.notes)?'to-cell-absence':'status-'+(it.status||'working')}">${chipIcon(it)} ${qEsc(it.project)}</span>`).join('') : `<span class="to-cell-empty">—</span>`;
                   return `<td class="to-day-cell ${isSel?'selected':''}" data-emp="${qEsc(emp)}" data-date="${iso}">${inner}</td>`;
                 }).join('')}
               </tr>
