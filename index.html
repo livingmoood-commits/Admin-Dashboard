@@ -6826,6 +6826,7 @@ async function renderCosts(token) {
         <div class="step tab-costs ${COST_TAB==='entries'?'active':''}" data-tab="entries">التكاليف</div>
         <div class="step tab-revenue ${COST_TAB==='revenue'?'active':''}" data-tab="revenue">الإيرادات</div>
         <div class="step tab-projects ${COST_TAB==='projects'?'active':''}" data-tab="projects">المشاريع</div>
+        <div class="step tab-summary ${COST_TAB==='summary'?'active':''}" data-tab="summary">تفاصيل المشاريع</div>
       </div>
       <div id="costTabBody"></div>`;
     document.getElementById('costTabsRow').addEventListener('click', (e) => {
@@ -6841,7 +6842,7 @@ async function renderCosts(token) {
    ⚠️ تعديل: انضاف تاب تالت "المشاريع" (كان صفحة منفصلة في القائمة الجانبية) —
    دلوقتي التكاليف + الإيرادات + المشاريع كلهم في صفحة واحدة بس، بلاش صفحتين. */
 function switchCostTab(tab){
-  if (!['entries','revenue','projects'].includes(tab)) return;
+  if (!['entries','revenue','projects','summary'].includes(tab)) return;
   COST_TAB = tab;
   document.querySelectorAll('#costTabsRow .step').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   switchCostTabRender(tab);
@@ -6849,6 +6850,7 @@ function switchCostTab(tab){
 function switchCostTabRender(tab){
   if (tab === 'revenue') return renderRevenueTab();
   if (tab === 'projects') return renderProjectsTab();
+  if (tab === 'summary') return renderCostSummaryTab();
   return renderCostsEntriesTab();
 }
 
@@ -7015,17 +7017,13 @@ async function renderCostProjectSummary(project){
     // ⚠️ إضافة: هنا كمان بنجيب سجلات "ساعات_وسهرات" (اللي بتتسجل تلقائي من صفحة
     // مرتبات > إضافة سريعة) الخاصة بالمشروع ده — عشان تبان جنب باقي مصادر التكلفة
     // في نفس الصفحة، كل مصدر في قسمه لوحده (مش مخلوطين في جدول واحد).
-    const [d, rev, hoursRes, distRes] = await Promise.all([
+    const [d, rev, hoursRes] = await Promise.all([
       apiGet('getProjectFullSummary', { name: project }),
       apiGet('listProjectRevenueEntries', { name: project }),
-      apiGet('listHoursEntries', { filters: { project } }),
-      apiGet('getDistributionReport', { filters: { project } })
+      apiGet('listHoursEntries', { filters: { project } })
     ]);
     const entries = rev.entries || [];
     const hoursEntries = hoursRes.entries || [];
-    const empRateMap = window._costEmpRateMap || {};
-    const projDist = (distRes.projects || []).find(p => p.project === project);
-    const employeeRows = projDist ? projDist.employees : [];
     const revenueTotal = d.financials ? d.financials.revenue : (rev.total || 0);
     const archiveCost = (d.materialsCost || 0) + (d.installCost || 0);
     box.innerHTML = `
@@ -7033,6 +7031,7 @@ async function renderCostProjectSummary(project){
         <div class="card"><div class="label">إجمالي تكلفة ${qEsc(project)}</div><div class="value gold">${fmt(d.totalCost)} ج</div></div>
         <div class="card"><div class="label">إجمالي الإيرادات</div><div class="value green">${fmt(revenueTotal)} ج</div></div>
         ${d.netProfit!==null ? `<div class="card"><div class="label">صافي الربح</div><div class="value ${d.netProfit>=0?'green':'red'}">${fmt(d.netProfit)} ج</div></div>` : `<div class="card"><div class="label">صافي الربح</div><div class="value" style="color:var(--muted);font-size:13px;">—</div></div>`}
+        <div class="card clickable" onclick="switchCostTab('summary')"><div class="label">تفاصيل ويوم بيوم وخامات</div><div class="value" style="font-size:13px;color:var(--gold);">شوف تبويبة "تفاصيل المشاريع" ←</div></div>
       </div>
 
       <!-- ⚠️ إضافة: تفصيل إجمالي التكلفة حسب المصدر — كل مصدر رقمه لوحده، عشان يبان
@@ -7045,26 +7044,6 @@ async function renderCostProjectSummary(project){
           <div class="card"><div class="label">التكاليف الموحّدة (بنود + عمالة مسجلة هنا)</div><div class="value gold">${fmt(d.costsTotal)} ج</div></div>
           ${archiveCost > 0.01 ? `<div class="card"><div class="label">أرشيف قديم (خامات/تركيب)</div><div class="value gold">${fmt(archiveCost)} ج</div></div>` : ''}
         </div>
-      </div>
-
-      <!-- ⚠️ إضافة: قسم مستقل لعمالة الساعات/السهرات بتاعة المشروع ده (من شيت
-           "ساعات_وسهرات" اللي بيتملى تلقائي من صفحة مرتبات) — قسم لوحده منفصل عن
-           جدول "التكاليف المسجلة" (النظام الموحّد) اللي تحت، عشان تبقى الصورة واضحة:
-           فين جاية كل تكلفة بالظبط. -->
-      <div class="panel" style="margin-bottom:16px;">
-        <h3 style="margin-bottom:4px;">ملخص العمالة — كل موظف</h3>
-        <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">إجمالي مجمّع لكل موظف اشتغل على ${qEsc(project)} — عدد الأيام، سعر الساعة، إجمالي الساعات، وإجمالي التكلفة.</p>
-        ${employeeRows.length ? `<div class="tbl-wrap"><table><thead><tr><th>الموظف</th><th>عدد الأيام</th><th>سعر الساعة</th><th>إجمالي الساعات</th><th>ساعات السهر</th><th>إجمالي التكلفة</th></tr></thead>
-        <tbody>${employeeRows.map(em => `<tr>
-          <td><b>${qEsc(em.employee)}</b></td>
-          <td>${em.entries}</td>
-          <td>${fmt(empRateMap[em.employee] || 0)} ج/س</td>
-          <td>${fmt(em.hours)} س</td>
-          <td>${em.eveningHours ? fmt(em.eveningHours)+' س' : '—'}</td>
-          <td><b>${fmt(em.cost)} ج</b></td>
-        </tr>`).join('')}</tbody>
-        <tfoot><tr class="tbl-totals-row"><td colspan="5">إجمالي عمالة ${qEsc(project)}</td><td>${fmt(d.laborCost)} ج</td></tr></tfoot>
-        </table></div>` : `<div class="empty">مفيش عمالة اتسجلت للمشروع ده لسه</div>`}
       </div>
 
       <div class="panel" style="margin-bottom:16px;">
@@ -7119,6 +7098,108 @@ async function costRevDelete(project, id){
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح الإيراد ده؟', 'حذف إيراد'))) return;
   try { await apiPost('deleteProjectRevenueEntry', { project, id }); renderCostProjectSummary(project); }
   catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
+}
+/* ═══ تبويبة "ملخص" — نظرة نظيفة وسريعة على أي مشروع: التكلفة/الإيراد/الربح
+ * + تفصيل حسب المصدر + ملخص عمالة كل موظف (أيام/ساعات/تكلفة) — من غير أي
+ * فورم إدخال أو جدول يومي طويل، عشان تبقى صفحة "اقرا بس" واضحة ومختصرة. ═══ */
+let SUMMARY_STATE = { project: '' };
+async function renderCostSummaryTab(){
+  const box = document.getElementById('costTabBody'); if (!box) return;
+  const projects = window._costsProjects || [];
+  if (!SUMMARY_STATE.project && projects.length) SUMMARY_STATE.project = projects[0];
+  box.innerHTML = `
+    <div class="panel" style="margin-bottom:16px;">
+      <div class="filters"><select id="summary_project">${projects.map(pr=>`<option value="${qEsc(pr)}" ${pr===SUMMARY_STATE.project?'selected':''}>${qEsc(pr)}</option>`).join('')}</select></div>
+    </div>
+    <div id="costSummaryBody"></div>
+  `;
+  document.getElementById('summary_project').addEventListener('change', e => { SUMMARY_STATE.project = e.target.value; renderCostSummaryBody_(); });
+  renderCostSummaryBody_();
+}
+async function renderCostSummaryBody_(){
+  const box = document.getElementById('costSummaryBody'); if (!box) return;
+  const project = SUMMARY_STATE.project;
+  if (!project) { box.innerHTML = '<div class="empty">مفيش مشاريع لسه</div>'; return; }
+  box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  try {
+    const [d, rev, distRes, hoursRes] = await Promise.all([
+      apiGet('getProjectFullSummary', { name: project }),
+      apiGet('listProjectRevenueEntries', { name: project }),
+      apiGet('getDistributionReport', { filters: { project } }),
+      apiGet('listHoursEntries', { filters: { project } })
+    ]);
+    const empRateMap = window._costEmpRateMap || {};
+    const projDist = (distRes.projects || []).find(p => p.project === project);
+    const employeeRows = projDist ? projDist.employees : [];
+    const hoursEntries = hoursRes.entries || [];
+    const products = d.products || [];
+    const revenueTotal = d.financials ? d.financials.revenue : (rev.total || 0);
+    const archiveCost = (d.materialsCost || 0) + (d.installCost || 0);
+    box.innerHTML = `
+      <div class="panel" style="margin-bottom:16px;">
+        <h3 style="margin-bottom:12px;">${qEsc(project)}</h3>
+        <div class="cards">
+          <div class="card"><div class="label">إجمالي التكلفة</div><div class="value gold">${fmt(d.totalCost)} ج</div></div>
+          <div class="card"><div class="label">إجمالي الإيرادات</div><div class="value green">${fmt(revenueTotal)} ج</div></div>
+          ${d.netProfit!==null ? `<div class="card"><div class="label">صافي الربح</div><div class="value ${d.netProfit>=0?'green':'red'}">${fmt(d.netProfit)} ج</div></div>` : `<div class="card"><div class="label">صافي الربح</div><div class="value" style="color:var(--muted);font-size:13px;">—</div></div>`}
+        </div>
+      </div>
+
+      <div class="panel" style="background:var(--cream);border:1.5px dashed var(--border);margin-bottom:16px;">
+        <h3 style="margin-bottom:10px;">تفصيل التكلفة حسب المصدر</h3>
+        <div class="cost-src-cards">
+          <div class="card"><div class="label">عمالة (ساعات وسهرات)</div><div class="value gold">${fmt(d.laborCost)} ج</div></div>
+          <div class="card"><div class="label">خامات (المنتجات)</div><div class="value gold">${fmt(d.materialsCost)} ج</div></div>
+          <div class="card"><div class="label">التكاليف الموحّدة (بنود + عمالة يدوية)</div><div class="value gold">${fmt(d.costsTotal)} ج</div></div>
+          ${archiveCost > 0.01 ? `<div class="card"><div class="label">أرشيف قديم</div><div class="value gold">${fmt(archiveCost)} ج</div></div>` : ''}
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3 style="margin-bottom:4px;">ملخص العمالة — كل موظف</h3>
+        <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">إجمالي مجمّع لكل موظف اشتغل على ${qEsc(project)} — عدد الأيام، سعر الساعة، إجمالي الساعات، وإجمالي التكلفة.</p>
+        ${employeeRows.length ? `<div class="tbl-wrap"><table><thead><tr><th>الموظف</th><th>عدد الأيام</th><th>سعر الساعة</th><th>إجمالي الساعات</th><th>ساعات السهر</th><th>إجمالي التكلفة</th></tr></thead>
+        <tbody>${employeeRows.map(em => `<tr>
+          <td><b>${qEsc(em.employee)}</b></td>
+          <td>${em.entries}</td>
+          <td>${fmt(empRateMap[em.employee] || 0)} ج/س</td>
+          <td>${fmt(em.hours)} س</td>
+          <td>${em.eveningHours ? fmt(em.eveningHours)+' س' : '—'}</td>
+          <td><b>${fmt(em.cost)} ج</b></td>
+        </tr>`).join('')}</tbody>
+        <tfoot><tr class="tbl-totals-row"><td colspan="5">إجمالي عمالة ${qEsc(project)}</td><td>${fmt(d.laborCost)} ج</td></tr></tfoot>
+        </table></div>` : `<div class="empty">مفيش عمالة اتسجلت للمشروع ده لسه</div>`}
+      </div>
+
+      <div class="panel" style="margin-bottom:16px;">
+        <h3 style="margin-bottom:4px;">تفصيل يوم بيوم — كل سجل عمالة على حدة</h3>
+        <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">نفس بيانات الملخص فوق، بس مفصّلة يوم بيوم — بتتسجل تلقائي من "Work Flow ← شغل يومي".</p>
+        ${hoursEntries.length ? `<div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>الموظف</th><th>ساعات عادية</th><th>ساعات سهر</th><th>مبلغ السهرة</th><th>التكلفة</th></tr></thead>
+        <tbody>${hoursEntries.map(e=>`<tr>
+          <td>${qEsc(e.date)}</td><td>${qEsc(e.employee)}</td>
+          <td>${e.hours ? fmt(e.hours)+' س' : '—'}</td>
+          <td>${e.eveningHours ? fmt(e.eveningHours)+' س' : '—'}</td>
+          <td>${e.eveningAmount ? fmt(e.eveningAmount)+' ج' : '—'}</td>
+          <td><b>${fmt(e.cost)} ج</b></td>
+        </tr>`).join('')}</tbody>
+        <tfoot><tr class="tbl-totals-row"><td colspan="5">الإجمالي (${hoursEntries.length} سجل)</td><td>${fmt(d.laborCost)} ج</td></tr></tfoot>
+        </table></div>` : `<div class="empty">مفيش سجلات يوم بيوم لسه</div>`}
+      </div>
+
+      <div class="panel">
+        <h3 style="margin-bottom:4px;">الخامات المستخدمة</h3>
+        <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">كل خامة استخدمت في منتجات المشروع ده — إجمالي تكلفة الخامات: <b>${fmt(d.materialsCost)} ج</b></p>
+        ${products.length ? products.map(p => {
+          const mats = p.materials || [];
+          const matRows = mats.map(m => `<tr><td>${qEsc(m.name||'')}</td><td>${fmt(m.qty)}</td><td>${m.unit||'—'}</td><td>${fmt(m.unitPrice)} ج</td><td>${fmt((Number(m.qty)||0)*(Number(m.unitPrice)||0))} ج</td></tr>`).join('');
+          return `<div style="margin-bottom:14px;">
+            <div style="font-weight:700;margin-bottom:6px;">${qEsc(p.name)} <span style="color:var(--gold);font-weight:700;">— ${fmt(p.materialsCost)} ج</span></div>
+            ${matRows ? `<div class="tbl-wrap"><table><thead><tr><th>الخامة</th><th>الكمية</th><th>الوحدة</th><th>سعر الوحدة</th><th>الإجمالي</th></tr></thead><tbody>${matRows}</tbody></table></div>` : `<div class="empty">مفيش خامات مسجلة للمنتج ده</div>`}
+          </div>`;
+        }).join('') : `<div class="empty">مفيش منتجات/خامات مسجلة على المشروع ده لسه</div>`}
+      </div>
+    `;
+  } catch(err){ box.innerHTML = `<div class="panel"><div class="msg err" style="display:block;">تعذر تحميل الملخص: ${err.message||err}</div></div>`; }
 }
 // ⚠️ إضافة 2026-08-11: بيعرض الساعات مع عدد الأيام المقابل ليها (يوم = 9 ساعات)
 // عشان تبقى قادر تقرا "27 س — 3 أيام" بسرعة من غير ما تحسب في دماغك.
@@ -10511,6 +10592,7 @@ function toRenderWfItemEditModal_(id, project, title, notes, craftsman, date, ho
   openCardModal(`
     <div class="cd-head"><h3>✏️ تعديل بند${craftsman?' — '+qEsc(craftsman):''}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
     <div class="field"><label>المشروع</label>${toProjDropdownHtmlForModal_('wfItemEditProj', 'wfItem-edit-project', project)}</div>
+    <div class="field"><label>التاريخ</label><input type="date" class="d-input" id="wfItem-edit-date" value="${qEsc(date || '')}"></div>
     <div class="field"><label>المطلوب</label><input class="d-input" id="wfItem-edit-title" value="${qEsc(title)}"></div>
     <div class="field"><label>ملاحظات</label><input class="d-input" id="wfItem-edit-notes" value="${qEsc(notes)}"></div>
     <div class="field"><label>ساعات الشغل${hoursEntry?'':' (مفيش ساعات متسجلة — سيبها فاضية أو دخّل عدد لو عايز تضيفها)'}</label>
@@ -10522,8 +10604,9 @@ function toRenderWfItemEditModal_(id, project, title, notes, craftsman, date, ho
     <div class="msg" id="wfItem-edit-msg"></div>
   `);
 }
-async function toWfItemSaveEdit_(id, craftsman, date){
+async function toWfItemSaveEdit_(id, craftsman, oldDate){
   const project = document.getElementById('wfItem-edit-project').value.trim();
+  const date = document.getElementById('wfItem-edit-date').value.trim() || oldDate;
   const title = document.getElementById('wfItem-edit-title').value.trim();
   const notes = document.getElementById('wfItem-edit-notes').value.trim();
   const hours = document.getElementById('wfItem-edit-hours').value.trim();
@@ -10533,7 +10616,7 @@ async function toWfItemSaveEdit_(id, craftsman, date){
   const btn = document.getElementById('wfItem-edit-save-btn');
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
   try {
-    const res = await apiPost('updateWorkflowEntry', { entry: { id, project, title, notes } });
+    const res = await apiPost('updateWorkflowEntry', { entry: { id, project, date, title, notes } });
     // ⚠️ إضافة: تحديث/إنشاء سطر الساعات كمان لو المستخدم غيّر فيه — منفصل عن
     // تحديث الوصف، عشان لو فشل ده لأي سبب الوصف يفضل محفوظ على أي حال
     const isAbsence = project === 'إجازة' || /غياب|اجازة|إجازة/.test(notes);
