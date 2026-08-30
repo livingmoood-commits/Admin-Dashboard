@@ -7137,26 +7137,65 @@ async function toCheckBackfillOpportunity_(){
       </div>`;
   } catch(e) { /* الفحص ده اختياري — لو فشل لأي سبب منعرضش حاجة، مش نوقف الصفحة */ }
 }
-function toOpenBackfillModal_(){
+let _backfillItems = [];
+async function toOpenBackfillModal_(){
+  openCardModal(`<div class="cd-head"><h3>سحب البنود الناقصة للتكلفة</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="loading-row">جاري التحميل...</div>`);
+  try {
+    const { items } = await apiGet('previewBackfillHours');
+    _backfillItems = (items || []).map((it, i) => ({ ...it, _idx: i, checked: true }));
+    toRenderBackfillModal_();
+  } catch(err){ showError(err); }
+}
+function toRenderBackfillModal_(){
+  const byDate = {};
+  _backfillItems.forEach(it => { (byDate[it.date] = byDate[it.date] || []).push(it); });
+  const dates = Object.keys(byDate).sort((a, b) => b.localeCompare(a)); // الأحدث فوق
+  const allChecked = _backfillItems.every(it => it.checked);
+  const checkedCount = _backfillItems.filter(it => it.checked).length;
+  const checkedHours = _backfillItems.filter(it => it.checked).reduce((s, it) => s + (Number(it.hours) || 9), 0);
   openCardModal(`
     <div class="cd-head"><h3>سحب البنود الناقصة للتكلفة</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
-    <div style="margin-bottom:14px;font-size:13px;">هيتم إنشاء سطر ساعات لكل بند مالوش تكلفة متسجلة، وهيتحمّل على المشروع بتاريخه الأصلي مباشرة. العملية دي مأمونة (بتضيف بس، مبتعدلش ولا بتمسح حاجة موجودة).</div>
-    <button type="button" class="btn btn-primary btn-sm" id="backfillConfirmBtn" onclick="toConfirmBackfill_()">تأكيد السحب</button>
+    <div style="margin-bottom:10px;font-size:12.5px;color:var(--muted);">هيتم إنشاء سطر ساعات لكل بند مختار، وهيتحمّل على المشروع بتاريخه الأصلي مباشرة. العملية آمنة (بتضيف بس، مبتعدلش ولا بتمسح حاجة موجودة).</div>
+    <label class="print-opt-row" style="font-weight:700;margin-bottom:10px;">
+      <input type="checkbox" ${allChecked?'checked':''} onchange="toBackfillToggleAll_(this.checked)">
+      <span>تحديد الكل (${_backfillItems.length} بند)</span>
+    </label>
+    <div style="max-height:340px;overflow-y:auto;">
+      ${dates.map(date => `
+        <div style="margin-bottom:10px;">
+          <div class="toqf-emp-divider" style="margin:8px 4px;">${qEsc(toDateQuickLabel(date))} — ${qEsc(date)}</div>
+          ${byDate[date].map(it => `
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--cream);border-radius:8px;margin-bottom:4px;">
+              <input type="checkbox" ${it.checked?'checked':''} onchange="toBackfillToggleOne_(${it._idx}, this.checked)">
+              <div style="flex:1;font-size:12.5px;"><b>${qEsc(it.craftsman)}</b> — ${qEsc(it.project)}</div>
+              <input type="text" inputmode="decimal" class="d-input ltr-num" style="width:70px;padding:6px;" value="${qEsc(it.hours)}" onkeypress="return /[0-9.]/.test(event.key)" oninput="toBackfillUpdateHours_(${it._idx}, this.value)">
+              <span style="font-size:11px;color:var(--muted);">ساعة</span>
+            </div>
+          `).join('')}
+        </div>
+      `).join('')}
+    </div>
+    <div style="margin-top:12px;font-size:12.5px;">مختار: <b>${checkedCount}</b> بند — إجمالي تقريبي: <b>${fmt(checkedHours)}</b> ساعة</div>
+    <button type="button" class="btn btn-primary btn-sm" id="backfillConfirmBtn" style="margin-top:10px;" ${checkedCount?'':'disabled'} onclick="toConfirmBackfill_()">تأكيد سحب المختار (${checkedCount})</button>
     <div class="msg" id="backfillMsg"></div>
   `);
 }
+function toBackfillToggleAll_(checked){ _backfillItems.forEach(it => it.checked = checked); toRenderBackfillModal_(); }
+function toBackfillToggleOne_(idx, checked){ const it = _backfillItems.find(x => x._idx === idx); if (it) it.checked = checked; toRenderBackfillModal_(); }
+function toBackfillUpdateHours_(idx, val){ const it = _backfillItems.find(x => x._idx === idx); if (it) it.hours = val; }
 async function toConfirmBackfill_(){
   const btn = document.getElementById('backfillConfirmBtn');
   const msg = document.getElementById('backfillMsg');
+  const selected = _backfillItems.filter(it => it.checked).map(({ craftsman, project, date, hours }) => ({ craftsman, project, date, hours }));
+  if (!selected.length) return;
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري السحب...';
   try {
-    const { items } = await apiGet('previewBackfillHours'); // نجيب القايمة تاني وقت التنفيذ (مش المخزنة من قبل) لضمان الدقة
-    const res = await apiPost('backfillMissingHours', { items });
+    const res = await apiPost('backfillMissingHours', { items: selected });
     closeCardModal();
     showToast(`✅ اتسحب ${res.count} سطر — إجمالي التكلفة المضافة: ${fmt(res.totalCost)} ج`);
     const banner = document.getElementById('backfillBanner'); if (banner) banner.innerHTML = '';
     renderCostSummaryBody_();
-  } catch(err){ msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); btn.disabled = false; btn.textContent = 'تأكيد السحب'; }
+  } catch(err){ msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); btn.disabled = false; btn.textContent = 'تأكيد سحب المختار (' + selected.length + ')'; }
 }
 async function renderCostSummaryBody_(){
   const box = document.getElementById('costSummaryBody'); if (!box) return;
