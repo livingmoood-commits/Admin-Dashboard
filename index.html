@@ -3428,7 +3428,7 @@ async function payrollShowWeeklyReport(weekIndex, employeeNames){
       return;
     }
     _wrLastReport = res;
-    renderWeeklyReportModal_(res);
+    payrollOpenWeeklyNameSelect_(res);
   } catch(err) {
     openCardModal(`<div class="cd-head"><h3>📄 تقرير اسبوعي</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="msg err" style="display:block;">حصل خطأ: ${qEsc(err.message||err)}</div>`);
   }
@@ -3540,8 +3540,64 @@ function _wrEmployeeFinalCalc_(e){
   return { dailyRate, absenceDays, workedFriday, workDays, dayWages, additions, withdrawals, deductions, net };
 }
 
-function renderWeeklyReportModal_(data){
-  const employees = data.employees || [];
+// ═══════════════════════════════════════════════════════════════════════
+//  خطوة اختيار الأسامي — مشتركة بين التلات تقارير (أسبوعي / شهري للأسبوعيين
+//  / شهري للشهريين). بتعرض بس قايمة أسامي بتشيك بوكس الأول، وبعد ما تدوس
+//  "اختار" هي اللي بتفتح تفاصيل الموظفين المختارين فقط + زرار الطباعة.
+// ═══════════════════════════════════════════════════════════════════════
+function _payrollNameSelectHtml_(names, prefix, title){
+  return `
+    <div class="cd-head"><h3>${title}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <label class="print-opt-row" style="font-weight:700;margin-bottom:10px;">
+      <input type="checkbox" id="${prefix}SelectAllCb" checked onchange="_payrollToggleAllNames_('${prefix}', this.checked)">
+      <span>تحديد الكل (${names.length} موظف)</span>
+    </label>
+    <div style="max-height:360px;overflow-y:auto;margin-bottom:14px;">
+      ${names.map(n => `
+        <label class="print-opt-row">
+          <input type="checkbox" class="${prefix}-name-cb" data-emp="${qEsc(n)}" checked onchange="_payrollUpdateSelectAllNames_('${prefix}')">
+          <span>${qEsc(n)}</span>
+        </label>
+      `).join('')}
+    </div>
+    <label class="print-opt-row" style="margin-bottom:14px;border-top:1px solid var(--border);padding-top:10px;">
+      <input type="checkbox" id="${prefix}IncludeTotalsCb" checked>
+      <span>عايز إجمالي الشهر (كل الموظفين) في الآخر؟</span>
+    </label>
+    <button type="button" class="btn btn-primary btn-sm" id="${prefix}NamesConfirmBtn" onclick="${prefix}ConfirmNames_()">اختار (${names.length}) وعرض التفاصيل</button>
+  `;
+}
+function _payrollToggleAllNames_(prefix, checked){
+  document.querySelectorAll('.' + prefix + '-name-cb').forEach(cb => cb.checked = checked);
+  _payrollUpdateNamesConfirmBtn_(prefix);
+}
+function _payrollUpdateSelectAllNames_(prefix){
+  const allCb = document.getElementById(prefix + 'SelectAllCb');
+  if (allCb) allCb.checked = Array.from(document.querySelectorAll('.' + prefix + '-name-cb')).every(cb => cb.checked);
+  _payrollUpdateNamesConfirmBtn_(prefix);
+}
+function _payrollUpdateNamesConfirmBtn_(prefix){
+  const count = document.querySelectorAll('.' + prefix + '-name-cb:checked').length;
+  const btn = document.getElementById(prefix + 'NamesConfirmBtn');
+  if (btn) { btn.disabled = !count; btn.textContent = `اختار (${count}) وعرض التفاصيل`; }
+}
+function _payrollSelectedNames_(prefix){
+  return new Set(Array.from(document.querySelectorAll('.' + prefix + '-name-cb:checked')).map(cb => cb.dataset.emp));
+}
+
+function payrollOpenWeeklyNameSelect_(data){
+  const names = (data.employees || []).map(e => e.name);
+  openCardModal(_payrollNameSelectHtml_(names, 'wr', `تقرير الأسبوع ${qEsc(data.weekLabel)}`));
+}
+function wrConfirmNames_(){
+  const includeTotals = document.getElementById('wrIncludeTotalsCb').checked;
+  renderWeeklyReportModal_(_wrLastReport, _payrollSelectedNames_('wr'), includeTotals);
+}
+function renderWeeklyReportModal_(data, selectedNames, includeTotals){
+  const allEmployees = data.employees || [];
+  const employees = selectedNames ? allEmployees.filter(e => selectedNames.has(e.name)) : allEmployees;
+  window._wrCurrentEmployees = employees;
+  window._wrIncludeTotals = includeTotals !== false;
   // ⚠️ إضافة 2026-08-15: النوت بقت ممكن تبقى فيها أكتر من سطر (كل سطر بيخص
   // حاجة مختلفة — مثلاً سطر عن مسحوبات السبت وسطر تاني عن شغل الجمعة، بعد
   // تعديل الفصل في الباك إند). qEsc() لوحدها بتـescape النص بس مبتحولش أسطر
@@ -3607,42 +3663,27 @@ function renderWeeklyReportModal_(data){
 
     return `<div class="panel" style="margin-bottom:12px;">
       <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">اليومية: <b style="color:var(--dark);">${fmt(e.dailyRate||0)} ج</b></div>
-      <h4 style="margin-bottom:8px;display:flex;align-items:center;gap:8px;">
-        <input type="checkbox" class="wr-emp-cb" data-emp="${qEsc(e.name)}" checked onchange="_wrUpdateSelectAllState_()">
-        <span>${qEsc(e.name)}</span>
-      </h4>
+      <h4 style="margin-bottom:8px;">${qEsc(e.name)}</h4>
       ${weekSummaryHtml}
       <div><b style="font-size:12.5px;">📋 تفاصيل الأيام:</b>${daysHtml}</div>
       ${finalCalcHtml}
     </div>`;
-  }).join('') : '<div class="empty">مفيش موظفين اسبوعيين مسجلين</div>';
+  }).join('') : '<div class="empty">مفيش موظفين مختارين</div>';
 
   openCardModal(`
     <div class="cd-head"><h3>تقرير الأسبوع ${qEsc(data.weekLabel)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
-    <label class="print-opt-row" style="font-weight:700;margin-bottom:10px;">
-      <input type="checkbox" id="wrSelectAllCb" checked onchange="_wrToggleAll_(this.checked)">
-      <span>تحديد الكل (${employees.length} موظف)</span>
-    </label>
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+      <button class="btn btn-outline btn-sm" onclick="payrollOpenWeeklyNameSelect_(_wrLastReport)">← رجوع للاختيار</button>
       <button class="btn btn-outline btn-sm" onclick="payrollOpenWeeklyReportModal(PAYSTATE.data)">← اسبوع تاني</button>
-      <button class="btn btn-primary btn-sm" onclick="payrollPrintWeeklyReport()">⬇ تحميل PDF (المختارين بس)</button>
+      <button class="btn btn-primary btn-sm" onclick="payrollPrintWeeklyReport()">⬇ تحميل PDF</button>
     </div>
     <div id="wrEmpList">${empHtml}</div>
-    ${_wrGrandTotalsTableHtml_(employees, false)}
+    ${window._wrIncludeTotals ? _wrGrandTotalsTableHtml_(allEmployees, false) : ''}
   `);
 }
-function _wrToggleAll_(checked){
-  document.querySelectorAll('.wr-emp-cb').forEach(cb => cb.checked = checked);
-}
-function _wrUpdateSelectAllState_(){
-  const allCb = document.getElementById('wrSelectAllCb');
-  if (allCb) allCb.checked = Array.from(document.querySelectorAll('.wr-emp-cb')).every(cb => cb.checked);
-}
 function payrollPrintWeeklyReport(){
-  if (!_wrLastReport) return;
-  const selected = new Set(Array.from(document.querySelectorAll('.wr-emp-cb:checked')).map(cb => cb.dataset.emp));
-  const filteredData = { ..._wrLastReport, employees: (_wrLastReport.employees || []).filter(e => selected.has(e.name)) };
-  if (!filteredData.employees.length) { showToast('اختار موظف واحد على الأقل', 'error'); return; }
+  if (!_wrLastReport || !window._wrCurrentEmployees) return;
+  const filteredData = { ..._wrLastReport, employees: window._wrCurrentEmployees };
   _openPrintDoc(payrollBuildWeeklyReportPdfHtml_(filteredData));
 }
 
@@ -3722,7 +3763,7 @@ function payrollBuildWeeklyReportPdfHtml_(data){
       </div>`;
   }).join('') : '<p style="text-align:center;color:#6B5E4E;padding:20px;">مفيش موظفين اسبوعيين مسجلين</p>';
 
-  const grandTotalsHtml = _wrGrandTotalsTableHtml_(employees, true);
+  const grandTotalsHtml = window._wrIncludeTotals ? _wrGrandTotalsTableHtml_((_wrLastReport && _wrLastReport.employees) || employees, true) : '';
 
   return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"/>
   <title>${qEsc(pdfFileTitle('تقرير اسبوعي', data.weekLabel))}</title>
@@ -3767,7 +3808,7 @@ async function payrollOpenMonthlyReportModal(){
       return;
     }
     _mrLastReport = res;
-    renderMonthlyReportModal_(res);
+    payrollOpenMonthlyNameSelect_(res);
   } catch (err) {
     openCardModal(`<div class="cd-head"><h3>📊 تقرير شهري</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="msg err" style="display:block;">خطأ: ${qEsc(err.message||err)}</div>`);
   }
@@ -3836,8 +3877,19 @@ function _mrGrandTotalsTableHtml_(employees, forPrint){
   </div>`;
 }
 
-function renderMonthlyReportModal_(data){
-  const employees = data.employees || [];
+function payrollOpenMonthlyNameSelect_(data){
+  const names = (data.employees || []).map(e => e.name);
+  openCardModal(_payrollNameSelectHtml_(names, 'mr', `تقرير شهري — ${qEsc(data.monthLabel)}`));
+}
+function mrConfirmNames_(){
+  const includeTotals = document.getElementById('mrIncludeTotalsCb').checked;
+  renderMonthlyReportModal_(_mrLastReport, _payrollSelectedNames_('mr'), includeTotals);
+}
+function renderMonthlyReportModal_(data, selectedNames, includeTotals){
+  const allEmployees = data.employees || [];
+  const employees = selectedNames ? allEmployees.filter(e => selectedNames.has(e.name)) : allEmployees;
+  window._mrCurrentEmployees = employees;
+  window._mrIncludeTotals = includeTotals !== false;
   const empHtml = employees.length ? employees.map(e => {
     const daysHtml = (e.actionDays && e.actionDays.length)
       ? e.actionDays.map(_mrActionDayLineHtml_).join('')
@@ -3855,41 +3907,26 @@ function renderMonthlyReportModal_(data){
       </div>`;
     return `<div class="panel" style="margin-bottom:12px;">
       <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">اليومية: <b style="color:var(--dark);">${fmt(e.dailyRate||0)} ج</b> &nbsp;•&nbsp; ${e.absenceDaysCount||0} يوم غياب في ${e.weeksCount||0} أسبوع</div>
-      <h4 style="margin-bottom:8px;display:flex;align-items:center;gap:8px;">
-        <input type="checkbox" class="mr-emp-cb" data-emp="${qEsc(e.name)}" checked onchange="_mrUpdateSelectAllState_()">
-        <span>${qEsc(e.name)}</span>
-      </h4>
+      <h4 style="margin-bottom:8px;">${qEsc(e.name)}</h4>
       <div><b style="font-size:12.5px;">📌 الأيام اللي فيها أكشن:</b>${daysHtml}</div>
       ${finalCalcHtml}
     </div>`;
-  }).join('') : '<div class="empty">مفيش موظفين اسبوعيين مسجلين</div>';
+  }).join('') : '<div class="empty">مفيش موظفين مختارين</div>';
 
   openCardModal(`
     <div class="cd-head"><h3>تقرير شهري — ${qEsc(data.monthLabel)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
     <p style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">الأسابيع المحسوبة: ${qEsc((data.weekLabels||[]).join('، '))}</p>
-    <label class="print-opt-row" style="font-weight:700;margin-bottom:10px;">
-      <input type="checkbox" id="mrSelectAllCb" checked onchange="_mrToggleAll_(this.checked)">
-      <span>تحديد الكل (${employees.length} موظف)</span>
-    </label>
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
-      <button class="btn btn-primary btn-sm" onclick="payrollPrintMonthlyReport()">⬇ تحميل PDF (المختارين بس)</button>
+      <button class="btn btn-outline btn-sm" onclick="payrollOpenMonthlyNameSelect_(_mrLastReport)">← رجوع للاختيار</button>
+      <button class="btn btn-primary btn-sm" onclick="payrollPrintMonthlyReport()">⬇ تحميل PDF</button>
     </div>
     <div id="mrEmpList">${empHtml}</div>
-    ${_mrGrandTotalsTableHtml_(employees, false)}
+    ${window._mrIncludeTotals ? _mrGrandTotalsTableHtml_(allEmployees, false) : ''}
   `);
 }
-function _mrToggleAll_(checked){
-  document.querySelectorAll('.mr-emp-cb').forEach(cb => cb.checked = checked);
-}
-function _mrUpdateSelectAllState_(){
-  const allCb = document.getElementById('mrSelectAllCb');
-  if (allCb) allCb.checked = Array.from(document.querySelectorAll('.mr-emp-cb')).every(cb => cb.checked);
-}
 function payrollPrintMonthlyReport(){
-  if (!_mrLastReport) return;
-  const selected = new Set(Array.from(document.querySelectorAll('.mr-emp-cb:checked')).map(cb => cb.dataset.emp));
-  const filteredData = { ..._mrLastReport, employees: (_mrLastReport.employees || []).filter(e => selected.has(e.name)) };
-  if (!filteredData.employees.length) { showToast('اختار موظف واحد على الأقل', 'error'); return; }
+  if (!_mrLastReport || !window._mrCurrentEmployees) return;
+  const filteredData = { ..._mrLastReport, employees: window._mrCurrentEmployees };
   _openPrintDoc(payrollBuildMonthlyReportPdfHtml_(filteredData));
 }
 
@@ -3949,7 +3986,7 @@ function payrollBuildMonthlyReportPdfHtml_(data){
       </div>`;
   }).join('') : '<p style="text-align:center;color:#6B5E4E;padding:20px;">مفيش موظفين اسبوعيين مسجلين</p>';
 
-  const grandTotalsHtml = _mrGrandTotalsTableHtml_(employees, true);
+  const grandTotalsHtml = window._mrIncludeTotals ? _mrGrandTotalsTableHtml_((_mrLastReport && _mrLastReport.employees) || employees, true) : '';
 
   return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"/>
   <title>${qEsc(pdfFileTitle('تقرير شهري', data.monthLabel))}</title>
@@ -4057,10 +4094,7 @@ function _meEmpBlockHtml_(r, data){
       </div>` : '';
 
   return `<div class="panel" style="margin-bottom:12px;">
-    <h4 style="margin-bottom:8px;display:flex;align-items:center;gap:8px;">
-      <input type="checkbox" class="me-emp-cb" data-emp="${qEsc(r.name)}" checked onchange="_meUpdateSelectAllState_()">
-      <span>${qEsc(r.name)}</span>
-    </h4>
+    <h4 style="margin-bottom:8px;">${qEsc(r.name)}</h4>
     <div><b style="font-size:12.5px;">📋 الأيام اللي فيها حركة:</b>${daysHtml}</div>
     ${summaryHtml}
   </div>`;
@@ -4068,38 +4102,32 @@ function _meEmpBlockHtml_(r, data){
 
 function payrollOpenMonthlyEmpReportModal_(data){
   _meLastReport = data;
-  const empHtml = data.rows.length
-    ? data.rows.map(r => _meEmpBlockHtml_(r, data)).join('')
-    : '<div class="empty">مفيش موظفين شهريين مسجلين</div>';
+  const names = (data.rows || []).map(r => r.name);
+  openCardModal(_payrollNameSelectHtml_(names, 'me', `📊 تقرير شهري — ${qEsc(data.sheetName)}`));
+}
+function meConfirmNames_(){
+  const selected = _payrollSelectedNames_('me');
+  const includeTotals = document.getElementById('meIncludeTotalsCb').checked;
+  const data = _meLastReport;
+  const filteredRows = data.rows.filter(r => selected.has(r.name));
+  window._meCurrentRows = filteredRows;
+  window._meIncludeTotals = includeTotals;
+  const empHtml = filteredRows.length
+    ? filteredRows.map(r => _meEmpBlockHtml_(r, data)).join('')
+    : '<div class="empty">مفيش موظفين مختارين</div>';
   openCardModal(`
     <div class="cd-head"><h3>📊 تقرير شهري — ${qEsc(data.sheetName)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
-    <label class="print-opt-row" style="font-weight:700;margin-bottom:10px;">
-      <input type="checkbox" id="meSelectAllCb" checked onchange="_meToggleAll_(this.checked)">
-      <span>تحديد الكل (${data.rows.length} موظف)</span>
-    </label>
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
-      <button class="btn btn-primary btn-sm" onclick="payrollPrintMonthlyEmpReport()">⬇ تحميل PDF (المختارين بس)</button>
+      <button class="btn btn-outline btn-sm" onclick="payrollOpenMonthlyEmpReportModal_(_meLastReport)">← رجوع للاختيار</button>
+      <button class="btn btn-primary btn-sm" onclick="payrollPrintMonthlyEmpReport()">⬇ تحميل PDF</button>
     </div>
     <div id="meEmpList">${empHtml}</div>
-    ${_meGrandTotalsTableHtml_(data, false)}
+    ${includeTotals ? _meGrandTotalsTableHtml_(data, false) : ''}
   `);
 }
-function _meToggleAll_(checked){
-  document.querySelectorAll('.me-emp-cb').forEach(cb => cb.checked = checked);
-}
-function _meUpdateSelectAllState_(){
-  const allCb = document.getElementById('meSelectAllCb');
-  if (allCb) allCb.checked = Array.from(document.querySelectorAll('.me-emp-cb')).every(cb => cb.checked);
-}
-function _meSelectedNames_(){
-  return Array.from(document.querySelectorAll('.me-emp-cb:checked')).map(cb => cb.dataset.emp);
-}
-
 function payrollPrintMonthlyEmpReport(){
-  if (!_meLastReport) return;
-  const selected = new Set(_meSelectedNames_());
-  const filteredData = { ..._meLastReport, rows: _meLastReport.rows.filter(r => selected.has(r.name)) };
-  if (!filteredData.rows.length) { showToast('اختار موظف واحد على الأقل', 'error'); return; }
+  if (!_meLastReport || !window._meCurrentRows) return;
+  const filteredData = { ..._meLastReport, rows: window._meCurrentRows };
   _openPrintDoc(payrollBuildMonthlyEmpReportPdfHtml_(filteredData));
 }
 
@@ -4148,7 +4176,7 @@ function payrollBuildMonthlyEmpReportPdfHtml_(data){
   const sections = data.rows.length
     ? data.rows.map((r, i) => _mePdfEmpBlockHtml_(r, data, i === 0)).join('')
     : '<p style="text-align:center;color:#6B5E4E;padding:20px;">مفيش موظفين شهريين مسجلين</p>';
-  const grandTotalsHtml = _meGrandTotalsTableHtml_(data, true);
+  const grandTotalsHtml = window._meIncludeTotals ? _meGrandTotalsTableHtml_(data, true) : '';
   return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"/>
   <title>${qEsc(pdfFileTitle('تقرير شهري', data.sheetName))}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
