@@ -3607,7 +3607,10 @@ function renderWeeklyReportModal_(data){
 
     return `<div class="panel" style="margin-bottom:12px;">
       <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">اليومية: <b style="color:var(--dark);">${fmt(e.dailyRate||0)} ج</b></div>
-      <h4 style="margin-bottom:8px;">${qEsc(e.name)}</h4>
+      <h4 style="margin-bottom:8px;display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" class="wr-emp-cb" data-emp="${qEsc(e.name)}" checked onchange="_wrUpdateSelectAllState_()">
+        <span>${qEsc(e.name)}</span>
+      </h4>
       ${weekSummaryHtml}
       <div><b style="font-size:12.5px;">📋 تفاصيل الأيام:</b>${daysHtml}</div>
       ${finalCalcHtml}
@@ -3616,18 +3619,31 @@ function renderWeeklyReportModal_(data){
 
   openCardModal(`
     <div class="cd-head"><h3>تقرير الأسبوع ${qEsc(data.weekLabel)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <label class="print-opt-row" style="font-weight:700;margin-bottom:10px;">
+      <input type="checkbox" id="wrSelectAllCb" checked onchange="_wrToggleAll_(this.checked)">
+      <span>تحديد الكل (${employees.length} موظف)</span>
+    </label>
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
       <button class="btn btn-outline btn-sm" onclick="payrollOpenWeeklyReportModal(PAYSTATE.data)">← اسبوع تاني</button>
-      <button class="btn btn-primary btn-sm" onclick="payrollPrintWeeklyReport()">⬇ تحميل PDF</button>
+      <button class="btn btn-primary btn-sm" onclick="payrollPrintWeeklyReport()">⬇ تحميل PDF (المختارين بس)</button>
     </div>
     <div id="wrEmpList">${empHtml}</div>
     ${_wrGrandTotalsTableHtml_(employees, false)}
   `);
 }
-
+function _wrToggleAll_(checked){
+  document.querySelectorAll('.wr-emp-cb').forEach(cb => cb.checked = checked);
+}
+function _wrUpdateSelectAllState_(){
+  const allCb = document.getElementById('wrSelectAllCb');
+  if (allCb) allCb.checked = Array.from(document.querySelectorAll('.wr-emp-cb')).every(cb => cb.checked);
+}
 function payrollPrintWeeklyReport(){
   if (!_wrLastReport) return;
-  _openPrintDoc(payrollBuildWeeklyReportPdfHtml_(_wrLastReport));
+  const selected = new Set(Array.from(document.querySelectorAll('.wr-emp-cb:checked')).map(cb => cb.dataset.emp));
+  const filteredData = { ..._wrLastReport, employees: (_wrLastReport.employees || []).filter(e => selected.has(e.name)) };
+  if (!filteredData.employees.length) { showToast('اختار موظف واحد على الأقل', 'error'); return; }
+  _openPrintDoc(payrollBuildWeeklyReportPdfHtml_(filteredData));
 }
 
 // نفس أسلوب qBuildPdfHtml بالظبط (براند Living Mood + طباعة A4) بس لمحتوى التقرير الاسبوعي
@@ -3839,7 +3855,10 @@ function renderMonthlyReportModal_(data){
       </div>`;
     return `<div class="panel" style="margin-bottom:12px;">
       <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">اليومية: <b style="color:var(--dark);">${fmt(e.dailyRate||0)} ج</b> &nbsp;•&nbsp; ${e.absenceDaysCount||0} يوم غياب في ${e.weeksCount||0} أسبوع</div>
-      <h4 style="margin-bottom:8px;">${qEsc(e.name)}</h4>
+      <h4 style="margin-bottom:8px;display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" class="mr-emp-cb" data-emp="${qEsc(e.name)}" checked onchange="_mrUpdateSelectAllState_()">
+        <span>${qEsc(e.name)}</span>
+      </h4>
       <div><b style="font-size:12.5px;">📌 الأيام اللي فيها أكشن:</b>${daysHtml}</div>
       ${finalCalcHtml}
     </div>`;
@@ -3848,17 +3867,30 @@ function renderMonthlyReportModal_(data){
   openCardModal(`
     <div class="cd-head"><h3>تقرير شهري — ${qEsc(data.monthLabel)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
     <p style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">الأسابيع المحسوبة: ${qEsc((data.weekLabels||[]).join('، '))}</p>
+    <label class="print-opt-row" style="font-weight:700;margin-bottom:10px;">
+      <input type="checkbox" id="mrSelectAllCb" checked onchange="_mrToggleAll_(this.checked)">
+      <span>تحديد الكل (${employees.length} موظف)</span>
+    </label>
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
-      <button class="btn btn-primary btn-sm" onclick="payrollPrintMonthlyReport()">⬇ تحميل PDF</button>
+      <button class="btn btn-primary btn-sm" onclick="payrollPrintMonthlyReport()">⬇ تحميل PDF (المختارين بس)</button>
     </div>
     <div id="mrEmpList">${empHtml}</div>
     ${_mrGrandTotalsTableHtml_(employees, false)}
   `);
 }
-
+function _mrToggleAll_(checked){
+  document.querySelectorAll('.mr-emp-cb').forEach(cb => cb.checked = checked);
+}
+function _mrUpdateSelectAllState_(){
+  const allCb = document.getElementById('mrSelectAllCb');
+  if (allCb) allCb.checked = Array.from(document.querySelectorAll('.mr-emp-cb')).every(cb => cb.checked);
+}
 function payrollPrintMonthlyReport(){
   if (!_mrLastReport) return;
-  _openPrintDoc(payrollBuildMonthlyReportPdfHtml_(_mrLastReport));
+  const selected = new Set(Array.from(document.querySelectorAll('.mr-emp-cb:checked')).map(cb => cb.dataset.emp));
+  const filteredData = { ..._mrLastReport, employees: (_mrLastReport.employees || []).filter(e => selected.has(e.name)) };
+  if (!filteredData.employees.length) { showToast('اختار موظف واحد على الأقل', 'error'); return; }
+  _openPrintDoc(payrollBuildMonthlyReportPdfHtml_(filteredData));
 }
 
 // نفس أسلوب payrollBuildWeeklyReportPdfHtml_ بالظبط، بس المحتوى إجماليات
@@ -4025,7 +4057,10 @@ function _meEmpBlockHtml_(r, data){
       </div>` : '';
 
   return `<div class="panel" style="margin-bottom:12px;">
-    <h4 style="margin-bottom:8px;">${qEsc(r.name)}</h4>
+    <h4 style="margin-bottom:8px;display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" class="me-emp-cb" data-emp="${qEsc(r.name)}" checked onchange="_meUpdateSelectAllState_()">
+      <span>${qEsc(r.name)}</span>
+    </h4>
     <div><b style="font-size:12.5px;">📋 الأيام اللي فيها حركة:</b>${daysHtml}</div>
     ${summaryHtml}
   </div>`;
@@ -4038,17 +4073,34 @@ function payrollOpenMonthlyEmpReportModal_(data){
     : '<div class="empty">مفيش موظفين شهريين مسجلين</div>';
   openCardModal(`
     <div class="cd-head"><h3>📊 تقرير شهري — ${qEsc(data.sheetName)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <label class="print-opt-row" style="font-weight:700;margin-bottom:10px;">
+      <input type="checkbox" id="meSelectAllCb" checked onchange="_meToggleAll_(this.checked)">
+      <span>تحديد الكل (${data.rows.length} موظف)</span>
+    </label>
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
-      <button class="btn btn-primary btn-sm" onclick="payrollPrintMonthlyEmpReport()">⬇ تحميل PDF</button>
+      <button class="btn btn-primary btn-sm" onclick="payrollPrintMonthlyEmpReport()">⬇ تحميل PDF (المختارين بس)</button>
     </div>
     <div id="meEmpList">${empHtml}</div>
     ${_meGrandTotalsTableHtml_(data, false)}
   `);
 }
+function _meToggleAll_(checked){
+  document.querySelectorAll('.me-emp-cb').forEach(cb => cb.checked = checked);
+}
+function _meUpdateSelectAllState_(){
+  const allCb = document.getElementById('meSelectAllCb');
+  if (allCb) allCb.checked = Array.from(document.querySelectorAll('.me-emp-cb')).every(cb => cb.checked);
+}
+function _meSelectedNames_(){
+  return Array.from(document.querySelectorAll('.me-emp-cb:checked')).map(cb => cb.dataset.emp);
+}
 
 function payrollPrintMonthlyEmpReport(){
   if (!_meLastReport) return;
-  _openPrintDoc(payrollBuildMonthlyEmpReportPdfHtml_(_meLastReport));
+  const selected = new Set(_meSelectedNames_());
+  const filteredData = { ..._meLastReport, rows: _meLastReport.rows.filter(r => selected.has(r.name)) };
+  if (!filteredData.rows.length) { showToast('اختار موظف واحد على الأقل', 'error'); return; }
+  _openPrintDoc(payrollBuildMonthlyEmpReportPdfHtml_(filteredData));
 }
 
 // نسخة الـ PDF لبلوك الموظف — نفس بيانات _meEmpBlockHtml_ بس بستايلات inline
