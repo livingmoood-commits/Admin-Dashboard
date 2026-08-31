@@ -7157,32 +7157,78 @@ function toRenderBackfillModal_(){
     <div class="cd-head"><h3>سحب البنود الناقصة للتكلفة</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
     <div style="margin-bottom:10px;font-size:12.5px;color:var(--muted);">هيتم إنشاء سطر ساعات لكل بند مختار، وهيتحمّل على المشروع بتاريخه الأصلي مباشرة. العملية آمنة (بتضيف بس، مبتعدلش ولا بتمسح حاجة موجودة).</div>
     <label class="print-opt-row" style="font-weight:700;margin-bottom:10px;">
-      <input type="checkbox" ${allChecked?'checked':''} onchange="toBackfillToggleAll_(this.checked)">
+      <input type="checkbox" id="backfillAllCb" ${allChecked?'checked':''} onchange="toBackfillToggleAll_(this.checked)">
       <span>تحديد الكل (${_backfillItems.length} بند)</span>
     </label>
-    <div style="max-height:340px;overflow-y:auto;">
-      ${dates.map(date => `
+    <div style="max-height:340px;overflow-y:auto;" id="backfillListBox">
+      ${dates.map(date => {
+        const dateChecked = byDate[date].every(it => it.checked);
+        return `
         <div style="margin-bottom:10px;">
-          <div class="toqf-emp-divider" style="margin:8px 4px;">${qEsc(toDateQuickLabel(date))} — ${qEsc(date)}</div>
+          <label class="toqf-emp-divider" style="margin:8px 4px;cursor:pointer;">
+            <input type="checkbox" id="backfillDateCb-${date}" ${dateChecked?'checked':''} onchange="toBackfillToggleDate_('${date}', this.checked)">
+            <span>${qEsc(toDateQuickLabel(date))} — ${qEsc(date)}</span>
+          </label>
           ${byDate[date].map(it => `
             <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--cream);border-radius:8px;margin-bottom:4px;">
-              <input type="checkbox" ${it.checked?'checked':''} onchange="toBackfillToggleOne_(${it._idx}, this.checked)">
+              <input type="checkbox" id="backfillItemCb-${it._idx}" ${it.checked?'checked':''} onchange="toBackfillToggleOne_(${it._idx}, this.checked)">
               <div style="flex:1;font-size:12.5px;"><b>${qEsc(it.craftsman)}</b> — ${qEsc(it.project)}</div>
               <input type="text" inputmode="decimal" class="d-input ltr-num" style="width:70px;padding:6px;" value="${qEsc(it.hours)}" onkeypress="return /[0-9.]/.test(event.key)" oninput="toBackfillUpdateHours_(${it._idx}, this.value)">
               <span style="font-size:11px;color:var(--muted);">ساعة</span>
             </div>
           `).join('')}
-        </div>
-      `).join('')}
+        </div>`;
+      }).join('')}
     </div>
-    <div style="margin-top:12px;font-size:12.5px;">مختار: <b>${checkedCount}</b> بند — إجمالي تقريبي: <b>${fmt(checkedHours)}</b> ساعة</div>
+    <div style="margin-top:12px;font-size:12.5px;" id="backfillFooterText">مختار: <b>${checkedCount}</b> بند — إجمالي تقريبي: <b>${fmt(checkedHours)}</b> ساعة</div>
     <button type="button" class="btn btn-primary btn-sm" id="backfillConfirmBtn" style="margin-top:10px;" ${checkedCount?'':'disabled'} onclick="toConfirmBackfill_()">تأكيد سحب المختار (${checkedCount})</button>
     <div class="msg" id="backfillMsg"></div>
   `);
 }
-function toBackfillToggleAll_(checked){ _backfillItems.forEach(it => it.checked = checked); toRenderBackfillModal_(); }
-function toBackfillToggleOne_(idx, checked){ const it = _backfillItems.find(x => x._idx === idx); if (it) it.checked = checked; toRenderBackfillModal_(); }
-function toBackfillUpdateHours_(idx, val){ const it = _backfillItems.find(x => x._idx === idx); if (it) it.hours = val; }
+// ⚠️ إصلاح: التوجل كان بيعيد رسم المودال كله (openCardModal) في كل ضغطة تشيك
+// بوكس، وده كان بيصفّر السكرول لفوق كل مرة. دلوقتي التحديث بيحصل مباشرة في
+// الـDOM (تحديث الحالة + تحديث العناصر المتأثرة بس)، من غير ما يعيد بناء
+// المودال من الصفر، فالسكرول بيفضل مكانه.
+function toBackfillUpdateFooter_(){
+  const checkedCount = _backfillItems.filter(it => it.checked).length;
+  const checkedHours = _backfillItems.filter(it => it.checked).reduce((s, it) => s + (Number(it.hours) || 9), 0);
+  const footerEl = document.getElementById('backfillFooterText');
+  if (footerEl) footerEl.innerHTML = `مختار: <b>${checkedCount}</b> بند — إجمالي تقريبي: <b>${fmt(checkedHours)}</b> ساعة`;
+  const btn = document.getElementById('backfillConfirmBtn');
+  if (btn) { btn.disabled = !checkedCount; btn.textContent = `تأكيد سحب المختار (${checkedCount})`; }
+  const allCb = document.getElementById('backfillAllCb');
+  if (allCb) allCb.checked = _backfillItems.every(it => it.checked);
+}
+function toBackfillToggleOne_(idx, checked){
+  const it = _backfillItems.find(x => x._idx === idx); if (!it) return;
+  it.checked = checked;
+  const dateCb = document.getElementById('backfillDateCb-' + it.date);
+  if (dateCb) dateCb.checked = _backfillItems.filter(x => x.date === it.date).every(x => x.checked);
+  toBackfillUpdateFooter_();
+}
+function toBackfillToggleAll_(checked){
+  _backfillItems.forEach(it => {
+    it.checked = checked;
+    const cb = document.getElementById('backfillItemCb-' + it._idx);
+    if (cb) cb.checked = checked;
+  });
+  document.querySelectorAll('[id^="backfillDateCb-"]').forEach(cb => cb.checked = checked);
+  toBackfillUpdateFooter_();
+}
+// ⚠️ إضافة: تشيك بوكس لكل يوم بيحدد/يلغي كل بنود اليوم ده مرة واحدة
+function toBackfillToggleDate_(date, checked){
+  _backfillItems.forEach(it => {
+    if (it.date !== date) return;
+    it.checked = checked;
+    const cb = document.getElementById('backfillItemCb-' + it._idx);
+    if (cb) cb.checked = checked;
+  });
+  toBackfillUpdateFooter_();
+}
+function toBackfillUpdateHours_(idx, val){
+  const it = _backfillItems.find(x => x._idx === idx); if (it) it.hours = val;
+  toBackfillUpdateFooter_();
+}
 async function toConfirmBackfill_(){
   const btn = document.getElementById('backfillConfirmBtn');
   const msg = document.getElementById('backfillMsg');
