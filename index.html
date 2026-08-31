@@ -6154,12 +6154,14 @@ async function dTodayDelete(rowNum){
 }
 
 /* ================= Projects (تاب جوه صفحة التكاليف) ================= */
-async function renderProjectsTab() {
+async function renderProjectsTab(token) {
   const box = document.getElementById('costTabBody'); if (!box) return;
   box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
     const { projects } = await apiGet('listProjectsSummary');
-    box.innerHTML = `
+    if (isStaleNav(token)) return; // المستخدم غيّر الصفحة قبل ما الطلب يخلص — ميلمسش DOM بعد كده خالص
+    const freshBox = document.getElementById('costTabBody'); if (!freshBox) return;
+    freshBox.innerHTML = `
       <div class="panel">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
           <h3 style="margin:0;">ملخص تكلفة المشاريع (${projects.length})</h3>
@@ -6913,7 +6915,7 @@ async function renderCosts(token) {
       const btn = e.target.closest('.step'); if (!btn) return;
       switchCostTab(btn.dataset.tab);
     });
-    await switchCostTabRender(COST_TAB);
+    await switchCostTabRender(COST_TAB, token);
   } catch(err){ showError(err); }
 }
 /* ⚠️ إصلاح 2026-08-11: الإيرادات والتكاليف بقوا تابين جنب بعض داخل نفس صفحة
@@ -6927,11 +6929,11 @@ function switchCostTab(tab){
   document.querySelectorAll('#costTabsRow .step').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   switchCostTabRender(tab);
 }
-function switchCostTabRender(tab){
-  if (tab === 'revenue') return renderRevenueTab();
-  if (tab === 'projects') return renderProjectsTab();
-  if (tab === 'summary') return renderCostSummaryTab();
-  return renderCostsEntriesTab();
+function switchCostTabRender(tab, token){
+  if (tab === 'revenue') return renderRevenueTab(token);
+  if (tab === 'projects') return renderProjectsTab(token);
+  if (tab === 'summary') return renderCostSummaryTab(token);
+  return renderCostsEntriesTab(token);
 }
 
 /* ===== تاب التكاليف: نفس الفورم زي الأول + حقل تاريخ + عرض السجل مجمّع باليوم في عواميد
