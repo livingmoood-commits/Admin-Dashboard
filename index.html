@@ -2010,6 +2010,13 @@ function wfSyncTabsBar(page){
 // ما تكتب في الـ DOM إن التوكن بتاعها لسه هو الحالي — لو المستخدم دخل صفحة تانية
 // قبل ما تخلص، بتلاقي التوكن اتغير فبتلغي نفسها من غير ما تكتب حاجة فوق الصفحة الجديدة
 let _navToken = 0;
+// ⚠️ إضافة: وقت فتح التطبيق نفسه — بنستخدمه عشان نمدد "مهلة" انتظار الصفحة
+// في أول دقيقة ونص من فتح الموقع بس. أول طلب بيوصل لسيرفر Apps Script بعد
+// فترة سكون (Cold Start) بياخد وقت أطول طبيعي من أي طلب بعده (السيرفر بيجهّز
+// نفسه ويفتح الشيتات لأول مرة) — ده مش خطأ في الكود، ده طبيعة Google Apps
+// Script نفسها ومينفعش نتخطاها بالكامل، بس نقدر نديها مهلة أطول عشان
+// المستخدم ميشوفش رسالة "بتاخد وقت أطول من المتوقع" وهي فعلاً لسه شغالة عادي.
+const _appLoadTime = Date.now();
 // صفحات Work Flow — المستخدمين اللي مش Role=Lead بيشوفوا دول بس (شوف applyRoleAccess تحت)
 const WORKFLOW_ONLY_PAGES = ['taskOrganize', 'materials', 'projectPlanning'];
 function _isLeadRole(){ return sessionStorage.getItem('lm_userRole') === 'Lead'; }
@@ -2033,9 +2040,23 @@ function goTo(page, costTab) {
   if (!checkApiConfigured()) return;
   document.getElementById('content').innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   PAGES[page].render(token);
-  // ⚠️ إضافة: لو الصفحة فضلت عالقة على "جاري التحميل..." أكتر من 12 ثانية
-  // (طلب اتأخر جدًا أو حصل خطأ متمسكش صح)، نوريه زرار "أعد المحاولة" جوه
-  // الصفحة نفسها بدل ما يحتاج يعمل Reload كامل للموقع كله.
+  // ⚠️ إضافة: رسالة طمأنة لطيفة (مش تحذير) لو الصفحة لسه بتحمل بعد ٧ ثواني —
+  // بتظهر بس في أول دقيقة ونص من فتح الموقع (احتمال كولد ستارت أعلى وقتها)،
+  // عشان المستخدم يفهم إن ده طبيعي ومش عطل، من غير ما يشوف رسالة حمرا مقلقة بدري.
+  const isEarlyBoot = (Date.now() - _appLoadTime) < 90000;
+  if (isEarlyBoot) {
+    setTimeout(() => {
+      if (isStaleNav(token)) return;
+      const box = document.getElementById('content');
+      const loadingEl = box && box.querySelector('.loading-row');
+      if (loadingEl) loadingEl.textContent = '🐢 أول اتصال بالسيرفر بعد فترة بياخد وقت أطول شوية من العادي — لسه شغالة، استنى ثواني...';
+    }, 7000);
+  }
+  // ⚠️ إضافة: لو الصفحة فضلت عالقة على "جاري التحميل..." أكتر من المهلة دي،
+  // نوريه زرار "أعد المحاولة" جوه الصفحة نفسها بدل ما يحتاج يعمل Reload كامل
+  // للموقع كله. المهلة أطول (٤٠ ثانية بدل ٢٠) في أول دقيقة ونص من فتح الموقع،
+  // عشان كولد ستارت Apps Script (شوف تعليق _appLoadTime فوق) ميوريش رسالة
+  // "بتاخد وقت أطول من المتوقع" وهو لسه شغال طبيعي.
   setTimeout(() => {
     if (isStaleNav(token)) return; // المستخدم غيّر الصفحة فعلاً، مفيش داعي نعمل حاجة
     const box = document.getElementById('content');
@@ -2045,7 +2066,7 @@ function goTo(page, costTab) {
       const btn = document.getElementById('watchdogRetryBtn');
       if (btn) btn.addEventListener('click', () => goTo(page));
     }
-  }, 20000);
+  }, isEarlyBoot ? 40000 : 20000);
 }
 function isStaleNav(token){ return token !== undefined && token !== _navToken; }
 /* Role-based access: Role="Lead" (شيت users، عمود C) بيشوف النظام كله، أي
@@ -10881,9 +10902,15 @@ function toWfItemEditModalHtml_(id, project, title, notes, craftsman, date, hour
     <button type="button" class="btn-roster-glow" onclick="toWfEditAddExtra_('${qEscJs(id)}','${qEscJs(craftsman||'')}','${qEscJs(date||'')}','${qEscJs(project)}','${qEscJs(title)}','${qEscJs(notes)}',${hoursEntry?`'${qEscJs(hoursEntry.id)}'`:'null'})">🌟 يشتغل في مشروع تاني؟ دوس هنا</button>
     ${_wfEditExtraBlocks.length ? `<div class="msg" style="display:block;font-size:11.5px;margin-top:6px;">ملحوظة: اقسم الساعات بنفسك بين المشاريع فوق</div>` : ''}
 
-    <div style="margin-top:14px;">
-      <label style="font-size:12px;font-weight:700;color:var(--muted);">ساعات السهرة (للعلم بس — مش بتتحسب في التكلفة ولا المرتب)</label>
-      <input type="text" inputmode="decimal" class="d-input ltr-num" id="wfItem-edit-evening" value="${hoursEntry?(hoursEntry.eveningHours||''):''}" onkeypress="return /[0-9.]/.test(event.key)">
+    <div class="grid2" style="margin-top:14px;">
+      <div class="field" style="margin-bottom:0;">
+        <label style="font-size:12px;font-weight:700;color:var(--muted);">ساعات السهرة (للعلم بس — مش بتتحسب في التكلفة ولا المرتب)</label>
+        <input type="text" inputmode="decimal" class="d-input ltr-num" id="wfItem-edit-evening" value="${hoursEntry?(hoursEntry.eveningHours||''):''}" onkeypress="return /[0-9.]/.test(event.key)">
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label style="font-size:12px;font-weight:700;color:var(--muted);">مشروع السهرة <span style="font-weight:400;">(لو مختلف عن مشروع الشغل فوق)</span></label>
+        ${toProjDropdownHtmlForModal_('wfItemEveningProj', 'wfItem-edit-evening-project', (hoursEntry && hoursEntry.eveningProject) ? hoursEntry.eveningProject : project)}
+      </div>
     </div>
 
     <div style="margin-top:14px;">
@@ -10900,8 +10927,9 @@ function toWfEditAddExtra_(id, craftsman, date, project, title, notes, hoursId){
   const curNotes = document.getElementById('wfItem-edit-notes') ? document.getElementById('wfItem-edit-notes').value : notes;
   const curHours = document.getElementById('wfItem-edit-hours') ? document.getElementById('wfItem-edit-hours').value : '';
   const curEvening = document.getElementById('wfItem-edit-evening') ? document.getElementById('wfItem-edit-evening').value : '';
+  const curEveningProject = document.getElementById('wfItem-edit-evening-project') ? document.getElementById('wfItem-edit-evening-project').value : '';
   _wfEditExtraBlocks.push({ project: '', hours: '' });
-  const hoursEntry = hoursId ? { id: hoursId, hours: curHours, eveningHours: curEvening } : (curHours ? { id: null, hours: curHours, eveningHours: curEvening } : null);
+  const hoursEntry = hoursId ? { id: hoursId, hours: curHours, eveningHours: curEvening, eveningProject: curEveningProject } : (curHours ? { id: null, hours: curHours, eveningHours: curEvening, eveningProject: curEveningProject } : null);
   openCardModal(toWfItemEditModalHtml_(id, curProject, curTitle, curNotes, craftsman, curDate, hoursEntry));
 }
 function toWfEditRemoveExtra_(i, id, craftsman, date){
@@ -10911,9 +10939,10 @@ function toWfEditRemoveExtra_(i, id, craftsman, date){
   const curNotes = document.getElementById('wfItem-edit-notes').value;
   const curHours = document.getElementById('wfItem-edit-hours').value;
   const curEvening = document.getElementById('wfItem-edit-evening').value;
+  const curEveningProject = document.getElementById('wfItem-edit-evening-project') ? document.getElementById('wfItem-edit-evening-project').value : '';
   const hoursId = document.getElementById('wfItem-edit-hoursid').value;
   _wfEditExtraBlocks.splice(i, 1);
-  const hoursEntry = hoursId ? { id: hoursId, hours: curHours, eveningHours: curEvening } : (curHours ? { id: null, hours: curHours, eveningHours: curEvening } : null);
+  const hoursEntry = hoursId ? { id: hoursId, hours: curHours, eveningHours: curEvening, eveningProject: curEveningProject } : (curHours ? { id: null, hours: curHours, eveningHours: curEvening, eveningProject: curEveningProject } : null);
   openCardModal(toWfItemEditModalHtml_(id, curProject, curTitle, curNotes, craftsman, curDate, hoursEntry));
 }
 async function toWfItemSaveEdit_(id, craftsman, oldDate){
@@ -10923,6 +10952,11 @@ async function toWfItemSaveEdit_(id, craftsman, oldDate){
   const notes = document.getElementById('wfItem-edit-notes').value.trim();
   const hours = document.getElementById('wfItem-edit-hours').value.trim();
   const evening = document.getElementById('wfItem-edit-evening').value.trim();
+  const eveningProjectEl = document.getElementById('wfItem-edit-evening-project');
+  // ⚠️ إضافة: "مشروع السهرة" — لو المستخدم مخلّيهاش فاضية بيرجع لنفس مشروع
+  // الشغل العادي فوق (زي السلوك القديم بالظبط)، وإلا بيتسجل السهرة كسطر
+  // مستقل على المشروع المختار، مش مربوطة بالمشروع اللي فوق.
+  const eveningProject = (eveningProjectEl ? eveningProjectEl.value.trim() : '') || project;
   const hoursId = document.getElementById('wfItem-edit-hoursid').value.trim();
   const msg = document.getElementById('wfItem-edit-msg');
   const btn = document.getElementById('wfItem-edit-save-btn');
@@ -10932,11 +10966,29 @@ async function toWfItemSaveEdit_(id, craftsman, oldDate){
     // ⚠️ إضافة: تحديث/إنشاء سطر الساعات كمان لو المستخدم غيّر فيه — منفصل عن
     // تحديث الوصف، عشان لو فشل ده لأي سبب الوصف يفضل محفوظ على أي حال
     const isAbsence = project === 'إجازة' || /غياب|اجازة|إجازة/.test(notes);
+    const eveningIsSeparateProject = !isAbsence && Number(evening) > 0 && eveningProject && eveningProject !== project;
     if (!isAbsence && craftsman && date) {
-      if (hoursId && (hours || evening)) {
-        await apiPost('updateHoursEntry', { entry: { id: hoursId, employee: craftsman, project, hours: hours || 0, eveningHours: evening || 0, eveningAmount: 0, date } });
+      // لو السهرة على مشروع الشغل نفسه، بتتحط في نفس صف الساعات زي الأول بالظبط.
+      // لو اتحطت على مشروع مختلف، بتتسجل لوحدها تحت — فمنسجّلهاش هنا مرتين.
+      const mainRowEvening = eveningIsSeparateProject ? 0 : (evening || 0);
+      if (hoursId && (hours || mainRowEvening)) {
+        await apiPost('updateHoursEntry', { entry: { id: hoursId, employee: craftsman, project, hours: hours || 0, eveningHours: mainRowEvening, eveningAmount: 0, date } });
       } else if (!hoursId && hours && Number(hours) > 0) {
-        await apiPost('addHoursEntry', { entry: { employee: craftsman, project, hours, eveningHours: evening, eveningAmount: 0, date } });
+        await apiPost('addHoursEntry', { entry: { employee: craftsman, project, hours, eveningHours: mainRowEvening, eveningAmount: 0, date } });
+      }
+      // ⚠️ إضافة: السهرة على مشروع مختلف — بندوّر الأول لو فيه سطر سهرة (ساعات=0)
+      // متسجل بالفعل لنفس (الموظف/مشروع السهرة/اليوم) عشان نعدّله بدل ما نكرره
+      // في كل مرة تحفظ فيها، وإلا بنسجل سطر جديد.
+      if (eveningIsSeparateProject) {
+        try {
+          const { entries: eveningEntries } = await apiGet('listHoursEntries', { filters: { employee: craftsman, project: eveningProject, from: date, to: date } });
+          const existing = (eveningEntries || []).find(e => !e.hours || Number(e.hours) === 0);
+          if (existing) {
+            await apiPost('updateHoursEntry', { entry: { id: existing.id, employee: craftsman, project: eveningProject, hours: 0, eveningHours: evening, eveningAmount: 0, date } });
+          } else {
+            await apiPost('addHoursEntry', { entry: { employee: craftsman, project: eveningProject, hours: 0, eveningHours: evening, eveningAmount: 0, date, notes: 'سهرة — من تعديل بند شغل' } });
+          }
+        } catch (e2) { /* لو فشل تسجيل السهرة على المشروع التاني، الحفظ الأساسي (الشغل والوصف) يفضل ناجح برضه */ }
       }
       // ⚠️ إضافة: أي بلوكات "مشروع تاني" — كل واحد بيتسجل كسطر ساعات منفصل جديد
       for (let i = 0; i < _wfEditExtraBlocks.length; i++) {
