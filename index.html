@@ -10117,6 +10117,7 @@ let TO_STATE = {
   formDate: todayStr(),
   wwDate: todayStr(),    // فلتر تاريخ منفصل لبانل "مين فين" — دفولت النهاردة، مستقل عن formDate بتاع فورم التسجيل
   wwEntries: [],         // شغل يوم wwDate (بانل "مين فين" بس)
+  wwHoursEntries: [],    // ⚠️ إضافة: ساعات/سهرات يوم wwDate (بانل "مين فين" بس) — عشان نعرض السهرات في نفس الكارت
   qCraftsman: '',
   csOpen: false,
   moreOpen: false,
@@ -10126,6 +10127,7 @@ let TO_STATE = {
   dailyCache: {},   // { [date]: entries[] }
   weekCache: {},    // { [from_to]: entries[] }
   planCache: {},    // { [project]: items[] }
+  hoursDailyCache: {}, // ⚠️ إضافة: { [date]: hoursEntries[] } — لبانل "مين فين" عشان يعرض السهرات
 };
 const TO_DAY_NAMES = ["السبت","الأحد","الاثنين","الثلاثاء","الأربعاء","الخميس","الجمعة"];
 let TO_WARMED = false; // عشان التحميل المسبق في الخلفية ما يتكررش كل ما ندخل الصفحة تاني
@@ -10314,13 +10316,22 @@ async function toLoadWhoWhere(token, opts) {
   const date = TO_STATE.wwDate;
   const body = document.getElementById('to-ww-body');
   const cached = TO_STATE.dailyCache[date];
-  if (cached && !opts.force) { TO_STATE.wwEntries = cached; toRenderWhoWhereBlock(); return; }
+  const hoursCached = TO_STATE.hoursDailyCache[date];
+  if (cached && hoursCached && !opts.force) { TO_STATE.wwEntries = cached; TO_STATE.wwHoursEntries = hoursCached; toRenderWhoWhereBlock(); return; }
   if (body) body.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
-    const { entries } = await apiGet('listWorkflowEntries', { filters: { date } });
+    // ⚠️ إضافة: بنجيب الساعات/السهرات (listHoursEntries) مع الشغل الوصفي في نفس
+    // اللحظة — عشان بانل "مين فين" يقدر يعرض ساعات السهرة وأي مشروع منفصل لها
+    // (شوف toRenderWhoWhereBlock تحت)، مش بس المشروع والمطلوب من الوصف.
+    const [wfRes, hoursRes] = await Promise.all([
+      apiGet('listWorkflowEntries', { filters: { date } }),
+      apiGet('listHoursEntries', { filters: { from: date, to: date } })
+    ]);
     if (isStaleNav(token)) return;
-    TO_STATE.wwEntries = entries || [];
+    TO_STATE.wwEntries = wfRes.entries || [];
+    TO_STATE.wwHoursEntries = hoursRes.entries || [];
     TO_STATE.dailyCache[date] = TO_STATE.wwEntries;
+    TO_STATE.hoursDailyCache[date] = TO_STATE.wwHoursEntries;
     toRenderWhoWhereBlock();
   } catch (err) { if (body) body.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
 }
@@ -10805,16 +10816,27 @@ function toRenderDailyForm() {
 // تغيير فلتر التاريخ هنا ميمسحش أي حاجة المستخدم كاتبها في فورم "تسجيل شغل".
 function toRenderWhoWhereBlock() {
   const body = document.getElementById('to-ww-body'); if (!body) return;
-  const wwGrouped = TO_STATE.craftsmen.map(c => ({ name: c.name, items: TO_STATE.wwEntries.filter(e => e.craftsman === c.name) })).filter(g => g.items.length);
+  // ⚠️ إضافة: بنجمع سهرات كل صنيعي في اليوم ده (من ساعات_وسهرات، مش من الوصف)
+  // على حدة عن بنود الشغل العادية — عشان صنيعي ممكن يكون ليه سهرة بس من غير
+  // ما يكون له بند وصفي متسجل خالص، أو العكس. لو فيها eveningProject مختلف
+  // عن مشروع السطر نفسه (شوف إصلاح "مشروع السهرة" في مودال التعديل)، بنعرضه.
+  const wwGrouped = TO_STATE.craftsmen.map(c => {
+    const items = TO_STATE.wwEntries.filter(e => e.craftsman === c.name);
+    const evenings = TO_STATE.wwHoursEntries.filter(h => h.employee === c.name && Number(h.eveningHours) > 0);
+    return { name: c.name, items, evenings };
+  }).filter(g => g.items.length || g.evenings.length);
   body.innerHTML = `
     <div class="sub" style="margin-bottom:8px;">شغل ${toDateQuickLabel(TO_STATE.wwDate)} <span style="color:var(--muted);">(${TO_STATE.wwDate})</span></div>
     ${wwGrouped.length ? wwGrouped.map(g => `
       <div class="wf-card">
         <div class="wf-card-head">
           <span class="wf-craftsman-name">${qEsc(g.name)}</span>
-          <span style="font-size:11.5px;color:var(--muted);">${g.items.length} بند</span>
+          <span style="font-size:11.5px;color:var(--muted);">
+            ${g.items.length ? `${g.items.length} بند` : ''}${g.items.length && g.evenings.length ? ' — ' : ''}${g.evenings.length ? `🌙 ${g.evenings.length} سهرة` : ''}
+          </span>
         </div>
         ${g.items.map(it => toItemHTML(it)).join('')}
+        ${g.evenings.map(ev => toEveningItemHTML_(ev)).join('')}
       </div>
     `).join('') : `<div class="wf-empty-day">لسه معملش تسجيل في اليوم ده</div>`}
   `;
@@ -10826,6 +10848,26 @@ function toRenderWhoWhereBlock() {
   document.querySelectorAll('#to-ww-body [data-blockednote]').forEach(inp => {
     inp.addEventListener('change', () => toSaveBlockedNote(inp.dataset.blockednote, inp.value));
   });
+}
+// ⚠️ إضافة: كارت سهرة مستقل — شكله مختلف عن بند الشغل العادي (خلفية بنفسجي/ذهبي
+// فاتح + أيقونة قمر) عشان يبان واضح إنه سهرة (للعلم بس، مش بتتحسب في التكلفة
+// ولا المرتب) ومش بند شغل عادي — ومعاه المشروع اللي اتسجلت عليه (لو مختلف عن
+// مشروع الشغل العادي بتاع نفس اليوم، هيبان هنا واضح).
+function toEveningItemHTML_(ev) {
+  return `
+    <div class="to-wf-item" style="border-top:1px dashed var(--border);background:rgba(212,175,55,.08);border-radius:8px;">
+      <div class="to-wf-item-head">
+        <div style="flex:1;min-width:0;">
+          <div class="wf-item-row">
+            <span style="font-weight:700;color:#8a6d1f;">🌙 سهرة — ${qEsc(String(ev.eveningHours))} ساعة</span>
+            ${ev.project ? `<span><b>المشروع:</b> ${qEsc(ev.project)}</span>` : ''}
+          </div>
+          ${ev.notes ? `<div style="font-size:12.5px;color:var(--muted);margin-top:4px;">&#128221; ${qEsc(ev.notes)}</div>` : ''}
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;">للعلم بس — مش بتتحسب في التكلفة ولا المرتب</div>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 // شكل بند شغل واحد (مستخدم في تاب "شغل يومي" وتفاصيل خلية تاب "اسبوعي")
@@ -11027,6 +11069,8 @@ async function toWfItemDelete_(id){
 async function toWfRefreshCurrentView_(){
   delete TO_STATE.dailyCache[TO_STATE.formDate];
   delete TO_STATE.dailyCache[TO_STATE.wwDate];
+  delete TO_STATE.hoursDailyCache[TO_STATE.formDate];
+  delete TO_STATE.hoursDailyCache[TO_STATE.wwDate];
   TO_ROSTER.loadedDate = null;
   if (TO_STATE.activeTab === 'week') { await toLoadWeekTab(undefined, { force: true }); }
   else {
@@ -11194,6 +11238,8 @@ async function toQuickformSave_() {
     showToast('✅ اتسجل الشغل');
     TO_QF = { selected: new Set(), project: '', hours: '', title: '', notes: '', extras: [], evenings: [] };
     delete TO_STATE.dailyCache[TO_STATE.formDate]; // البيانات اتغيرت فعلاً — لازم نجيبها تاني من السيرفر
+    delete TO_STATE.hoursDailyCache[TO_STATE.formDate]; // ⚠️ إضافة: فيها الساعات/السهرات اللي اتسجلت لسه
+    delete TO_STATE.hoursDailyCache[TO_STATE.wwDate];
     await toLoadDailyTab(undefined, { force: true });
     toRenderStatStrip();
   } catch (err) {
