@@ -122,7 +122,7 @@
   .nav-section-label{ font-size:10.5px; font-weight:800; letter-spacing:.5px; color:var(--gold);
     text-transform:uppercase; padding:10px 16px 4px; opacity:.85; }
   .sidebar.collapsed .nav-section-label{ display:none; }
-  .wf-card{ background:var(--white); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:14px; }
+  .wf-card{ background:var(--white); border:1.5px solid var(--gold); border-radius:12px; padding:16px; margin-bottom:16px; box-shadow:0 1px 4px rgba(0,0,0,.05); }
   .wf-card-head{ display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
   .wf-craftsman-name{ font-size:15px; font-weight:800; }
   .wf-specialty-pill{ display:inline-block; background:var(--cream); color:var(--muted); font-size:11px; font-weight:700; padding:3px 10px; border-radius:20px; margin-inline-start:8px; }
@@ -10347,19 +10347,31 @@ async function toLoadDailyTab(token, opts) {
   const box = document.getElementById('to-tab-content'); if (!box) return;
   const date = TO_STATE.formDate;
   const cached = TO_STATE.dailyCache[date];
-  if (cached && !opts.force) {
+  const hoursCached = TO_STATE.hoursDailyCache[date];
+  // ⚠️ إصلاح: لازم الاتنين (شغل وصفي + ساعات/سهرات) يكونوا متوفرين مع بعض قبل
+  // ما نعتمد على الكاش، وإلا بانل "مين فين" (لو وارث نفس اليوم) هيرندر بساعات
+  // فاضية وميعرضش أي سهرة حتى لو فعلاً متسجلة — ده كان بالظبط سبب اختفاء
+  // السهرات من "مين فين" رغم ظهورها صح في الجدول الأسبوعي.
+  if (cached && (hoursCached || TO_STATE.wwDate !== date) && !opts.force) {
     TO_STATE.todayEntries = cached;
-    if (TO_STATE.wwDate === date) TO_STATE.wwEntries = cached;
+    if (TO_STATE.wwDate === date) { TO_STATE.wwEntries = cached; TO_STATE.wwHoursEntries = hoursCached || []; }
     toRenderDailyTabContent(); // فوري من الكاش، من غير أي طلب سيرفر
     return;
   }
   if (!cached) box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
-    const { entries } = await apiGet('listWorkflowEntries', { filters: { date } });
+    // ⚠️ إضافة: بنجيب الساعات/السهرات مع الشغل الوصفي في نفس اللحظة — نفس
+    // فكرة toLoadWhoWhere بالظبط، عشان "مين فين" (لو بيعرض نفس اليوم ده) يقدر
+    // يعرض السهرات من غير ما يحتاج فتح فلتر تاريخه هو تحديدًا.
+    const [wfRes, hoursRes] = await Promise.all([
+      apiGet('listWorkflowEntries', { filters: { date } }),
+      apiGet('listHoursEntries', { filters: { from: date, to: date } })
+    ]);
     if (isStaleNav(token)) return;
-    TO_STATE.todayEntries = entries || [];
+    TO_STATE.todayEntries = wfRes.entries || [];
     TO_STATE.dailyCache[date] = TO_STATE.todayEntries;
-    if (TO_STATE.wwDate === date) TO_STATE.wwEntries = TO_STATE.todayEntries;
+    TO_STATE.hoursDailyCache[date] = hoursRes.entries || [];
+    if (TO_STATE.wwDate === date) { TO_STATE.wwEntries = TO_STATE.todayEntries; TO_STATE.wwHoursEntries = TO_STATE.hoursDailyCache[date]; }
     toRenderDailyTabContent();
   } catch (err) { box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
 }
@@ -10410,7 +10422,7 @@ let TO_DAILY_VIEW = sessionStorage.getItem('lm_toDailyView') || 'quickform'; // 
 // selected: مين مختار، project/hours/title/notes: البلوك المشترك اللي
 // بيتطبق على كل المختارين، extras: مشاريع إضافية مربوطة بصنيعي معيّن (مش
 // كلهم بالضرورة)، evenings: سهرات مربوطة بصنيعي معيّن كمان.
-let TO_QF = { selected: new Set(), project: '', hours: '', title: '', notes: '', extras: [], evenings: [] };
+let TO_QF = { selected: new Set(), project: '', hours: '', title: '', notes: '', extras: [], evenings: [], extraOpen: false, eveningOpen: false };
 // ⚠️ إضافة: دروب داون صارم للمشروع — مينفعش تكتب اسم حر، لازم تختار من قايمة
 // المشاريع الفعلية (نفس المصدر الموحّد listProjects() المستخدم في كل الموقع).
 // ده بيمنع إن يوم شغل يتسجل بغلطة إملائية أو اسم مشروع مش موجود أصلًا.
@@ -10840,11 +10852,11 @@ function toRenderDailyForm() {
         </div>
 
         ${toQfExtrasListHtml_()}
-        <button type="button" class="btn-roster-glow" onclick="toQfOpenExtraForm_()">🌟 يشتغل في مشروع تاني؟ دوس هنا</button>
+        ${TO_QF.extraOpen ? toQfExtraInlineHtml_() : `<button type="button" class="btn-roster-glow" onclick="TO_QF.extraOpen=true;toRenderDailyForm();">🌟 يشتغل في مشروع تاني؟ دوس هنا</button>`}
         <div class="msg" style="display:block;font-size:11.5px;margin:6px 0 14px;">ملحوظة: النهارده 9 ساعات — اتقسّموا بنفسك بين المشاريع</div>
 
         ${toQfEveningsListHtml_()}
-        <button type="button" class="btn-roster-glow" onclick="toQfOpenEveningForm_()">🌙 في سهرة؟ دوس هنا</button>
+        ${TO_QF.eveningOpen ? toQfEveningInlineHtml_() : `<button type="button" class="btn-roster-glow" onclick="TO_QF.eveningOpen=true;toRenderDailyForm();">🌙 في سهرة؟ دوس هنا</button>`}
 
         <div style="margin-top:16px;">
           <button type="button" class="btn btn-primary" id="toSaveEntryBtn" onclick="toQuickformSave_()">حفظ السطر</button>
@@ -11201,19 +11213,24 @@ function toQfExtrasListHtml_(){
     </div>`).join('') + `</div>`;
 }
 function toQfRemoveExtra_(i){ TO_QF.extras.splice(i, 1); toRenderDailyForm(); }
-function toQfOpenExtraForm_(){
+// ⚠️ تعديل: بقت بتفتح جوه الفورم نفسه (inline) بدل ما تفتح كمودال منفصل —
+// نفس فكرة _wfEditExtraBlocks في مودال التعديل، بس هنا في الفورم الأساسي مباشرة.
+function toQfExtraInlineHtml_(){
   const employees = Array.from(TO_QF.selected);
-  if (!employees.length) return;
-  openCardModal(`
-    <div class="cd-head"><h3>🌟 يشتغل في مشروع تاني</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
-    <div class="field"><label>مين؟</label>
-      <select class="d-input" id="qfExtraEmp">${employees.map(e => `<option value="${qEsc(e)}">${qEsc(e)}</option>`).join('')}</select>
+  return `
+    <div class="grid2" style="margin-bottom:10px;padding:10px;background:var(--cream);border-radius:9px;">
+      <div class="field"><label>مين؟</label>
+        <select class="d-input" id="qfExtraEmp">${employees.map(e => `<option value="${qEsc(e)}">${qEsc(e)}</option>`).join('')}</select>
+      </div>
+      <div class="field"><label>المشروع</label>${toProjDropdownHtmlForModal_('qfExtraProj', 'qfExtraProject', '')}</div>
+      <div class="field" style="grid-column:1/-1;"><label>الساعات</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="qfExtraHours" onkeypress="return /[0-9.]/.test(event.key)"></div>
+      <div style="grid-column:1/-1;display:flex;gap:8px;">
+        <button type="button" class="btn btn-primary btn-sm" onclick="toQfConfirmExtra_()">إضافة</button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="TO_QF.extraOpen=false;toRenderDailyForm();">إلغاء</button>
+      </div>
+      <div class="msg" id="qfExtraMsg" style="grid-column:1/-1;"></div>
     </div>
-    <div class="field"><label>المشروع</label>${toProjDropdownHtmlForModal_('qfExtraProj', 'qfExtraProject', '')}</div>
-    <div class="field"><label>الساعات</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="qfExtraHours" onkeypress="return /[0-9.]/.test(event.key)"></div>
-    <button type="button" class="btn btn-primary btn-sm" onclick="toQfConfirmExtra_()">إضافة</button>
-    <div class="msg" id="qfExtraMsg"></div>
-  `);
+  `;
 }
 function toQfConfirmExtra_(){
   const employee = document.getElementById('qfExtraEmp').value;
@@ -11222,43 +11239,51 @@ function toQfConfirmExtra_(){
   const msg = document.getElementById('qfExtraMsg');
   if (!project || !hours || Number(hours) <= 0) { msg.className = 'msg err'; msg.textContent = 'المشروع والساعات مطلوبين'; return; }
   TO_QF.extras.push({ employee, project, hours });
-  closeCardModal();
+  TO_QF.extraOpen = false;
   toRenderDailyForm();
 }
 function toQfEveningsListHtml_(){
   if (!TO_QF.evenings.length) return '';
   return `<div style="margin-bottom:10px;">` + TO_QF.evenings.map((e,i) => `
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--cream);border-radius:8px;margin-bottom:6px;">
-      <div style="font-size:12.5px;">🌙 <b>${qEsc(e.employee)}</b>${e.project ? ' — ' + qEsc(e.project) : ''} (${fmt(e.hours)} ساعة سهرة)${e.notes ? ' — ' + qEsc(e.notes) : ''}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:rgba(212,175,55,.1);border-radius:8px;margin-bottom:6px;">
+      <div style="font-size:12.5px;">🌙 <b>${qEsc(e.employee)}</b>${e.project ? ' — ' + qEsc(e.project) : ''} (${fmt(e.hours)} ساعة سهرة)${e.title ? ' — ' + qEsc(e.title) : ''}${e.notes ? ' — ' + qEsc(e.notes) : ''}</div>
       <button type="button" class="mat-icon-btn" onclick="toQfRemoveEvening_(${i})">✕</button>
     </div>`).join('') + `</div>`;
 }
 function toQfRemoveEvening_(i){ TO_QF.evenings.splice(i, 1); toRenderDailyForm(); }
-function toQfOpenEveningForm_(){
+// ⚠️ تعديل: بقت inline جوه الفورم نفسه بدل مودال، وضفنا "المطلوب" (اختياري —
+// لو سيبتها فاضية بتاخد نفس "المطلوب" بتاع البلوك الأساسي فوق تلقائي، شوف
+// toQuickformSave_ تحت).
+function toQfEveningInlineHtml_(){
   const employees = Array.from(TO_QF.selected);
-  if (!employees.length) return;
-  openCardModal(`
-    <div class="cd-head"><h3>🌙 في سهرة</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
-    <div class="field"><label>مين؟</label>
-      <select class="d-input" id="qfEveningEmp">${employees.map(e => `<option value="${qEsc(e)}">${qEsc(e)}</option>`).join('')}</select>
+  return `
+    <div class="grid2" style="margin-bottom:10px;padding:10px;background:rgba(212,175,55,.08);border-radius:9px;">
+      <div class="field"><label>مين؟</label>
+        <select class="d-input" id="qfEveningEmp">${employees.map(e => `<option value="${qEsc(e)}">${qEsc(e)}</option>`).join('')}</select>
+      </div>
+      <div class="field"><label>عدد ساعات السهرة</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="qfEveningHours" onkeypress="return /[0-9.]/.test(event.key)"></div>
+      <div class="field"><label>مشروع السهرة (اختياري)</label>${toProjDropdownHtmlForModal_('qfEveningProj', 'qfEveningProject', '', true)}</div>
+      <div class="field"><label>المطلوب (اختياري)</label><input class="d-input" id="qfEveningTitle" placeholder="${TO_QF.title ? 'سيبها فاضية = ' + qEsc(TO_QF.title) : 'مثال: تركيب أبواب'}"></div>
+      <div class="field" style="grid-column:1/-1;"><label>ملاحظات (اختياري)</label><input class="d-input" id="qfEveningNotes"></div>
+      <div style="font-size:11px;color:var(--muted);grid-column:1/-1;margin-bottom:4px;">ساعات السهرة بتتسجل للعلم بس — مش بتتحسب في التكلفة ولا المرتب</div>
+      <div style="grid-column:1/-1;display:flex;gap:8px;">
+        <button type="button" class="btn btn-primary btn-sm" onclick="toQfConfirmEvening_()">إضافة</button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="TO_QF.eveningOpen=false;toRenderDailyForm();">إلغاء</button>
+      </div>
+      <div class="msg" id="qfEveningMsg" style="grid-column:1/-1;"></div>
     </div>
-    <div class="field"><label>عدد ساعات السهرة</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="qfEveningHours" onkeypress="return /[0-9.]/.test(event.key)"></div>
-    <div class="field"><label>مشروع السهرة (اختياري)</label>${toProjDropdownHtmlForModal_('qfEveningProj', 'qfEveningProject', '', true)}</div>
-    <div class="field"><label>ملاحظات</label><input class="d-input" id="qfEveningNotes"></div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">ساعات السهرة بتتسجل للعلم بس — مش بتتحسب في التكلفة ولا المرتب</div>
-    <button type="button" class="btn btn-primary btn-sm" onclick="toQfConfirmEvening_()">إضافة</button>
-    <div class="msg" id="qfEveningMsg"></div>
-  `);
+  `;
 }
 function toQfConfirmEvening_(){
   const employee = document.getElementById('qfEveningEmp').value;
   const hours = document.getElementById('qfEveningHours').value.trim();
   const project = document.getElementById('qfEveningProject').value.trim();
+  const title = document.getElementById('qfEveningTitle').value.trim();
   const notes = document.getElementById('qfEveningNotes').value.trim();
   const msg = document.getElementById('qfEveningMsg');
   if (!hours || Number(hours) <= 0) { msg.className = 'msg err'; msg.textContent = 'عدد الساعات مطلوب'; return; }
-  TO_QF.evenings.push({ employee, hours, project, notes });
-  closeCardModal();
+  TO_QF.evenings.push({ employee, hours, project, title, notes });
+  TO_QF.eveningOpen = false;
   toRenderDailyForm();
 }
 async function toQuickformSave_() {
@@ -11288,11 +11313,11 @@ async function toQuickformSave_() {
       }
     });
     TO_QF.extras.forEach(e => entries.push({ employee: e.employee, project: e.project, hours: e.hours, date: TO_STATE.formDate, title: '', notes: '' }));
-    TO_QF.evenings.forEach(e => entries.push({ employee: e.employee, project: e.project || '', hours: 0, date: TO_STATE.formDate, title: '', notes: ['سهرة', (e.notes||'').trim()].filter(Boolean).join(' — '), eveningHours: e.hours }));
+    TO_QF.evenings.forEach(e => entries.push({ employee: e.employee, project: e.project || '', hours: 0, date: TO_STATE.formDate, title: (e.title || TO_QF.title || '').trim(), notes: ['سهرة', (e.notes||'').trim()].filter(Boolean).join(' — '), eveningHours: e.hours }));
 
     await apiPost('addRosterEntries', { entries });
     showToast('✅ اتسجل الشغل');
-    TO_QF = { selected: new Set(), project: '', hours: '', title: '', notes: '', extras: [], evenings: [] };
+    TO_QF = { selected: new Set(), project: '', hours: '', title: '', notes: '', extras: [], evenings: [], extraOpen: false, eveningOpen: false };
     delete TO_STATE.dailyCache[TO_STATE.formDate]; // البيانات اتغيرت فعلاً — لازم نجيبها تاني من السيرفر
     delete TO_STATE.hoursDailyCache[TO_STATE.formDate]; // ⚠️ إضافة: فيها الساعات/السهرات اللي اتسجلت لسه
     delete TO_STATE.hoursDailyCache[TO_STATE.wwDate];
