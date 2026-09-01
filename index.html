@@ -1816,9 +1816,63 @@ async function apiPost(action, payload) {
     body: JSON.stringify({ action, actor, requestId, ...payload })
   });
   apiCacheClear(); // أي POST معناه البيانات اتغيرت — امسح الكاش عشان القراءة الجاية تكون طازة
+  // ⚠️ إضافة: أي حفظ نجح فعلاً في السيرفر — امسح كل "المسودات" المحفوظة محليًا
+  // (شوف قسم "حماية النصوص المكتوبة" تحت). البيانات اتحفظت فعلاً دلوقتي، فمفيش
+  // داعي نفضل شايلين نسخة قديمة محليًا ممكن تظهر تاني بالغلط في فورم جديد.
+  if (data && !data.error) _clearAllDrafts_();
   return data;
 }
 function fmt(n){ return (Number(n)||0).toLocaleString('en-US', {maximumFractionDigits:0}); }
+
+/* ═══════════════ حماية النصوص المكتوبة (Draft Auto-Save) ═══════════════
+ * ⚠️ إضافة: أي نص بيتكتب في أي خانة نصية أو textarea في الموقع كله (أي صفحة،
+ * أي مودال، أي فورم) بيتحفظ أوتوماتيك في localStorage بعد نصف ثانية من آخر
+ * حرف — عشان لو النت قطع، أو الصفحة اتقفلت/اتعملها Refresh بالغلط قبل ما
+ * تحفظ، النص المكتوب يرجع لوحده تاني لما تفتح نفس الحقل تاني (نفس الـid).
+ * بيتمسح تلقائي بمجرد أي حفظ ناجح في السيرفر (شوف apiPost فوق) عشان مسودة
+ * قديمة ميظهرش في فورم جديد بالغلط. الحماية دي شغالة لأي حقل ليه id ثابت —
+ * وده أغلب حقول الموقع فعلاً، فمفيش داعي نضيفها يدوي لكل فورم لوحده.
+ * ⚠️ محدودية معروفة: لو صفحتين مختلفتين فيهم حقل بنفس الـid بالظبط في نفس
+ * اللحظة (نادر جدًا)، ممكن تتلخبط المسودة بينهم — تفضيل الأمان (تمسح كل حاجة
+ * بعد أي حفظ ناجح) على الدقة الكاملة. */
+const _DRAFT_PREFIX = 'lmDraft:';
+let _draftSaveTimers = {};
+document.addEventListener('input', e => {
+  const el = e.target;
+  if (!el || !el.id) return;
+  const isTextarea = el.tagName === 'TEXTAREA';
+  const isTextInput = el.tagName === 'INPUT' && (el.type === 'text' || el.type === '' || !el.hasAttribute('type'));
+  if (!isTextarea && !isTextInput) return; // مش تاريخ/باسورد/راديو/تشيك بوكس... — دول مالهاش داعي بحماية نص
+  const key = _DRAFT_PREFIX + el.id;
+  clearTimeout(_draftSaveTimers[key]);
+  _draftSaveTimers[key] = setTimeout(() => {
+    try {
+      if (el.value) localStorage.setItem(key, el.value);
+      else localStorage.removeItem(key);
+    } catch(e) { /* localStorage ممتلئ أو غير متاح (وضع خاص مثلًا) — تجاهل بأمان */ }
+  }, 500);
+});
+// إعادة تعبئة المسودات — بتفحص كل ثانية الحقول الظاهرة حاليًا في الصفحة، ولو
+// حقل فاضي (لسه متعبتش من بيانات حقيقية محمّلة) وعنده مسودة محفوظة، بتملاه.
+// ما بتلمسش حقل فيه قيمة فعلاً (حقيقية أو المستخدم كاتبها)، ولا حقل المستخدم
+// واقف فيه بالظبط دلوقتي (عشان متقطعش عليه وهو باصص/بيكتب).
+setInterval(() => {
+  try {
+    document.querySelectorAll('textarea[id], input[type="text"][id]').forEach(el => {
+      if (el.value || document.activeElement === el) return;
+      const saved = localStorage.getItem(_DRAFT_PREFIX + el.id);
+      if (saved) el.value = saved;
+    });
+  } catch(e) {}
+}, 1000);
+function _clearAllDrafts_(){
+  try {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.indexOf(_DRAFT_PREFIX) === 0) keys.push(k); }
+    keys.forEach(k => localStorage.removeItem(k));
+  } catch(e) {}
+}
+
 // ⚠️ إضافة: قايمة موظفين مقسّمة اسبوعي/شهري بخط فاصل — optgroup بيرندرها
 // المتصفح تلقائي كخط فاصل واضح (بولد، مش قابل للاختيار) من غير أي CSS إضافي.
 function buildEmployeeOptGroupsHtml_(employees, labelFn){
@@ -10111,6 +10165,7 @@ let TO_STATE = {
   craftsmen: [],
   todayEntries: [],      // شغل يوم formDate بس (تاب شغل يومي)
   weekEntries: [],       // كل شغل الأسبوع المعروض (تاب اسبوعي)
+  weekHoursEntries: [],  // ⚠️ إضافة: ساعات/سهرات الأسبوع المعروض — عشان نعرض 🌙 في خلايا الجدول الأسبوعي
   weekAnchor: new Date(),
   selectedCell: null,    // { emp, date } في التاب الاسبوعي
   missingSummary: [],    // من getMissingItemsSummary — لعداد "بنود لسه ناقصة" في الشريط
@@ -10126,6 +10181,7 @@ let TO_STATE = {
   // يبان فورًا من غير ما نستنى السيرفر تاني، ومن غير ما الشاشة "تفضّى" وتحمّل من الأول.
   dailyCache: {},   // { [date]: entries[] }
   weekCache: {},    // { [from_to]: entries[] }
+  weekHoursCache: {}, // ⚠️ إضافة: { [from_to]: hoursEntries[] }
   planCache: {},    // { [project]: items[] }
   hoursDailyCache: {}, // ⚠️ إضافة: { [date]: hoursEntries[] } — لبانل "مين فين" عشان يعرض السهرات
 };
@@ -11284,17 +11340,27 @@ async function toLoadWeekTab(token, opts) {
   const from = toISO(dates[0]), to = toISO(dates[6]);
   const key = from + '_' + to;
   const cached = TO_STATE.weekCache[key];
-  if (cached && !opts.force) {
+  const hoursCached = TO_STATE.weekHoursCache[key];
+  if (cached && hoursCached && !opts.force) {
     TO_STATE.weekEntries = cached;
+    TO_STATE.weekHoursEntries = hoursCached;
     toRenderWeekGrid(dates, from, to); // فوري من الكاش
     return;
   }
   if (!cached) box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
-    const { entries } = await apiGet('getWorkflowWeek', { from, to });
+    // ⚠️ إضافة: بنجيب ساعات/سهرات الأسبوع (listHoursEntries) مع شغل الأسبوع
+    // الوصفي (getWorkflowWeek) في نفس اللحظة — عشان نقدر نعرض 🌙 عند أي يوم
+    // فيه سهرة متسجلة، جوه الجدول الأسبوعي نفسه وفي تفاصيل الخلية.
+    const [wfRes, hoursRes] = await Promise.all([
+      apiGet('getWorkflowWeek', { from, to }),
+      apiGet('listHoursEntries', { filters: { from, to } })
+    ]);
     if (isStaleNav(token)) return;
-    TO_STATE.weekEntries = entries || [];
+    TO_STATE.weekEntries = wfRes.entries || [];
+    TO_STATE.weekHoursEntries = hoursRes.entries || [];
     TO_STATE.weekCache[key] = TO_STATE.weekEntries;
+    TO_STATE.weekHoursCache[key] = TO_STATE.weekHoursEntries;
     toRenderWeekGrid(dates, from, to);
   } catch (err) { box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
 }
@@ -11334,7 +11400,11 @@ function toRenderWeekGrid(dates, from, to) {
                   const items = TO_STATE.weekEntries.filter(e => e.craftsman === emp && e.date === iso);
                   const isSel = TO_STATE.selectedCell && TO_STATE.selectedCell.emp === emp && TO_STATE.selectedCell.date === iso;
                   const chipIcon = it2 => toIsAbsenceNote_(it2) ? '&#128683;' : (it2.status==='done' ? '&#10003;' : (it2.status==='blocked' ? '&#9940;' : '&#128205;'));
-                  const inner = items.length ? items.map(it => `<span class="to-cell-chip ${toIsAbsenceNote_(it)?'to-cell-absence':'status-'+(it.status||'working')}">${chipIcon(it)} ${qEsc(it.project)}</span>`).join('') : `<span class="to-cell-empty">—</span>`;
+                  // ⚠️ إضافة: 🌙 لو فيه سهرة متسجلة لنفس الصنيعي واليوم ده (بغض النظر عن
+                  // مشروعها) — تشيب منفصل يبان جنب شيبات المشاريع العادية جوه نفس الخلية
+                  const hasEvening = TO_STATE.weekHoursEntries.some(h => h.employee === emp && h.date === iso && Number(h.eveningHours) > 0);
+                  const inner = (items.length ? items.map(it => `<span class="to-cell-chip ${toIsAbsenceNote_(it)?'to-cell-absence':'status-'+(it.status||'working')}">${chipIcon(it)} ${qEsc(it.project)}</span>`).join('') : (hasEvening ? '' : `<span class="to-cell-empty">—</span>`))
+                    + (hasEvening ? `<span class="to-cell-chip" style="background:rgba(212,175,55,.18);color:#8a6d1f;font-weight:700;">🌙 سهرة</span>` : '');
                   return `<td class="to-day-cell ${isSel?'selected':''}" data-emp="${qEsc(emp)}" data-date="${iso}">${inner}</td>`;
                 }).join('')}
               </tr>
@@ -11366,6 +11436,9 @@ function toRenderWeekDetail() {
   if (!TO_STATE.selectedCell) { box.innerHTML = ''; return; }
   const { emp, date } = TO_STATE.selectedCell;
   const items = TO_STATE.weekEntries.filter(e => e.craftsman === emp && e.date === date);
+  // ⚠️ إضافة: سهرات نفس الصنيعي واليوم المختار — بتتعرض كارت منفصل تحت بنود
+  // الشغل العادية (نفس شكل كارت السهرة في بانل "مين فين")
+  const evenings = TO_STATE.weekHoursEntries.filter(h => h.employee === emp && h.date === date && Number(h.eveningHours) > 0);
   box.innerHTML = `
     <div class="to-dp-head">
       <span class="to-dp-title">${qEsc(emp)} — ${date}</span>
@@ -11390,7 +11463,8 @@ function toRenderWeekDetail() {
         </div>
         ${it.status==='blocked' ? `<div class="field to-blocked-note"><input class="d-input" placeholder="سبب التعطل (اختياري)" data-blockednote="${it.id}" value="${qEsc(it.blockedNote||'')}"></div>` : ''}
       </div>
-    `).join('') : `<div class="empty">مفيش تسجيل ليه في اليوم ده</div>`}
+    `).join('') : (evenings.length ? '' : `<div class="empty">مفيش تسجيل ليه في اليوم ده</div>`)}
+    ${evenings.map(ev => toEveningItemHTML_(ev)).join('')}
   `;
   const closeBtn = document.getElementById('toDpClose');
   // قفل التفاصيل: تفاعل UI بحت — من غير فيتش ولا إعادة رسم الجدول كله
