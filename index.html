@@ -1377,14 +1377,15 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbzstJuI5EKdabQmOIechewi
 // كاش بسيط في الذاكرة لطلبات GET (نفس الـ action+params بيرجع من الكاش لو لسه طازة)
 // بيسرّع التنقل بين الصفحات وبيقلل عدد الطلبات لسيرفر الـ Apps Script (اللي بطيء أصلًا في الـ cold start)
 const _apiCache = new Map();
-const API_CACHE_TTL_MS = 20000; // 20 ثانية — كفاية تقلل التكرار من غير ما تعرض بيانات قديمة كتير
+const API_CACHE_TTL_MS = 30000; // ⚠️ رفعناها من 20 لـ30 ثانية — التنقل بين الصفحات (رجوع لصفحة زرتها قبل شوية) بيبقى فوري أكتر من غير ما تعرض بيانات قديمة بشكل ملموس
 // ⚠️ إضافة: بعض القوايم بتتغيّر نادرًا جدًا (مشاريع، موظفين، عملاء) — مفيش داعي
 // نعتبرها "قديمة" بعد 20 ثانية بس زي بيانات الخزنة/المصاريف اللي بتتغيّر باستمرار.
 // TTL أطول للقوايم دي بيقلل عدد الطلبات لسيرفر Apps Script بشكل ملموس أثناء
 // التنقل بين الصفحات (مفيش داعي تتجاب تاني كل شوية لو محدش غيّرها فعليًا).
 const _API_LONG_TTL_ACTIONS = new Set([
   'listProjects', 'listProjectsSummary', 'listEmployees', 'quoteListCustomers',
-  'payListCustomers', 'listMiProjects', 'listFinishedMiProjects', 'listFixedExpenses'
+  'payListCustomers', 'listMiProjects', 'listFinishedMiProjects', 'listFixedExpenses',
+  'getTaskOrganizeCraftsmen', 'getWorkflowMeta', 'listDailyExpenseDays'
 ]);
 const API_CACHE_TTL_MS_LONG = 120000; // دقيقتين
 function _apiCacheTtlFor(action){ return _API_LONG_TTL_ACTIONS.has(action) ? API_CACHE_TTL_MS_LONG : API_CACHE_TTL_MS; }
@@ -1658,12 +1659,14 @@ document.addEventListener('copy', (e) => {
 // المصادفة على رابط الـ echo المؤقت بتاع Google بتزيد كل ما عدد الطلبات المتزامنة
 // زاد (أي صفحة بتعمل Promise.all لكذا apiGet مع بعض) — فبدل ما نسيبهم يضربوا كلهم
 // مرة واحدة، بنمرر بس عدد محدود في نفس اللحظة والباقي بينتظر دوره في طابور.
-// ⚠️ تعديل: كان الحد 4 والطلبات اللي تحت الحد ده كانت بتاخد سلوت فورًا من غير أي
-// فاصل بينها — يعني لو صفحة عملت Promise.all لـ4 طلبات (زي "الخزنة": ملخص + حركات
-// + إيداعات + مشاريع)، الأربعة كانوا بيتبعتوا في نفس اللحظة بالظبط برضه، ومفيش
-// فايدة حقيقية من الطابور. دلوقتي كل طلب (حتى لو فيه سلوت فاضي) بيستنى فاصل زمني
-// صغير عن آخر طلب اتبعت، مش بس لما الطابور يكون مزدحم — وده اللي بيقلل التصادم
-// فعليًا في حالة الـ4-طلبات-مع-بعض دي.
+// كل طلب (حتى لو فيه سلوت فاضي) بيستنى فاصل زمني صغير عن آخر طلب اتبعت، مش بس
+// لما الطابور يكون مزدحم.
+// ⚠️ تعديل 2026-09-01 اتلغى: جربنا نخفف الفاصل (70→20) والحد (3→5) على أساس
+// إن الـ nonce (_r) في رابط الطلب كافي لوحده يمنع التصادم — ده غلط. الـ nonce
+// بيمنع تكرار على مستوى المتصفح بس، لكن تصادم رابط الـ echo بيحصل من جوه Google
+// نفسها لما كذا طلب يضربوا السيرفر قريبين من بعض أوي، وده اتأكد عمليًا (ظهر
+// 404 على رابط echo فعليًا بعد التخفيف). رجّعنا القيم الأصلية اللي كانت مجرّبة
+// ومظبوطة.
 const _API_MAX_CONCURRENT = 3;
 const _API_MIN_DISPATCH_GAP_MS = 70;
 let _apiActiveCount = 0;
