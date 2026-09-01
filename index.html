@@ -276,8 +276,8 @@
   .to-week-label{ font-weight:800; font-size:15px; }
 
   .to-grid-wrap{ overflow-x:auto; border:1px solid var(--border); border-radius:10px; }
-  table.to-weekgrid{ border-collapse:collapse; width:100%; min-width:820px; background:var(--white); }
-  table.to-weekgrid th, table.to-weekgrid td{ border:1px solid var(--border); padding:0; }
+  table.to-weekgrid{ border-collapse:collapse; width:100%; min-width:820px; background:var(--white); border:1.5px solid var(--gold-dim); }
+  table.to-weekgrid th, table.to-weekgrid td{ border:1.5px solid #b8a888; padding:0; }
   table.to-weekgrid thead th{ background:var(--dark); color:#f0e6d8; padding:9px 6px; text-align:center; }
   table.to-weekgrid thead th .dname{ font-weight:800; font-size:12.5px; }
   table.to-weekgrid thead th .ddate{ font-size:10.5px; color:var(--gold); margin-top:2px; }
@@ -10933,9 +10933,21 @@ function toEveningItemHTML_(ev) {
           ${ev.notes ? `<div style="font-size:12.5px;color:var(--muted);margin-top:4px;">&#128221; ${qEsc(ev.notes)}</div>` : ''}
           <div style="font-size:11px;color:var(--muted);margin-top:2px;">للعلم بس — مش بتتحسب في التكلفة ولا المرتب</div>
         </div>
+        <div class="to-status-row">
+          <button type="button" class="mat-icon-btn" title="حذف السهرة" onclick="toEveningDelete_('${qEscJs(ev.id)}')">🗑️</button>
+        </div>
       </div>
     </div>
   `;
+}
+// ⚠️ إضافة: حذف سهرة لوحدها (سطر ساعات_وسهرات بس، مش بند شغل وصفي) — من "مين
+// فين" أو تفاصيل خلية الجدول الأسبوعي، نفس شكل زرار حذف بند الشغل العادي بالظبط.
+async function toEveningDelete_(id){
+  try {
+    await apiPost('deleteHoursEntry', { id });
+    showToast('🗑️ اتحذفت السهرة');
+    await toWfRefreshCurrentView_();
+  } catch(err){ showError(err); }
 }
 
 // شكل بند شغل واحد (مستخدم في تاب "شغل يومي" وتفاصيل خلية تاب "اسبوعي")
@@ -11224,9 +11236,9 @@ function toQfExtraInlineHtml_(){
       </div>
       <div class="field"><label>المشروع</label>${toProjDropdownHtmlForModal_('qfExtraProj', 'qfExtraProject', '')}</div>
       <div class="field" style="grid-column:1/-1;"><label>الساعات</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="qfExtraHours" onkeypress="return /[0-9.]/.test(event.key)"></div>
-      <div style="grid-column:1/-1;display:flex;gap:8px;">
-        <button type="button" class="btn btn-primary btn-sm" onclick="toQfConfirmExtra_()">إضافة</button>
-        <button type="button" class="btn btn-outline btn-sm" onclick="TO_QF.extraOpen=false;toRenderDailyForm();">إلغاء</button>
+      <div style="grid-column:1/-1;display:flex;gap:10px;">
+        <button type="button" class="btn btn-primary" style="flex:1;padding:12px;font-size:15px;font-weight:700;" onclick="toQfConfirmExtra_()">إضافة</button>
+        <button type="button" class="btn btn-danger" style="flex:1;padding:12px;font-size:15px;font-weight:700;" onclick="TO_QF.extraOpen=false;toRenderDailyForm();">إلغاء</button>
       </div>
       <div class="msg" id="qfExtraMsg" style="grid-column:1/-1;"></div>
     </div>
@@ -11266,9 +11278,9 @@ function toQfEveningInlineHtml_(){
       <div class="field"><label>المطلوب (اختياري)</label><input class="d-input" id="qfEveningTitle" placeholder="${TO_QF.title ? 'سيبها فاضية = ' + qEsc(TO_QF.title) : 'مثال: تركيب أبواب'}"></div>
       <div class="field" style="grid-column:1/-1;"><label>ملاحظات (اختياري)</label><input class="d-input" id="qfEveningNotes"></div>
       <div style="font-size:11px;color:var(--muted);grid-column:1/-1;margin-bottom:4px;">ساعات السهرة بتتسجل للعلم بس — مش بتتحسب في التكلفة ولا المرتب</div>
-      <div style="grid-column:1/-1;display:flex;gap:8px;">
-        <button type="button" class="btn btn-primary btn-sm" onclick="toQfConfirmEvening_()">إضافة</button>
-        <button type="button" class="btn btn-outline btn-sm" onclick="TO_QF.eveningOpen=false;toRenderDailyForm();">إلغاء</button>
+      <div style="grid-column:1/-1;display:flex;gap:10px;">
+        <button type="button" class="btn btn-primary" style="flex:1;padding:12px;font-size:15px;font-weight:700;" onclick="toQfConfirmEvening_()">إضافة</button>
+        <button type="button" class="btn btn-danger" style="flex:1;padding:12px;font-size:15px;font-weight:700;" onclick="TO_QF.eveningOpen=false;toRenderDailyForm();">إلغاء</button>
       </div>
       <div class="msg" id="qfEveningMsg" style="grid-column:1/-1;"></div>
     </div>
