@@ -103,7 +103,14 @@
   .sidebar-overlay{ display:none; }
   .bottom-nav{ display:none; }
 
-  .main{ flex:1; padding:26px 34px; max-width:1280px; min-width:0; margin-right:235px; transition:margin-right .3s var(--bounce); }
+  /* ⚠️ إصلاح 2026-09-01 ("عاوز حجم الجدول يزيد عشان اشوف عدد أكبر جوه حدود الجدول"):
+     .main (منطقة المحتوى، وجواها كل الجداول زي جدول بنود الكوتيشن) كانت متسقّفة
+     بـ max-width:1280px ثابت. على شاشة أوسع، ده كان بيمنع الجدول إنه ياخد المساحة
+     المتاحة، فبيفضل قد كده بالظبط مهما كانت الشاشة أعرض، وأي أعمدة زيادة أو صفوف
+     بتضطر تتلف/تتقص جوه نفس المساحة الضيقة. رفعنا السقف لـ 1800px (بدل ما نشيله
+     خالص) عشان ياخد مساحة أكبر فعليًا على شاشات الديسكتوب من غير ما يتمطط بلا حدود
+     على الشاشات العملاقة جدًا. */
+  .main{ flex:1; padding:26px 34px; max-width:1800px; min-width:0; margin-right:235px; transition:margin-right .3s var(--bounce); }
   .sidebar.collapsed ~ .main{ margin-right:72px; }
   .topbar{ display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:22px; flex-wrap:wrap; gap:10px;}
   .topbar h2{ font-size:23px; font-weight:800; }
