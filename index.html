@@ -7420,6 +7420,18 @@ async function toConfirmBackfill_(){
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري السحب...';
   try {
     const res = await apiPost('backfillMissingHours', { items: selected });
+    // ⚠️ إصلاح: قبل كده لو كل البنود فشلت (زي اسم موظف مش متطابق مع شيت
+    // المرتبات)، كان بيقفل المودال ويوري "✅ نجح" رغم إن العدد الحقيقي = صفر —
+    // بصمت تمامًا من غير ما يوضح السبب. دلوقتي لو فيه أي فشل، المودال يفضل
+    // مفتوح ويوري رسالة حمرا واضحة بالأسباب، بدل ما يقفل ويوهمك إنه نجح.
+    if (res.failed && res.failed > 0) {
+      const reasons = (res.failures || []).map(f => `• ${qEsc(f.craftsman)} — ${qEsc(f.project)} (${qEsc(f.date)}): ${qEsc(f.error)}`).join('<br>');
+      msg.className = 'msg err'; msg.style.display = 'block';
+      msg.innerHTML = `⚠️ اتسحب ${res.count} سطر بنجاح، لكن فشل ${res.failed} سطر:<br>${reasons}<br><br>غالبًا السبب: اسم الموظف في سجل الشغل مش متطابق حرفيًا مع اسمه في شيت المرتبات — راجع الاسمين.`;
+      btn.disabled = false; btn.textContent = 'تأكيد سحب المختار (' + selected.length + ')';
+      if (res.count > 0) { renderCostSummaryBody_(); } // اللي نجح فعلاً يتحدث في الصفحة، حتى لو باقي حاجة فشلت
+      return;
+    }
     closeCardModal();
     showToast(`✅ اتسحب ${res.count} سطر — إجمالي التكلفة المضافة: ${fmt(res.totalCost)} ج`);
     const banner = document.getElementById('backfillBanner'); if (banner) banner.innerHTML = '';
