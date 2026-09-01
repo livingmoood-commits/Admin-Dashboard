@@ -8950,7 +8950,8 @@ function qBuildPdfHtml(forPreview){
   const notes = QCFG.noteLines.map(l => `<div style="margin-bottom:6px;">• ${l.replace('{DOLLAR}', dlr)}</div>`).join('');
   let tbody = '';
   QSTATE.rows.forEach((r,i) => {
-    const tot = qTot(r); const bg = i % 2 === 0 ? '#ffffff' : '#faf8f5';
+    const tot = qTot(r);
+    const bg = r.highlight === 'red' ? '#FF0000' : r.highlight === 'yellow' ? '#FFFF00' : (i % 2 === 0 ? '#ffffff' : '#faf8f5');
     const desc = qFormatDesc(r.description); const nt = (r.notes || '').replace(/\n/g,'<br>');
     tbody += `<tr style="background:${bg};border-bottom:1px solid #D9D0C4;">
       <td style="padding:8px 7px;text-align:center;color:#6B5E4E;font-size:11px;">${i+1}</td>
@@ -9696,7 +9697,7 @@ function pBuildPdfHtml(){
   PSTATE.rows.forEach((r,i) => {
     const amt = qNum(r.amount); let pct = '';
     if (amt > 0) { cumulative += amt; pct = total > 0 ? Math.min(100, (cumulative/total)*100) : 0; }
-    const bg = i % 2 === 0 ? '#ffffff' : '#faf8f5';
+    const bg = r.highlight === 'red' ? '#FF0000' : r.highlight === 'yellow' ? '#FFFF00' : (i % 2 === 0 ? '#ffffff' : '#faf8f5');
     tbody += `<tr style="background:${bg};border-bottom:1px solid #D9D0C4;">
       <td style="padding:8px 7px;text-align:center;color:#6B5E4E;font-size:11px;">${i+1}</td>
       <td style="padding:8px 7px;">${qEsc(r.name)}</td>
