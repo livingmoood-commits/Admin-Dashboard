@@ -828,6 +828,22 @@
      من غير ما تبان — عرض عريض أكتر وسطر بديل للنص الطويل بدل ما يتقص. */
   .q-tbl td input{ white-space:normal; }
 
+  /* ⚠️ إضافة: هايلايت أحمر/أصفر لأي صف في جدول الكوتيشن أو الدفعات — بيتحدد
+     بالضغط على زرار النقطة الملونة في آخر عمود، وبيتشال بنفس الطريقة (ضغطة
+     تانية على نفس اللون بتلغيه). لازم !important عشان يغلب لون الصف الزوجي/
+     الفردي الافتراضي وحالة hover. */
+  .q-tbl tbody tr.row-hl-red{ background:#fbe0de !important; }
+  .q-tbl tbody tr.row-hl-red:hover{ background:#f7cfcc !important; }
+  .q-tbl tbody tr.row-hl-yellow{ background:#fdf1cf !important; }
+  .q-tbl tbody tr.row-hl-yellow:hover{ background:#fbe8ae !important; }
+  .row-hl-btns{ display:inline-flex; gap:5px; vertical-align:middle; }
+  .row-hl-dot{ width:20px; height:20px; border-radius:50%; border:2px solid rgba(0,0,0,.15); cursor:pointer; padding:0; flex-shrink:0; }
+  .row-hl-dot.hl-red{ background:#e05a4e; }
+  .row-hl-dot.hl-yellow{ background:#e8bd3a; }
+  .row-hl-dot.active{ border-color:var(--dark); box-shadow:0 0 0 2px #fff inset; }
+  @media (max-width:760px){ .row-hl-btns{ margin-inline-end:8px; } }
+
+
   .q-discount-card{ background:var(--cream); border:1px solid var(--border); border-radius:6px; padding:14px 16px; margin:16px 0; }
   .q-discount-card .dc-title{ font-size:12px; font-weight:700; color:var(--muted); letter-spacing:.5px; margin-bottom:10px; }
   .q-dc-fields{ display:flex; flex-wrap:wrap; gap:22px; align-items:flex-end; }
@@ -8272,7 +8288,7 @@ let _qActionToken = 0; // بيتزود كل ما نبدأ عملية async جو�
 
 const qEsc = s => (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const qNum = v => parseFloat((v+'').replace(/,/g,'')) || 0;
-function qNewRow(){ return { _id:Math.random(), category:'', unit:'', description:'', qty:1, price:0, notes:'' }; }
+function qNewRow(){ return { _id:Math.random(), category:'', unit:'', description:'', qty:1, price:0, notes:'', highlight:null }; }
 // بيبني اسم ملف نظيف للـ PDF من اسم المشروع/العميل (بيشيل رموز ممنوعة في أسماء الملفات)
 function pdfFileTitle(prefix, name){
   const clean = String(name || '').trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim();
@@ -8729,7 +8745,7 @@ function qRenderRows(){
   const n = QSTATE.rows.length;
   const countEl = document.getElementById('q-items-count'); if (countEl) countEl.textContent = n;
   tb.innerHTML = QSTATE.rows.map((r,i) => `
-    <tr data-qrow="${r._id}">
+    <tr data-qrow="${r._id}" class="${r.highlight ? 'row-hl-'+r.highlight : ''}">
       <td data-label="#" style="text-align:center;color:var(--muted);font-size:11px;">${i+1}</td>
       <td data-label="النموذج"><input autocomplete="off" type="text" list="q-cat-list" value="${qEsc(r.category)}" placeholder="DOORS"
         oninput="qSetField(${r._id},'category',this.value)"></td>
@@ -8749,9 +8765,20 @@ function qRenderRows(){
         <button type="button" class="btn btn-sm" title="نقل لفوق" ${i===0?'disabled':''} onmousedown="event.preventDefault();" onclick="qMoveRow(${r._id},'up')">▲</button>
         <button type="button" class="btn btn-sm" title="نقل لتحت" ${i===n-1?'disabled':''} onmousedown="event.preventDefault();" onclick="qMoveRow(${r._id},'down')">▼</button>
         <button type="button" class="btn btn-sm btn-danger" onmousedown="event.preventDefault(); qDelRow(${r._id});">✕</button>
+        <span class="row-hl-btns">
+          <button type="button" class="row-hl-dot hl-red${r.highlight==='red'?' active':''}" title="هايلايت أحمر" onmousedown="event.preventDefault(); qSetHighlight(${r._id},'red');"></button>
+          <button type="button" class="row-hl-dot hl-yellow${r.highlight==='yellow'?' active':''}" title="هايلايت أصفر" onmousedown="event.preventDefault(); qSetHighlight(${r._id},'yellow');"></button>
+        </span>
       </td>
     </tr>`).join('');
   qRefreshTotals();
+}
+// بتحدد/تشيل هايلايت لوني (أحمر أو أصفر) لصف معيّن في جدول الكوتيشن — ضغطة
+// تانية على نفس اللون بتشيله (رجوع لبدون هايلايت)، وضغط لون تاني بيبدّل اللون.
+function qSetHighlight(id, color){
+  const r = QSTATE.rows.find(r => r._id === id); if (!r) return;
+  r.highlight = (r.highlight === color) ? null : color;
+  qRenderRows(); qSaveSession();
 }
 // بتبدّل مكان بند مع اللي فوقه/تحته مباشرة — تعديل في الذاكرة بس (زي باقي
 // تعديلات الكوتيشن) وبيتحفظ فعليًا في الشيت لما تحفظ الكوتيشن عادي.
@@ -9166,7 +9193,7 @@ function pMigrateRowName(name, idx){
     || /^الدفعة\s+.+\s+\(\d+\)$/.test(s);
   return isOldAuto ? pOrdinalName(idx) : s;
 }
-function pNewRow(idx){ return { _id:Math.random(), name: pOrdinalName(idx), amount:0, date:'', method:'' }; }
+function pNewRow(idx){ return { _id:Math.random(), name: pOrdinalName(idx), amount:0, date:'', method:'', highlight:null }; }
 const pToISO = d => { if(!d) return ''; const p=(d||'').split('/'); return p.length===3 ? `${p[2]}-${p[1]}-${p[0]}` : ''; };
 const pToEnGB = iso => { if(!iso) return ''; const p=iso.split('-'); return p.length===3 ? `${p[2]}/${p[1]}/${p[0]}` : ''; };
 function pTodayEnGB(){ return pToEnGB(new Date().toISOString().slice(0,10)); }
@@ -9505,6 +9532,12 @@ function pScrollTableBottom(){
   (lastRow || body).scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 function pDelRow(id){ PSTATE.rows = PSTATE.rows.filter(r => r._id !== id); pRenderRows(); pSaveSession(); }
+// نفس فكرة qSetHighlight بالظبط بس لجدول الدفعات
+function pSetHighlight(id, color){
+  const r = PSTATE.rows.find(r => r._id === id); if (!r) return;
+  r.highlight = (r.highlight === color) ? null : color;
+  pRenderRows(); pSaveSession();
+}
 function pSetField(id, f, v){ const r = PSTATE.rows.find(r => r._id === id); if (r) r[f] = v; pSaveSession(); }
 function pSetAmount(id, v){
   const r = PSTATE.rows.find(r => r._id === id); if (!r) return;
@@ -9541,14 +9574,20 @@ function pRenderRows(){
     const amt = qNum(r.amount); let pct = '';
     if (amt > 0) { cumulative += amt; pct = total > 0 ? Math.min(100, (cumulative/total)*100) : 0; }
     return `
-    <tr>
+    <tr class="${r.highlight ? 'row-hl-'+r.highlight : ''}">
       <td style="text-align:center;color:var(--muted);font-size:11px;">${i+1}</td>
       <td><input type="text" autocomplete="off" name="p-name-${r._id}" value="${qEsc(r.name)}" onchange="pSetField(${r._id},'name',this.value)" placeholder="${qEsc(pOrdinalName(i))}"></td>
       <td><input type="text" autocomplete="off" name="p-amount-${r._id}" class="ltr-num" inputmode="numeric" value="${r.amount||''}" onchange="pSetAmount(${r._id},this.value)" onkeypress="return /[0-9.]/.test(event.key)"></td>
       <td class="num-cell" style="text-align:center;">${pct!==''?pct.toFixed(0)+'%':'—'}</td>
       <td><input autocomplete="off" type="date" value="${pToISO(r.date)}" onchange="pSetDate(${r._id},this.value)" style="direction:ltr;width:132px;"></td>
       <td><input type="text" autocomplete="off" name="p-method-${r._id}" value="${qEsc(r.method||'')}" onchange="pSetField(${r._id},'method',this.value)" placeholder="اختياري"></td>
-      <td><button type="button" class="btn btn-sm btn-danger" onmousedown="event.preventDefault(); pDelRow(${r._id});">✕</button></td>
+      <td style="white-space:nowrap;">
+        <button type="button" class="btn btn-sm btn-danger" onmousedown="event.preventDefault(); pDelRow(${r._id});">✕</button>
+        <span class="row-hl-btns">
+          <button type="button" class="row-hl-dot hl-red${r.highlight==='red'?' active':''}" title="هايلايت أحمر" onmousedown="event.preventDefault(); pSetHighlight(${r._id},'red');"></button>
+          <button type="button" class="row-hl-dot hl-yellow${r.highlight==='yellow'?' active':''}" title="هايلايت أصفر" onmousedown="event.preventDefault(); pSetHighlight(${r._id},'yellow');"></button>
+        </span>
+      </td>
     </tr>`;
   }).join('');
   pRefreshTotals();
