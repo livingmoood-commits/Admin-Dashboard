@@ -1672,10 +1672,20 @@ const _API_MIN_DISPATCH_GAP_MS = 70;
 let _apiActiveCount = 0;
 let _apiLastDispatchAt = 0;
 const _apiWaitQueue = [];
-function _apiAcquireSlot(){
+// ⚠️ إضافة: أولوية للطلبات — التحميل المسبق في الخلفية (toWarmupBackground)
+// بيبعت كذا طلب ورا بعض (أسابيع + تايم بلاننج كل المشاريع)، ولو المستخدم
+// دوس فعليًا على تاب/صفحة في نفس اللحظة، طلبه الحقيقي كان بيقف في آخر الطابور
+// وراهم كلهم وياخد وقت أطول من اللازم (وده بالظبط سبب شكوى "الأسبوعي بيقعد
+// كتير"). دلوقتي طلبات المستخدم الحقيقية (priority='high', الافتراضي) بتتحط في
+// أول الطابور، وطلبات التحميل المسبق (priority='low') في آخره — فلو المستخدم
+// بيستنى حاجة فعلية، هي دايمًا بتتقدّم على أي تحميل خلفية مش مستعجل.
+function _apiAcquireSlot(priority){
   return new Promise(resolve => {
     const tryDispatch = () => {
-      if (_apiActiveCount >= _API_MAX_CONCURRENT) { _apiWaitQueue.push(tryDispatch); return; }
+      if (_apiActiveCount >= _API_MAX_CONCURRENT) {
+        if (priority === 'low') _apiWaitQueue.push(tryDispatch); else _apiWaitQueue.unshift(tryDispatch);
+        return;
+      }
       const gap = Date.now() - _apiLastDispatchAt;
       if (gap < _API_MIN_DISPATCH_GAP_MS) { setTimeout(tryDispatch, _API_MIN_DISPATCH_GAP_MS - gap); return; }
       _apiActiveCount++;
@@ -1692,9 +1702,9 @@ function _apiReleaseSlot(){
     next();
   }
 }
-async function _apiFetch(url, opts, _retryCount) {
+async function _apiFetch(url, opts, _retryCount, priority) {
   const isRetry = !!_retryCount;
-  if (!isRetry) await _apiAcquireSlot(); // الطلبات المُعاد محاولتها (retry) بتستخدم نفس السلوت المحجوز، مش تاخد سلوت جديد
+  if (!isRetry) await _apiAcquireSlot(priority); // الطلبات المُعاد محاولتها (retry) بتستخدم نفس السلوت المحجوز، مش تاخد سلوت جديد
   try {
     return await _apiFetchCore(url, opts, _retryCount);
   } finally {
@@ -1757,8 +1767,9 @@ async function _apiFetchCore(url, opts, _retryCount) {
 
 function _isUnknownActionError(msg){ return /Unknown (GET|POST) action/i.test(String(msg || '')); }
 
-async function apiGet(action, params) {
+async function apiGet(action, params, opts) {
   params = params || {};
+  const priority = (opts && opts.priority) || 'high';
   const key = _apiCacheKey(action, params);
 
   // 1) كاش الذاكرة الطازة — أسرع حاجة ممكنة، رجّعها فورًا
@@ -1788,7 +1799,7 @@ async function apiGet(action, params) {
   // 3) أول مرة خالص لطلب زي ده على الجهاز ده — مفيش أي كاش، لازم ننتظر السيرفر.
   // ⚠️ dedup: لو فيه طلب شغال بالفعل بنفس الـ key، استنى نتيجته بدل ما تبعت طلب تاني.
   if (_inFlight.has(key)) return _inFlight.get(key);
-  const promise = _apiFetch(url)
+  const promise = _apiFetch(url, undefined, undefined, priority)
     .then(data => { _apiCache.set(key, { t: Date.now(), data }); _lsSet(key, data); return data; })
     .finally(() => _inFlight.delete(key));
   _inFlight.set(key, promise);
@@ -10297,7 +10308,7 @@ async function toWarmupBackground(token) {
       if (isStaleNav(token)) return;
       if (TO_STATE.dailyCache[d]) continue;
       try {
-        const { entries } = await apiGet('listWorkflowEntries', { filters: { date: d } });
+        const { entries } = await apiGet('listWorkflowEntries', { filters: { date: d } }, { priority: 'low' });
         if (isStaleNav(token)) return;
         TO_STATE.dailyCache[d] = entries || [];
         if (TO_STATE.activeTab === 'daily' && TO_STATE.formDate === d) {
@@ -10316,15 +10327,26 @@ async function toWarmupBackground(token) {
       const dts = toGetWeekDates(anchor);
       const from = toISO(dts[0]), to = toISO(dts[6]);
       const key = from + '_' + to;
-      if (TO_STATE.weekCache[key]) continue;
+      if (TO_STATE.weekCache[key] && TO_STATE.weekHoursCache[key]) continue;
       try {
-        const { entries } = await apiGet('getWorkflowWeek', { from, to });
+        // ⚠️ إضافة: كنا بنحمّل شغل الأسبوع الوصفي بس مسبقًا، مش الساعات/السهرات —
+        // يعني حتى بعد التحميل المسبق، أول دوسة على "اسبوعي" كانت لازم تستنى
+        // نداء سيرفر تاني لسهراته. دلوقتي بنجيبهم مع بعض هنا كمان.
+        const [wfRes, hoursRes] = await Promise.all([
+          apiGet('getWorkflowWeek', { from, to }, { priority: 'low' }),
+          apiGet('listHoursEntries', { filters: { from, to } }, { priority: 'low' })
+        ]);
         if (isStaleNav(token)) return;
-        TO_STATE.weekCache[key] = entries || [];
+        TO_STATE.weekCache[key] = wfRes.entries || [];
+        TO_STATE.weekHoursCache[key] = hoursRes.entries || [];
         if (TO_STATE.activeTab === 'week') {
           const curDts = toGetWeekDates(TO_STATE.weekAnchor);
           const curKey = toISO(curDts[0]) + '_' + toISO(curDts[6]);
-          if (curKey === key) { TO_STATE.weekEntries = TO_STATE.weekCache[key]; toRenderWeekGrid(curDts, toISO(curDts[0]), toISO(curDts[6])); }
+          if (curKey === key) {
+            TO_STATE.weekEntries = TO_STATE.weekCache[key];
+            TO_STATE.weekHoursEntries = TO_STATE.weekHoursCache[key];
+            toRenderWeekGrid(curDts, toISO(curDts[0]), toISO(curDts[6]));
+          }
         }
       } catch (e) { /* تجاهل */ }
     }
@@ -10334,7 +10356,7 @@ async function toWarmupBackground(token) {
       if (isStaleNav(token)) return;
       if (TO_STATE.planCache[p]) continue;
       try {
-        const { items } = await apiGet('listMissingItems', { filters: { project: p } });
+        const { items } = await apiGet('listMissingItems', { filters: { project: p } }, { priority: 'low' });
         if (isStaleNav(token)) return;
         TO_STATE.planCache[p] = items || [];
         if (TO_STATE.activeTab === 'plan' && TO_PLAN_PROJECT === p) toRenderPlanBody(TO_STATE.planCache[p]);
