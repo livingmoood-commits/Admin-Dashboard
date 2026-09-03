@@ -3508,6 +3508,10 @@ function payrollOpenWeeklyReportModal(data){
         ${empChecklistHtml}
       </div>
     </div>
+    <label class="print-opt-row" style="margin-bottom:14px;border-top:1px solid var(--border);padding-top:10px;">
+      <input type="checkbox" id="wrIncludeTotalsCb2" checked>
+      <span>عايز إجمالي الشهر (كل الموظفين) في الآخر؟</span>
+    </label>
     <div style="display:flex;gap:8px;justify-content:flex-end;">
       <button class="btn btn-outline btn-sm" onclick="closeCardModal()">إلغاء</button>
       <button class="btn btn-primary btn-sm" id="wrShowBtn">عرض التقرير</button>
@@ -3517,7 +3521,8 @@ function payrollOpenWeeklyReportModal(data){
     const wi = parseInt(document.getElementById('wrWeekSelect').value, 10);
     const selected = Array.from(document.querySelectorAll('.wr-emp-check:checked')).map(cb => cb.value);
     if (!selected.length){ showToast('اختار موظف واحد على الأقل', 'error'); return; }
-    payrollShowWeeklyReport(wi, selected);
+    const includeTotals = document.getElementById('wrIncludeTotalsCb2').checked;
+    payrollShowWeeklyReport(wi, selected, includeTotals);
   });
 }
 
@@ -3531,7 +3536,7 @@ function wrToggleAllEmps_(checked){
   });
 }
 
-async function payrollShowWeeklyReport(weekIndex, employeeNames){
+async function payrollShowWeeklyReport(weekIndex, employeeNames, includeTotals){
   openCardModal(`<div class="cd-head"><h3>📄 تقرير اسبوعي</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="loading-row">جاري التحميل...</div>`);
   try {
     // ⚠️ إضافة 2026-08-15: employeeNames (مصفوفة من التشيك بوكس) بتتبعت زي ما هي
@@ -3542,7 +3547,12 @@ async function payrollShowWeeklyReport(weekIndex, employeeNames){
       return;
     }
     _wrLastReport = res;
-    payrollOpenWeeklyNameSelect_(res);
+    // ⚠️ تعديل: كان فيه مودال تاني هنا بيوريك نفس الموظفين اللي اخترتهم بالظبط
+    // تاني (زي ما هما) + تشيك بوكس "عايز إجمالي الشهر" — خطوة زيادة مالهاش لازمة
+    // لأن الموظفين أصلاً متحددين من المودال الأول. دلوقتي التشيك بوكس ده نقل
+    // للمودال الأول (شوف payrollOpenWeeklyReportModal)، وبنعرض التقرير على طول
+    // من غير خطوة وسط.
+    renderWeeklyReportModal_(res, new Set(employeeNames || []), includeTotals);
   } catch(err) {
     openCardModal(`<div class="cd-head"><h3>📄 تقرير اسبوعي</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="msg err" style="display:block;">حصل خطأ: ${qEsc(err.message||err)}</div>`);
   }
@@ -3787,8 +3797,7 @@ function renderWeeklyReportModal_(data, selectedNames, includeTotals){
   openCardModal(`
     <div class="cd-head"><h3>تقرير الأسبوع ${qEsc(data.weekLabel)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
-      <button class="btn btn-outline btn-sm" onclick="payrollOpenWeeklyNameSelect_(_wrLastReport)">← رجوع للاختيار</button>
-      <button class="btn btn-outline btn-sm" onclick="payrollOpenWeeklyReportModal(PAYSTATE.data)">← اسبوع تاني</button>
+      <button class="btn btn-outline btn-sm" onclick="payrollOpenWeeklyReportModal(PAYSTATE.data)">← رجوع للاختيار</button>
       <button class="btn btn-primary btn-sm" onclick="payrollPrintWeeklyReport()">⬇ تحميل PDF</button>
     </div>
     <div id="wrEmpList">${empHtml}</div>
