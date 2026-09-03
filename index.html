@@ -1740,12 +1740,14 @@ async function _apiFetchCore(url, opts, _retryCount) {
   // ⚠️ إصلاح: 404 هنا (حتى مع no-store) معناها غالبًا تصادم مؤقت على نفس الـ echo
   // key (طلبين قريبين جدًا من بعض لنفس الرابط بالظبط). مش خطأ حقيقي في البيانات —
   // بنعيد المحاولة تلقائي (طلب exec جديد بالكامل، مش نفس الـ echo) قبل ما نطلّع
-  // أي رسالة خطأ للمستخدم. كان بيوقف بعد محاولتين بس — ده مكنش كفاية في بعض
-  // الحالات (خصوصًا أول ما تفتح صفحة "مرتبات" وبتحصل كذا طلب قريبين من بعض)،
-  // فكان بيوصل لخطأ نهائي والصفحة تفضل عالقة على "جاري التحميل..." للأبد. دلوقتي
-  // 5 محاولات (بدل 2) بفاصل زمني متزايد، وده بيغطي الأغلبية الساحقة من الحالات.
-  if (res.status === 404 && _retryCount < 5) {
-    await new Promise(r => setTimeout(r, 350 * (_retryCount + 1)));
+  // أي رسالة خطأ للمستخدم.
+  // ⚠️ تعديل 2026-09-03: كانت 5 محاولات بفاصل 350ms×(n+1) (يوصل لـ1.75 ثانية فاصل
+  // قبل آخر محاولة) — وده ظهر إنه مش كافي في بعض الحالات (تصادمات بتتكرر عبر كذا
+  // صفحة رغم كل تعديلات الفرزنة). دلوقتي 9 محاولات، وبداية أسرع (150ms) بسقف
+  // أقصى 2.5 ثانية للفاصل عشان مانضيّعش وقت زيادة لو المحاولات الأولانية فشلت بسرعة.
+  if (res.status === 404 && _retryCount < 9) {
+    const delay = Math.min(150 * (_retryCount + 1), 2500);
+    await new Promise(r => setTimeout(r, delay));
     return _apiFetchCore(url, opts, _retryCount + 1);
   }
 
@@ -6003,6 +6005,16 @@ async function dSaveAll(){
     // ولو السيرفر لسه معندوش الأكشن ده (addDailyExpenseRows) بنرجع تلقائي للطريقة القديمة سطر سطر.
     try {
       const res = await apiPost('addDailyExpenseRows', { rows });
+      // ⚠️ إضافة: لو السيرفر اكتشف إن الدفعة دي بالكامل متسجلة بالفعل (حفظة مكررة
+      // بسبب دوسة "حفظ" تانية بعد بطء/تعليق)، منعرضش "اتسجل 0 مصروف" مربكة —
+      // نوضح السبب الحقيقي بدل كده.
+      if (res.duplicate) {
+        msg.className = 'msg ok'; msg.textContent = res.message || 'الأسطر دي متسجلة بالفعل، متسجلتش تاني';
+        DSTATE.rows = [dNewRow(), dNewRow(), dNewRow()];
+        dRenderRows();
+        dClearDraft();
+        return;
+      }
       saved = rows.length;
       payrollSyncResults = res.payrollSync || [];
     } catch (batchErr) {
