@@ -3740,7 +3740,7 @@ function renderWeeklyReportModal_(data, selectedNames, includeTotals){
     const daysHtml = days.length
       ? days.map(d => {
           const hasSehra = /سهر[ةه]/.test(d.note || '');
-          const noOtherCodes = !d.isFullAbsence && !d.add && !d.deduct && !d.absent && !d.withdraw;
+          const noOtherCodes = !d.isFullAbsence && !d.add && !d.deduct && !d.deductDays && !d.absent && !d.withdraw;
           return `
         <div style="padding:6px 0;border-bottom:1px dashed var(--border);">
           <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
@@ -3749,6 +3749,7 @@ function renderWeeklyReportModal_(data, selectedNames, includeTotals){
             ${d.isFridayWork ? `<span style="display:inline-block;background:#2C5F3A22;color:#2C5F3A;border:1px solid #2C5F3A55;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;">${d.workAmount ? `يوم شغل: ${fmt(d.workAmount)} ج` : 'حضر (يوم شغل)'}</span>` : ''}
             ${dayCodeChip_(hasSehra ? 'سهرة' : 'إضافة', d.add, '#2C5F3A')}
             ${dayCodeChip_('خصم', d.deduct, '#c0392b')}
+            ${d.deductDays > 0 ? `<span style="display:inline-block;background:#c0392b22;color:#c0392b;border:1px solid #c0392b55;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;margin-inline-end:5px;">خصم يوم: ${fmt(d.deductDays)} يوم (${fmt(d.deductDaysMoney)} ج)</span>` : ''}
             ${dayCodeChip_('غياب', d.absent, '#5e2f80')}
             ${dayCodeChip_('مسحوبات', d.withdraw, '#8a6408')}
             ${(!d.isFridayWork && noOtherCodes) ? '<span style="display:inline-block;background:#8a640822;color:#6B5E4E;border:1px solid #8a640855;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;">حضر</span>' : ''}
@@ -3952,6 +3953,7 @@ function _mrActionDayLineHtml_(d){
         ${d.isFridayWork ? `<span style="display:inline-block;background:#2C5F3A22;color:#2C5F3A;border:1px solid #2C5F3A55;border-radius:4px;padding:1px 7px;font-size:10.5px;font-weight:700;">${d.workAmount ? `يوم شغل: ${fmt(d.workAmount)} ج` : 'حضر (يوم شغل)'}</span>` : ''}
         ${chip(hasSehra ? 'سهرة' : 'إضافة', d.add, '#2C5F3A')}
         ${chip('خصم', d.deduct, '#c0392b')}
+        ${d.deductDays > 0 ? `<span style="display:inline-block;background:#c0392b22;color:#c0392b;border:1px solid #c0392b55;border-radius:4px;padding:1px 7px;font-size:10.5px;font-weight:700;margin-inline-end:4px;">خصم يوم: ${fmt(d.deductDays)} يوم (${fmt(d.deductDaysMoney)} ج)</span>` : ''}
         ${chip('غياب', d.absent, '#5e2f80')}
         ${chip('مسحوبات', d.withdraw, '#8a6408')}
       </div>
