@@ -3477,19 +3477,22 @@ function _payPositionPopover_(pop, anchorEl){
  * زرار "تحميل PDF" بيفتح نافذة طباعة منفصلة بنفس أسلوب الكوتيشن (_openPrintDoc). */
 let _wrLastReport = null;
 
-function payrollOpenWeeklyReportModal(data){
+async function payrollOpenWeeklyReportModal(data){
   const weeks = (data && data.weekHeaderBlocks) || [];
   if (!weeks.length){ showToast('مفيش أسابيع في الشهر ده', 'error'); return; }
   // ⚠️ إضافة 2026-08-15: قائمة تشيك بوكس بأسامي الموظفين الاسبوعيين الظاهرين في
   // الشهر المفتوح (data.rows) — عشان تختار مين يدخل التقرير بدل ما يطلع بالكل
-  // دايمًا. كل اسم بيظهر فوقه يوميته (من PAY_DAILY_RATES، محمّلة مسبقًا في renderPayroll).
+  // دايمًا. كل اسم بيظهر فوقه يوميته.
+  // ⚡ إصلاح 2026-09-06: بنجيب يومية الشهر المفتوح فعليًا (مش يومية شهر النظام
+  // الحالي) — راجع تعليق PAY_DAILY_RATES فوق لتفاصيل الباج.
+  const monthRates = await _dailyRatesForOpenMonth_();
   const empNames = (data.rows || []).map(r => r.name).filter(Boolean);
   const empChecklistHtml = empNames.length ? empNames.map(name => `
     <label class="wr-emp-row checked" onchange="this.classList.toggle('checked', this.querySelector('input').checked)">
       <input type="checkbox" class="wr-emp-check" value="${qEsc(name)}" checked>
       <span class="wr-emp-info">
         <span class="wr-emp-name">${qEsc(name)}</span>
-        <span class="wr-emp-rate">اليومية: <b>${fmt(PAY_DAILY_RATES[name]||0)} ج</b></span>
+        <span class="wr-emp-rate">اليومية: <b>${fmt(monthRates[name]||0)} ج</b></span>
       </span>
     </label>`).join('') : '<div class="empty" style="padding:6px 0;font-size:12.5px;">مفيش موظفين اسبوعيين مسجلين</div>';
 
@@ -4412,9 +4415,30 @@ let payrollQaLabels_ = {};
 let PAY_QA_DAYLIST = []; // [{label, iso}] — نفس قائمة الأيام الظاهرة، بتتحسب مرة واحدة لكل شهر/أسبوع مفتوح ومتاحة لكل موظف
 let PAY_PROJECTS = []; // بتتحمّل مرة واحدة في renderPayroll — مستخدمة في اختيار مشروع "سهرة"/"ساعات مشروع"
 let PAY_EVENING_RATES = {}; // اسم الموظف => سعر السهرة الافتراضي — بيتحمّل مرة واحدة برضو، لتعبئة مبلغ "سهرة" أوتوماتيك لكل موظف برقمه هو
-// ⚠️ إضافة 2026-08-15: اسم الموظف => اليومية — بيتحمّل مرة واحدة زي PAY_EVENING_RATES بالظبط،
-// مستخدمة في مودال "تقرير اسبوعي" عشان تتعرض فوق كل اسم موظف جنب التشيك بوكس بتاعه.
+// ⚠️ إضافة 2026-08-15: اسم الموظف => اليومية — بيتحمّل مرة واحدة زي PAY_EVENING_RATES بالظبط.
+// ⚠️ إصلاح 2026-09-06: دي كانت بتتحمّل مرة واحدة بس من getDailyRates اللي بيرجع يومية
+// "الشهر الحالي في النظام" فقط (مش الشهر المفتوح دلوقتي في الصفحة) — فلو فاتح شهر
+// قديم (زي أغسطس) وموظف مش موجود في شهر النظام الحالي (سبتمبر)، كانت يوميته بتطلع
+// 0 غلط في مودال "تقرير اسبوعي" حتى لو يوميته الحقيقية مسجلة صح في شهر أغسطس.
+// دلوقتي بنستخدمها كـ fallback بس، وبنجيب يومية الشهر المفتوح فعليًا من
+// _dailyRatesForOpenMonth_ (تحت) قبل ما نفتح المودال.
 let PAY_DAILY_RATES = {};
+// كاش بسيط: monthKey ("year-monthIndex") => {اسم الموظف: يوميته} — عشان منكررش
+// نفس الطلب لو المستخدم فتح مودال "تقرير اسبوعي" أكتر من مرة لنفس الشهر.
+let PAY_DAILY_RATES_BY_MONTH_ = {};
+async function _dailyRatesForOpenMonth_(){
+  const key = PAYSTATE.year + '-' + PAYSTATE.monthIndex;
+  if (PAY_DAILY_RATES_BY_MONTH_[key]) return PAY_DAILY_RATES_BY_MONTH_[key];
+  try {
+    const res = await apiGet('payrollListDetailsForMonth', { monthNum: PAYSTATE.monthIndex + 1 });
+    const map = {};
+    (res && res.employees || []).forEach(e => { map[e.name] = e.dailyRate || 0; });
+    PAY_DAILY_RATES_BY_MONTH_[key] = map;
+    return map;
+  } catch (e) {
+    return PAY_DAILY_RATES; // فشل الطلب؟ نرجع لأحسن حاجة متاحة بدل ما نكسر المودال
+  }
+}
 
 function payrollQuickAddPanelHtml_(data){
   const empNames = data.rows.map(r => r.name);
