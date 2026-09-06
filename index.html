@@ -3159,7 +3159,13 @@ async function _payrollHandleLoadError_(box, err, retryFn){
   showError(err);
 }
 async function payrollLoadSheet(){
-  const box = document.getElementById('pay-box');
+  // ⚡ إصلاح 2026-09-06 ("Cannot set properties of null (setting 'innerHTML')"):
+  // لو الصفحة اتغيّرت (أو #pay-box اتشال/اتعمله إعادة بناء) في نفس اللحظة اللي
+  // الدالة دي بتتنادى فيها (زي محاولة إعادة تلقائية من _payrollHandleLoadError_
+  // بعد تأخير، أو نداء متأخر من تبويب سابق)، getElementById كانت بترجع null
+  // وبعدين box.innerHTML كانت بتنهار على طول (السطر ده كان *قبل* try/catch
+  // أصلاً فمكانش بيتلقّط). نفس الفحص الموجود في payrollRenderTable بالظبط.
+  const box = document.getElementById('pay-box'); if (!box) return;
   // نحفظ مكان السكرول (يمين/شمال + فوق/تحت) بتاع الجدول القديم قبل ما نمسحه،
   // عشان بعد إعادة التحميل (مثلاً بعد تعديل خلية) نرجّعه لنفس المكان — بدل ما
   // يرجع يبدأ من أول الشهر (الأسبوع الأول) كل مرة وتضطر تلف تاني.
@@ -4728,7 +4734,8 @@ function summaryCellClass(header, raw){
 // اسم قديم متسيب لحد ما نتأكد إن مفيش حاجة تانية بتستدعيه بالاسم القديم
 function masterCellClass(header, raw){ return summaryCellClass(header, raw); }
 async function payrollLoadMaster(){
-  const box = document.getElementById('pay-box');
+  // ⚡ إصلاح 2026-09-06 — راجع نفس الكومنت في payrollLoadSheet فوق
+  const box = document.getElementById('pay-box'); if (!box) return;
   const prevWrap = box.querySelector('.tbl-wrap-scroll');
   const prevScroll = prevWrap ? { left: prevWrap.scrollLeft, top: prevWrap.scrollTop } : null;
   box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
@@ -4803,7 +4810,8 @@ function _payrollDetailsSetBusy_(busy) {
   document.querySelectorAll('#pd-list-panel button').forEach(b => b.disabled = busy);
 }
 async function payrollLoadDetails(){
-  const box = document.getElementById('pay-box');
+  // ⚡ إصلاح 2026-09-06 — راجع نفس الكومنت في payrollLoadSheet فوق
+  const box = document.getElementById('pay-box'); if (!box) return;
   box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
     const monthNum = PAYSTATE.monthIndex + 1;
