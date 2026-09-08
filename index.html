@@ -3522,15 +3522,36 @@ function _payPositionPopover_(pop, anchorEl){
  * زرار "تحميل PDF" بيفتح نافذة طباعة منفصلة بنفس أسلوب الكوتيشن (_openPrintDoc). */
 let _wrLastReport = null;
 
+// ⚡ إصلاح 2026-09-08 (زرار "تقرير اسبوعي" حاسس إنه "مش بيفتح على طول"): شوف
+// الشرح كامل تحت جوه payrollOpenWeeklyReportModal — التوكن ده بيتستخدم عشان
+// نمنع رد متأخر (من دوسة قديمة، أو لو المستخدم فتح كارت تاني في الوقت ده) إنه
+// يستبدل محتوى المودال بتاع دوسة أحدث بالغلط.
+let _wrOpenModalToken = 0;
+
 async function payrollOpenWeeklyReportModal(data){
   const weeks = (data && data.weekHeaderBlocks) || [];
   if (!weeks.length){ showToast('مفيش أسابيع في الشهر ده', 'error'); return; }
+  // ⚡ إصلاح 2026-09-08 (زرار "تقرير اسبوعي" حاسس إنه "مش بيفتح على طول"): كان
+  // بينتظر _dailyRatesForOpenMonth_() (طلب سيرفر، وممكن ياخد كذا ثانية خصوصًا
+  // أول طلب بعد فترة خمول) *قبل* ما يفتح أي مودال خالص — يعني من لحظة الدوسة
+  // لحد ما الرد يوصل، الشاشة ما فيهاش أي رد فعل نهائي. المستخدم بيحس إن الزرار
+  // معلق/مش شغال، فبيدوس تاني بالغلط (وده كان بيضاعف الطلب للسيرفر ويأخر الرد
+  // أكتر). دلوقتي بنفتح المودال فورًا بحالة "جاري التحميل" (نفس أسلوب
+  // payShowAdditionsPopover الموجود أصلاً في الملف ده)، وبعدين نستبدل محتواه
+  // بالفورم الحقيقي أول ما اليوميات توصل — بنتأكد كمان إن مفيش دوسة/فتح كارت
+  // تاني حصل في الوقت ده قبل ما نستبدل المحتوى (عن طريق _wrOpenModalToken).
+  const _wrToken = ++_wrOpenModalToken;
+  openCardModal(`
+    <div class="cd-head"><h3>📄 تقرير اسبوعي</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div class="loading-row" style="padding:16px 0;font-size:12.5px;">جاري التحميل...</div>
+  `);
   // ⚠️ إضافة 2026-08-15: قائمة تشيك بوكس بأسامي الموظفين الاسبوعيين الظاهرين في
   // الشهر المفتوح (data.rows) — عشان تختار مين يدخل التقرير بدل ما يطلع بالكل
   // دايمًا. كل اسم بيظهر فوقه يوميته.
   // ⚡ إصلاح 2026-09-06: بنجيب يومية الشهر المفتوح فعليًا (مش يومية شهر النظام
   // الحالي) — راجع تعليق PAY_DAILY_RATES فوق لتفاصيل الباج.
   const monthRates = await _dailyRatesForOpenMonth_();
+  if (_wrToken !== _wrOpenModalToken) return; // اتفتح كارت تاني/دوسة تانية في الوقت ده — متستبدلش محتواه
   const empNames = (data.rows || []).map(r => r.name).filter(Boolean);
   const empChecklistHtml = empNames.length ? empNames.map(name => `
     <label class="wr-emp-row checked" onchange="this.classList.toggle('checked', this.querySelector('input').checked)">
