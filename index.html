@@ -1,6 +1,11 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+<script>
+// ⚡ لازم يتنفذ فورًا هنا (قبل أي CSS)، وإلا الصفحة هتظهر لحظة بالوضع العادي
+// (فلاش) قبل ما تتقلب للوضع الليلي لو ده اختيار المستخدم المحفوظ.
+(function(){ try { if (localStorage.getItem('lm_darkMode') === '1') document.documentElement.setAttribute('data-theme', 'dark'); } catch(e){} })();
+</script>
 <link rel="icon" type="image/x-icon" href="favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
@@ -15,6 +20,19 @@
     --dark:#1E1A15; --dark2:#2a231c; --gold:#B8975A; --gold-dim:#8f7546; --cream:#F3EFEA;
     --muted:#6B5E4E; --green:#2C5F3A; --red:#c0392b; --white:#ffffff; --border:#e7e0d4;
     --bounce:cubic-bezier(.3,1.15,.55,1); /* أهدأ شوية من قبل (كانت overshoot عالي جدًا بيحس المستخدم إنها نطة) */
+  }
+  /* ⚡ إضافة: الوضع الليلي — الموقع فيه مئات الألوان الثابتة (hex) على مدار
+     الملف، مش بس متغيرات CSS، فتلوين كل حاجة يدوي مستحيل عمليًا من غير خطر
+     كبير إننا ننسى حتة. الحل العملي: قلب الألوان بالكامل (invert + hue-rotate)
+     على منطقة المحتوى الرئيسي (.main) وكل المودالات/التوست (أي حاجة direct
+     child لـbody غير #appRoot ونظام الدخول login-wrap) — بيدي نفس الإحساس
+     البصري لـ"دارك مود" حقيقي من غير ما نلمس آلاف الأسطر. الشريط الجانبي
+     والشريط السفلي أصلاً دارك التصميم زي ما هو، فمتسيبناهم زي ما هما بالظبط
+     (تركهم برا الـfilter عشان موقعهم position:fixed ومنعرضش نكسر تثبيتهم).
+     شاشة الدخول (login-wrap) أصلاً تصميمها غامق بخلفية/تدرج داكن، فمحتاجاش تتغير. */
+  html[data-theme="dark"] .main,
+  html[data-theme="dark"] body > *:not(#appRoot):not(.login-wrap){
+    filter: invert(1) hue-rotate(180deg);
   }
   *{box-sizing:border-box; margin:0; padding:0;}
   body{ font-family:'Cairo',sans-serif; background:var(--cream); color:var(--dark); display:flex; min-height:100vh; overflow-x:hidden; }
@@ -1232,6 +1250,7 @@
     <button data-page="quotation" data-qp-group="1"><span class="icon">&#128221;</span><span class="label">Quotations &amp; Payments</span></button>
   </div>
   <div class="user-menu">
+    <button class="user-menu-btn" id="darkModeToggleBtn" onclick="toggleDarkMode()"><span class="icon" id="darkModeIcon">&#127769;</span><span class="label" id="darkModeLabel">الوضع الليلي</span></button>
     <button class="user-menu-btn" onclick="openChangePassModal()"><span class="icon">&#128273;</span><span class="label">تغيير كلمة السر</span></button>
     <button class="user-menu-btn" onclick="logout()"><span class="icon">&#128682;</span><span class="label">تسجيل خروج</span></button>
     <div class="label" id="buildVersionLabel" style="text-align:center;font-size:10px;color:#6B5E4E;padding:6px 0 2px;opacity:.7;">…</div>
@@ -2159,8 +2178,34 @@ function applyRoleAccess() {
   if (badge) badge.textContent = sessionStorage.getItem('lm_userName') || '';
 }
 
+// ⚡ إضافة: الوضع الليلي — راجع كومنت الـCSS جنب html[data-theme="dark"] فوق
+// لشرح الفكرة (قلب الألوان بدل تلوين كل حاجة يدوي). التفضيل بيتحفظ في
+// localStorage وبيتطبق فورًا في أول سطر بالملف (قبل أي CSS) عشان مفيش فلاش.
+function _darkModeIsOn(){ return document.documentElement.getAttribute('data-theme') === 'dark'; }
+function _updateDarkModeBtn(){
+  const icon = document.getElementById('darkModeIcon');
+  const label = document.getElementById('darkModeLabel');
+  const on = _darkModeIsOn();
+  if (icon) icon.innerHTML = on ? '&#9728;&#65039;' : '&#127769;';
+  if (label) label.textContent = on ? 'الوضع العادي' : 'الوضع الليلي';
+}
+function toggleDarkMode(){
+  const on = !_darkModeIsOn();
+  if (on) document.documentElement.setAttribute('data-theme', 'dark');
+  else document.documentElement.removeAttribute('data-theme');
+  try { localStorage.setItem('lm_darkMode', on ? '1' : '0'); } catch(e){}
+  _updateDarkModeBtn();
+}
+_updateDarkModeBtn();
+
 function showError(err){
   const msg = (err && err.message) || String(err);
+  // ⚡ إصلاح: "Cannot set properties of null (setting 'innerHTML')" — بيحصل
+  // نادرًا لما المستخدم يتنقل بسرعة بين الصفحات وrender لصفحة قديمة لسه شغال
+  // في الخلفية (Promise لسه مستني رد السيرفر) يحاول يكتب في عنصر اتشال/اتغيّر
+  // خلاص لأن صفحة تانية فتحت. مفيش أي فايدة نعرض رسالة خطأ مخيفة زي دي —
+  // المستخدم أصلاً بيبص على صفحة تانية دلوقتي، فبنتجاهلها بهدوء بدل ما تظهر.
+  if (/Cannot set propert(y|ies) of null/i.test(msg)) return;
   if (_isUnknownActionError(msg)) {
     document.getElementById('content').innerHTML = `<div class="panel"><div class="msg err" style="display:block;">
       ⚠️ ${msg} — السبب الغالب إن رابط الـ Web App لسة قديمة مش مطابقة لآخر تعديل في الكود. لازم تدخل محرر Apps Script → Deploy → Manage deployments → دوس على قلم التعديل (✒️) → Version: New version → Deploy، وبعدكدا ريفرش الصفحة.
@@ -3662,7 +3707,13 @@ function _payrollFinalCalcRunningRows_(daysLabel, dayWages, additions, deduction
 function _wrEmployeeFinalCalc_(e){
   const dailyRate = e.dailyRate || 0;
   const t = e.totals || {};
-  const absenceDays = t.fullAbsenceDays || 0;
+  // ⚡ إصلاح: كان بياخد بس "خلية = 0 لوحدها" (fullAbsenceDays) كغياب — لو المستخدم
+  // استخدم كود "غ" الصريح (زرار "غياب" في الإضافة السريعة) في خلية فيها كمان كود
+  // تاني في نفس الوقت (زي حالة شغل الجمعة اللي بتحط "800ج" على خلية السبت، والموظف
+  // غاب السبت نفسه فعليًا فتتضاف "1غ" في نفس الخلية)، الخلية مبقتش "0" لوحدها،
+  // فـfullAbsenceDays كان بيتجاهلها تمامًا ومكنش بيتخصم يوم الغياب من الأجر خالص
+  // رغم إن t.absent (مجموع كل أكواد "غ") كانت متحسوبة صح أصلاً، بس متستخدمش هنا.
+  const absenceDays = (t.fullAbsenceDays || 0) + (t.absent || 0);
   const workedFriday = (e.days || []).some(d => d.isFridayWork);
   const workDays = Math.max(0, 6 - absenceDays + (workedFriday ? 1 : 0));
   const dayWages = workDays * dailyRate;
