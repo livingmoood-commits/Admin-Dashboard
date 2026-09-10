@@ -3952,19 +3952,19 @@ function wrConfirmNames_(){
 // فمحتاج طريقة سريعة ترجع فوق من غير ما تلف بإيدك. #cardDetailModal نفسه
 // هو اللي بيعمل سكرول (overflow-y:auto على الأوفرلاي كله)، فبنعمل scrollTo
 // عليه مباشرة.
-// ⚠️ إصلاح 2026-09-10 (تالت): جربنا position:sticky بس مكانش شغال صح —
-// العنصر متحط جوه أول التقرير (تحت الهيدر)، وsticky بـbottom بيلزّق العنصر
-// بس لما مكانه الطبيعي يوصل قريب من نهاية الحاوية (زي فوتر)، مش وهو لسه فوق
-// خالص — فكان بيفضل قاعد مكانه الأول تحت الهيدر وميتحركش لما تنزل بالسكرول.
-// رجّعنا position:fixed (بيفضل ظاهر في نفس المكان على الشاشة طول ما بتنزل،
-// وده المطلوب فعليًا: "ينزل معايا") بس في الركن الشمال زي ما اتطلب.
+// ⚠️ إصلاح 2026-09-10 (رابع): جربنا sticky وfixed (زرار طايف فوق المحتوى) —
+// المطلوب فعليًا إنه يكون عنصر عادي جوه الجدول نفسه (آخر حاجة في التقرير،
+// بعد كل الموظفين والإجماليات)، محاذي شمال، مش طايف فوق حاجة. اتحط هنا في
+// آخر الـHTML بتاع المودال (بعد _wrPerEmployeeTableHtml_).
 function _wrScrollTopBtnHtml_(){
   return `
-    <button type="button" title="ارجع لأول التقرير"
-      onclick="document.getElementById('cardDetailModal').scrollTo({top:0,behavior:'smooth'})"
-      style="position:fixed;bottom:22px;left:22px;z-index:980;width:46px;height:46px;border-radius:50%;
-        background:var(--dark);color:#D4B483;border:none;font-size:19px;line-height:1;cursor:pointer;
-        box-shadow:0 6px 18px rgba(30,26,21,.35);display:flex;align-items:center;justify-content:center;">↑</button>`;
+    <div style="text-align:left;margin-top:14px;">
+      <button type="button" title="ارجع لأول التقرير"
+        onclick="document.getElementById('cardDetailModal').scrollTo({top:0,behavior:'smooth'})"
+        style="width:46px;height:46px;border-radius:50%;
+          background:var(--dark);color:#D4B483;border:none;font-size:19px;line-height:1;cursor:pointer;
+          box-shadow:0 6px 18px rgba(30,26,21,.35);display:inline-flex;align-items:center;justify-content:center;">↑</button>
+    </div>`;
 }
 
 function renderWeeklyReportModal_(data, selectedNames, includeTotals){
@@ -4051,10 +4051,10 @@ function renderWeeklyReportModal_(data, selectedNames, includeTotals){
       <button class="btn btn-outline btn-sm" onclick="payrollOpenWeeklyReportModal(PAYSTATE.data)">← رجوع للاختيار</button>
       <button class="btn btn-primary btn-sm" onclick="payrollPrintWeeklyReport()">⬇ تحميل PDF</button>
     </div>
-    ${_wrScrollTopBtnHtml_()}
     <div id="wrEmpList">${empHtml}</div>
     ${window._wrIncludeTotals ? _wrGrandTotalsTableHtml_(allEmployees, false) : ''}
     ${window._wrIncludeTotals ? _wrPerEmployeeTableHtml_(allEmployees, false) : ''}
+    ${_wrScrollTopBtnHtml_()}
   `);
 }
 function payrollPrintWeeklyReport(){
