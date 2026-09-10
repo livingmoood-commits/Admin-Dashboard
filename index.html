@@ -3952,14 +3952,19 @@ function wrConfirmNames_(){
 // فمحتاج طريقة سريعة ترجع فوق من غير ما تلف بإيدك. #cardDetailModal نفسه
 // هو اللي بيعمل سكرول (overflow-y:auto على الأوفرلاي كله)، فبنعمل scrollTo
 // عليه مباشرة.
-// ⚠️ إصلاح 2026-09-10 (خامس): المكان (تحت شمال) تمام، بس المطلوب يفضل طايف
-// (position:fixed) وينزل مع السكرول بدل ما يكون عنصر تابت في آخر الجدول —
-// يعني ظاهر طول الوقت في نفس البقعة دي من الشاشة، مش بس وانت واصل لآخر التقرير.
+// ⚠️ إصلاح 2026-09-10 (سادس): position:fixed;left:22px كان بيلزّقه في حرف
+// شاشة المتصفح نفسها، مش في حرف بطاقة التقرير (.cd-card) — على شاشة عريضة
+// البطاقة نفسها في النص وبينها وبين حرف الشاشة مسافة كبيرة فاضية، فكان بيبان
+// بعيد عن "مكانه" اللي اتحدد قبل كده (جوه البطاقة، تحت شمال المحتوى).
+// الحل: نحسب left بمعادلة CSS تطابق بالظبط نفس تمركز/عرض .cd-card
+// (width:min(560px,94vw) في النص) + الـpadding الداخلي بتاعها (22px) —
+// كده الزرار بيتحاذى مع حرف محتوى البطاقة نفسه مهما كان عرض الشاشة، وفي
+// نفس الوقت position:fixed فبيفضل طايف وينزل مع السكرول.
 function _wrScrollTopBtnHtml_(){
   return `
     <button type="button" title="ارجع لأول التقرير"
       onclick="document.getElementById('cardDetailModal').scrollTo({top:0,behavior:'smooth'})"
-      style="position:fixed;bottom:22px;left:22px;z-index:980;width:46px;height:46px;border-radius:50%;
+      style="position:fixed;bottom:22px;left:calc(50vw - min(280px,47vw) + 22px);z-index:980;width:46px;height:46px;border-radius:50%;
         background:var(--dark);color:#D4B483;border:none;font-size:19px;line-height:1;cursor:pointer;
         box-shadow:0 6px 18px rgba(30,26,21,.35);display:flex;align-items:center;justify-content:center;">↑</button>`;
 }
