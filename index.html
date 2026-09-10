@@ -3727,6 +3727,76 @@ function _wrGrandTotalsTableHtml_(employees, forPrint){
     </div>`;
 }
 
+// ⚡ إضافة 2026-09-10: جدول تفصيلي — كل موظف في صف لوحده تحت جدول "إجمالي
+// التقرير" فوق، بصافي أسبوعه + إضافاته/خصوماته/مسحوباته/شغل الجمعة/أيام
+// الغياب. الترتيب المطلوب: صافي الأسبوع، إضافات، خصومات، مسحوبات، شغل
+// الجمعة، أيام الغياب. الإضافات وشغل الجمعة بإشارة (+) ولون أخضر، والخصومات/
+// المسحوبات/الغياب بإشارة (−) ولون أحمر — عشان تبان بصريًا وبالإشارة مع بعض.
+function _wrPerEmployeeTableHtml_(employees, forPrint){
+  if (!employees || !employees.length) return '';
+  const findSum = (e, label) => {
+    const it = (e.weekSummary || []).find(s => s.label === label);
+    return it ? qNum(it.value) : 0;
+  };
+  const rows = employees.map(e => {
+    const t = e.totals || {};
+    return {
+      name: e.name,
+      net: findSum(e, 'صافي الأسبوع'),
+      add: qNum(t.add),
+      deduct: qNum(t.deduct),
+      withdraw: qNum(t.withdraw),
+      fridayWork: qNum(t.fridayWork),
+      absenceDays: findSum(e, 'أيام الغياب')
+    };
+  });
+  const green = '#2C5F3A', red = '#c0392b', muted = forPrint ? '#9a8f7d' : 'var(--muted)';
+  const signed = (val, unit, positive) => {
+    if (!val) return `<span style="color:${muted};">—</span>`;
+    const color = positive ? green : red;
+    return `<span style="color:${color};font-weight:700;direction:ltr;">${positive ? '+' : '−'}${fmt(val)} ${unit}</span>`;
+  };
+  const border = forPrint ? '#E7E0D4' : 'var(--border)';
+  const headBg = forPrint ? '#2C5F3A' : '#1E1A15';
+  const cellSize = forPrint ? '10.5px' : '12.5px';
+  const th = label => `<th style="padding:6px 8px;text-align:center;">${qEsc(label)}</th>`;
+  const tableHtml = `
+    <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:${cellSize};min-width:560px;">
+        <thead>
+          <tr style="background:${headBg};color:#fff;">
+            <th style="padding:6px 8px;text-align:right;">الموظف</th>
+            ${th('صافي الأسبوع')}${th('إضافات (سهرات)')}${th('خصومات')}${th('مسحوبات')}${th('شغل الجمعة')}${th('أيام الغياب')}
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => `
+          <tr style="border-bottom:1px solid ${border};">
+            <td style="padding:6px 8px;font-weight:700;">${qEsc(r.name)}</td>
+            <td style="padding:6px 8px;text-align:center;font-weight:700;direction:ltr;">${fmt(r.net)} ج</td>
+            <td style="padding:6px 8px;text-align:center;">${signed(r.add, 'ج', true)}</td>
+            <td style="padding:6px 8px;text-align:center;">${signed(r.deduct, 'ج', false)}</td>
+            <td style="padding:6px 8px;text-align:center;">${signed(r.withdraw, 'ج', false)}</td>
+            <td style="padding:6px 8px;text-align:center;">${signed(r.fridayWork, 'ج', true)}</td>
+            <td style="padding:6px 8px;text-align:center;">${signed(r.absenceDays, 'يوم', false)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  if (forPrint) {
+    return `
+      <div style="margin-top:16px;border-top:2px solid #B8975A;padding-top:12px;">
+        <div style="font-weight:700;font-size:13px;margin-bottom:6px;">👥 تفصيل كل موظف</div>
+        ${tableHtml}
+      </div>`;
+  }
+  return `
+    <div class="panel" style="margin-top:12px;">
+      <h4 style="margin-bottom:8px;">👥 تفصيل كل موظف</h4>
+      ${tableHtml}
+    </div>`;
+}
+
 // ⚠️ إضافة 2026-08-21: صفوف "الناتج بعد كل خطوة" — مشتركة بين التقرير
 // الأسبوعي والشهري (مودال + PDF) عشان نفس الحساب بالظبط في كل مكان. كل صف
 // بيرجع قيمته لوحدها + "الناتج" التراكمي لحد الصف ده (يعني لو طبّقت كل
@@ -3916,6 +3986,7 @@ function renderWeeklyReportModal_(data, selectedNames, includeTotals){
     </div>
     <div id="wrEmpList">${empHtml}</div>
     ${window._wrIncludeTotals ? _wrGrandTotalsTableHtml_(allEmployees, false) : ''}
+    ${window._wrIncludeTotals ? _wrPerEmployeeTableHtml_(allEmployees, false) : ''}
   `);
 }
 function payrollPrintWeeklyReport(){
@@ -4001,6 +4072,7 @@ function payrollBuildWeeklyReportPdfHtml_(data){
   }).join('') : '<p style="text-align:center;color:#6B5E4E;padding:20px;">مفيش موظفين اسبوعيين مسجلين</p>';
 
   const grandTotalsHtml = window._wrIncludeTotals ? _wrGrandTotalsTableHtml_((_wrLastReport && _wrLastReport.employees) || employees, true) : '';
+  const perEmployeeHtml = window._wrIncludeTotals ? _wrPerEmployeeTableHtml_((_wrLastReport && _wrLastReport.employees) || employees, true) : '';
 
   return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"/>
   <title>${qEsc(pdfFileTitle('تقرير اسبوعي', data.weekLabel))}</title>
@@ -4027,6 +4099,7 @@ function payrollBuildWeeklyReportPdfHtml_(data){
     <p style="text-align:center;color:#6B5E4E;font-size:12.5px;margin-bottom:18px;">الأسبوع ${qEsc(data.weekLabel)} &nbsp;(${qEsc(data.from)} → ${qEsc(data.to)})</p>
     ${sections}
     ${grandTotalsHtml}
+    ${perEmployeeHtml}
     <div class="footer">Living Mood</div>
   </div></body></html>`;
 }
