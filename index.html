@@ -3947,6 +3947,21 @@ function wrConfirmNames_(){
   const includeTotals = document.getElementById('wrIncludeTotalsCb').checked;
   renderWeeklyReportModal_(_wrLastReport, _payrollSelectedNames_('wr'), includeTotals);
 }
+// ⚡ إضافة 2026-09-10: زرار فلوتينج ثابت (position:fixed) بيرجع لأول مودال
+// "تقرير اسبوعي" بسكرول smooth — لما اخترت أكتر من موظف، المودال بيبقى طويل
+// جدًا (كل موظف بتفاصيل أيامه)، فمحتاج طريقة سريعة ترجع فوق من غير ما تلف
+// بإيدك. #cardDetailModal نفسه هو اللي بيعمل سكرول (overflow-y:auto على
+// الأوفرلاي كله)، فبنعمل scrollTo عليه مباشرة. position:fixed بيخليه ثابت
+// في الشاشة طول ما المودال مفتوح، بغض النظر عن مكان السكرول الحالي.
+function _wrScrollTopBtnHtml_(){
+  return `
+    <button type="button" title="ارجع لأول التقرير"
+      onclick="document.getElementById('cardDetailModal').scrollTo({top:0,behavior:'smooth'})"
+      style="position:fixed;bottom:22px;left:22px;z-index:980;width:46px;height:46px;border-radius:50%;
+        background:var(--dark);color:#D4B483;border:none;font-size:19px;line-height:1;cursor:pointer;
+        box-shadow:0 6px 18px rgba(30,26,21,.35);display:flex;align-items:center;justify-content:center;">↑</button>`;
+}
+
 function renderWeeklyReportModal_(data, selectedNames, includeTotals){
   const allEmployees = data.employees || [];
   const employees = selectedNames ? allEmployees.filter(e => selectedNames.has(e.name)) : allEmployees;
@@ -4031,6 +4046,7 @@ function renderWeeklyReportModal_(data, selectedNames, includeTotals){
       <button class="btn btn-outline btn-sm" onclick="payrollOpenWeeklyReportModal(PAYSTATE.data)">← رجوع للاختيار</button>
       <button class="btn btn-primary btn-sm" onclick="payrollPrintWeeklyReport()">⬇ تحميل PDF</button>
     </div>
+    ${_wrScrollTopBtnHtml_()}
     <div id="wrEmpList">${empHtml}</div>
     ${window._wrIncludeTotals ? _wrGrandTotalsTableHtml_(allEmployees, false) : ''}
     ${window._wrIncludeTotals ? _wrPerEmployeeTableHtml_(allEmployees, false) : ''}
