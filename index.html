@@ -3642,8 +3642,10 @@ function _wrComputeGrandTotals_(employees){
   const totals = { add: 0, deduct: 0, absent: 0, withdraw: 0, fridayWork: 0, fullAbsenceDays: 0 };
   const weekSumTotals = {}; const weekSumOrder = [];
   // ⚡ إضافة 2026-09-10: قيمة أيام الغياب بالجنيه (عدد الأيام × يومية كل موظف)
-  // — عشان صف "أيام الغياب" يقدر يورّي "كام يوم" و"سعرهم توتال" مع بعض.
+  // — عشان صف "أيام الغياب" يقدر يورّي "كام يوم" و"سعرهم توتال" مع بعض، وكمان
+  // تفصيلة لكل موظف لوحده (مين أخد كام يوم وبقيمة كام) بدل رقم مجمّع غامض.
   let absenceDaysCost = 0;
+  const absenceBreakdown = [];
   (employees || []).forEach(e => {
     const t = e.totals || {};
     totals.add += qNum(t.add); totals.deduct += qNum(t.deduct); totals.absent += qNum(t.absent);
@@ -3652,10 +3654,17 @@ function _wrComputeGrandTotals_(employees){
     (e.weekSummary || []).forEach(s => {
       if (!(s.label in weekSumTotals)) { weekSumTotals[s.label] = 0; weekSumOrder.push(s.label); }
       weekSumTotals[s.label] += qNum(s.value);
-      if (s.label === 'أيام الغياب') absenceDaysCost += qNum(s.value) * qNum(e.dailyRate);
+      if (s.label === 'أيام الغياب') {
+        const days = qNum(s.value);
+        if (days > 0) {
+          const cost = days * qNum(e.dailyRate);
+          absenceDaysCost += cost;
+          absenceBreakdown.push({ name: e.name, days, cost });
+        }
+      }
     });
   });
-  return { totals, weekSumTotals, weekSumOrder, absenceDaysCost, count: (employees || []).length };
+  return { totals, weekSumTotals, weekSumOrder, absenceDaysCost, absenceBreakdown, count: (employees || []).length };
 }
 // HTML الجدول نفسه — بتتنادى مرتين (مودال بستايل عادي، وPDF بستايل الطباعة) —
 // forPrint بيتحكم في الألوان/الفونت سايز عشان تتناسب مع باقي الـ PDF.
@@ -3671,7 +3680,12 @@ function _wrGrandTotalsTableHtml_(employees, forPrint){
   g.weekSumOrder.forEach(label => {
     const total = g.weekSumTotals[label];
     if (label === 'أيام الغياب') {
-      rows.push([label, `${fmt(total)} يوم${g.absenceDaysCost ? ` — قيمتهم: ${fmt(g.absenceDaysCost)} ج` : ''}`]);
+      // ⚡ إضافة 2026-09-10: مش بس إجمالي مجمّع — تفصيلة كل موظف لوحده (مين
+      // أخد كام يوم وبقيمة كام) عشان الرقم يبقى واضح ومفهوم مين وراه.
+      const breakdownTxt = g.absenceBreakdown.length
+        ? ' — ' + g.absenceBreakdown.map(b => `${b.name}: ${fmt(b.days)} يوم (${fmt(b.cost)} ج)`).join(' · ')
+        : '';
+      rows.push([label, `${fmt(total)} يوم${g.absenceDaysCost ? ` — قيمتهم: ${fmt(g.absenceDaysCost)} ج` : ''}${breakdownTxt}`]);
     } else if (label === 'ساعات الأوفر') {
       rows.push([label, fmt(total) + ' ساعة']);
     } else {
@@ -3680,7 +3694,10 @@ function _wrGrandTotalsTableHtml_(employees, forPrint){
   });
   rows.push(['إجمالي الإضافات (سهرات)', fmt(g.totals.add) + ' ج']);
   rows.push(['إجمالي الخصومات', fmt(g.totals.deduct) + ' ج']);
-  rows.push(['إجمالي الغياب', fmt(g.totals.absent) + ' ج' + (g.totals.fullAbsenceDays ? ` (${g.totals.fullAbsenceDays} يوم كامل)` : '')]);
+  // ⚠️ إزالة 2026-09-10: صف "إجمالي الغياب" (المحسوب من كود 'غ' + عدد أيام
+  // الغياب الكامل) كان بيكرر نفس معنى صف "أيام الغياب" فوق (اللي بقى دلوقتي
+  // واضح ومفصّل لوحده)، وبيلخبط لأنه بيورّي "0 ج" غالبًا رغم وجود غياب فعلي —
+  // اتشال بناءً على طلب المستخدم.
   rows.push(['إجمالي المسحوبات', fmt(g.totals.withdraw) + ' ج']);
   if (g.totals.fridayWork) rows.push(['إجمالي شغل الجمعة', fmt(g.totals.fridayWork) + ' ج']);
   rows.push(['عدد الموظفين في التقرير', String(g.count)]);
@@ -8751,21 +8768,39 @@ function qShowLessClist_(){
 // العنوان، ولو الاتنين فاضيين بيتحط في مجموعة "بدون اسم".
 let _qOpenClientKeys = new Set();
 
+// ⚡ إصلاح 2026-09-10: اسم نفس العميل بيتكتب أحيانًا بفروق بسيطة (مسافات حوالين
+// "/"، حالة الحروف الكبيرة/الصغيرة — "Eng / Sherief" مقابل "Eng/ sherief")،
+// فكان بيتجمع كمجموعتين منفصلتين بدل مجموعة واحدة. الحل: نجمع حسب نسخة
+// "منظّفة" من الاسم (بدون فروق مسافات/حالة أحرف)، مع إننا لسه بنعرض أكتر
+// صيغة شائعة من الاسم زي ما اتكتبت فعليًا (مش نسخة منظّفة غريبة الشكل).
+function _qNormalizeClientKey_(s){
+  return String(s || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s*\/\s*/g, '/')   // "Eng / Sherief" و"Eng/ sherief" → نفس الشكل
+    .replace(/\s+/g, ' ');
+}
+
 function qGroupCustomers_(customers){
-  const groups = {};
+  const groups = {}; // normKey -> { display, variantCounts, items }
   const order = [];
   customers.forEach(c => {
-    const key = (c.engineer && c.engineer.trim()) || (c.address && c.address.trim()) || 'بدون اسم';
-    if (!groups[key]) { groups[key] = []; order.push(key); }
-    groups[key].push(c);
+    const raw = (c.engineer && c.engineer.trim()) || (c.address && c.address.trim()) || 'بدون اسم';
+    const normKey = raw === 'بدون اسم' ? raw : _qNormalizeClientKey_(raw);
+    if (!groups[normKey]) { groups[normKey] = { display: raw, variantCounts: {}, items: [] }; order.push(normKey); }
+    const g = groups[normKey];
+    g.variantCounts[raw] = (g.variantCounts[raw] || 0) + 1;
+    // نعرض أكتر صيغة اتكررت (لو تعادل، أول صيغة ظهرت هي اللي بتفضل)
+    if (g.variantCounts[raw] > g.variantCounts[g.display]) g.display = raw;
+    g.items.push(c);
   });
   // ترتيب أبجدي A→Z (عربي/إنجليزي مع بعض) — 'بدون اسم' آخر واحدة دايمًا
   order.sort((a,b) => {
     if (a === 'بدون اسم') return 1;
     if (b === 'بدون اسم') return -1;
-    return a.localeCompare(b, 'en', { sensitivity:'base' });
+    return groups[a].display.localeCompare(groups[b].display, 'en', { sensitivity:'base' });
   });
-  return order.map(key => ({ key, items: groups[key] }));
+  return order.map(normKey => ({ key: groups[normKey].display, items: groups[normKey].items }));
 }
 
 function qToggleClientRow_(key){
