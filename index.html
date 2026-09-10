@@ -3671,7 +3671,14 @@ function _wrGrandTotalsTableHtml_(employees, forPrint){
   g.weekSumOrder.forEach(label => {
     const total = g.weekSumTotals[label];
     if (label === 'أيام الغياب') {
-      rows.push([label, `${fmt(total)} يوم${g.absenceDaysCost ? ` — قيمتهم: ${fmt(g.absenceDaysCost)} ج` : ''}`]);
+      // ⚡ إصلاح 2026-09-10: خلية القيمة دايمًا LTR (CSS: direction:ltr) عشان
+      // الأرقام العادية ("1,600 ج") بتتعرض صح كده. بس الجملة دي فيها رقمين
+      // منفصلين ("3" و"1,600") وكلام عربي بينهم، فلما بتتحط جوه سياق LTR
+      // خالص، خوارزمية bidi كانت بتلخبط الترتيب (الرقم "3" بيتقفز لمكان غلط).
+      // الحل: نحوط الجملة كلها بعلامات RTL isolate (U+2067..U+2069) عشان
+      // تتقرا كوحدة عربية واحدة بترتيبها الطبيعي، بغض النظر عن اتجاه الخلية.
+      const absenceTxt = `${fmt(total)} يوم${g.absenceDaysCost ? ` — قيمتهم: ${fmt(g.absenceDaysCost)} ج` : ''}`;
+      rows.push([label, '⁧' + absenceTxt + '⁩']);
     } else if (label === 'ساعات الأوفر') {
       rows.push([label, fmt(total) + ' ساعة']);
     } else {
