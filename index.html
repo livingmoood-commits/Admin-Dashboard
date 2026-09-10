@@ -11,25 +11,6 @@
 <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Living Mood</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
-<style>
-  :root{
-    --dark:#1E1A15; --dark2:#2a231c; --gold:#B8975A; --gold-dim:#8f7546; --cream:#F3EFEA;
-    --muted:#6B5E4E; --green:#2C5F3A; --red:#c0392b; --white:#ffffff; --border:#e7e0d4;
-    --bounce:cubic-bezier(.3,1.15,.55,1); /* أهدأ شوية من قبل (كانت overshoot عالي جدًا بيحس المستخدم إنها نطة) */
-  }
-  /* ⚡ إضافة: الوضع الليلي — الموقع فيه مئات الألوان الثابتة (hex) على مدار
-     الملف، مش بس متغيرات CSS، فتلوين كل حاجة يدوي مستحيل عمليًا من غير خطر
-     كبير إننا ننسى حتة. الحل العملي: قلب الألوان بالكامل (invert + hue-rotate)
-     على منطقة المحتوى الرئيسي (.main) وكل المودالات/التوست (أي حاجة direct
-     child لـbody غير #appRoot ونظام الدخول login-wrap) — بيدي نفس الإحساس
-     البصري لـ"دارك مود" حقيقي من غير ما نلمس آلاف الأسطر. الشريط الجانبي
-     والشريط السفلي أصلاً دارك التصميم زي ما هو، فمتسيبناهم زي ما هما بالظبط
-     (تركهم برا الـfilter عشان موقعهم position:fixed ومنعرضش نكسر تثبيتهم).
-     شاشة الدخول (login-wrap) أصلاً تصميمها غامق بخلفية/تدرج داكن، فمحتاجاش تتغير. */
   html[data-theme="dark"] .main,
   html[data-theme="dark"] body > *:not(#appRoot):not(.login-wrap){
     filter: invert(1) hue-rotate(180deg);
