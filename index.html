@@ -3657,61 +3657,91 @@ function _wrComputeGrandTotals_(employees){
   });
   return { totals, weekSumTotals, weekSumOrder, absenceDaysCost, count: (employees || []).length };
 }
+// ⚡ إعادة تصميم 2026-09-10: بدل قائمة مسطحة بترتيب عشوائي، "📊 إجمالي
+// التقرير" بقى حساب تراكمي زي "الناتج بعد كل خطوة" بتاع كل موظف لوحده
+// (نفس فكرة _payrollFinalCalcRunningRows_): يبدأ بإجمالي المرتبات
+// الأساسية، وبعدين كل بند بترتيبه بيتضاف (+) أو يتخصم (−) ويوري "الناتج
+// حتى هنا"، لحد "الصافي" النهائي. "المرتبات الأساسية" بترجع لأصلها رياضيًا
+// من رقم "صافي الأسبوع" الرسمي نفسه (مرجوع + كل الخصومات − كل الإضافات)،
+// عشان الحساب التراكمي يوصل بالظبط لنفس رقم الشيت الرسمي في الآخر مهما
+// كانت التفاصيل، من غير أي فرق تقريب.
+function _wrGrandChainRows_(g){
+  const net = g.weekSumTotals['صافي الأسبوع'] || 0;
+  const absenceDays = g.weekSumTotals['أيام الغياب'] || 0;
+  const absenceCost = g.absenceDaysCost || 0;
+  const deduct = g.totals.deduct || 0;
+  const add = g.totals.add || 0;
+  const fridayWork = g.totals.fridayWork || 0;
+  const withdraw = g.totals.withdraw || 0;
+  const base = net - add - fridayWork + deduct + withdraw + absenceCost;
+
+  let running = base;
+  const rows = [{ label: 'إجمالي المرتبات (الأساسية)', val: fmt(base) + ' ج', running, cls: '' }];
+  if (absenceCost) {
+    running -= absenceCost;
+    rows.push({ label: `− أيام الغياب (${fmt(absenceDays)} يوم)`, val: '−' + fmt(absenceCost) + ' ج', running, cls: 'wd' });
+  }
+  if (deduct) {
+    running -= deduct;
+    rows.push({ label: '− خصومات', val: '−' + fmt(deduct) + ' ج', running, cls: 'wd' });
+  }
+  if (add) {
+    running += add;
+    rows.push({ label: '+ إضافات (سهرات)', val: '+' + fmt(add) + ' ج', running, cls: 'add' });
+  }
+  if (fridayWork) {
+    running += fridayWork;
+    rows.push({ label: '+ شغل الجمعة', val: '+' + fmt(fridayWork) + ' ج', running, cls: 'add' });
+  }
+  if (withdraw) {
+    running -= withdraw;
+    rows.push({ label: '− مسحوبات', val: '−' + fmt(withdraw) + ' ج', running, cls: 'wd' });
+  }
+  rows.push({ label: '= الصافي', val: fmt(net) + ' ج', running: net, cls: 'net', isNet: true });
+  return rows;
+}
+
+// أي أعمدة تانية في "الملخص الرسمي" (weekSummary) مش جزء من السلسلة فوق
+// (زي "ساعات الأوفر"/"قيمة الأوفر" لو موجودين) — بتتعرض كمعلومة إضافية
+// بسيطة تحت السلسلة، بدل ما تختفي بالكامل.
+function _wrGrandExtraInfoRows_(g){
+  const consumed = new Set(['صافي الأسبوع', 'أيام الغياب', 'إضافات (ج)', 'مسحوبات (م)']);
+  const rows = [];
+  g.weekSumOrder.forEach(label => {
+    if (consumed.has(label)) return;
+    const total = g.weekSumTotals[label];
+    if (!total) return;
+    rows.push([label, /ساعات/.test(label) ? `${fmt(total)} ساعة` : `${fmt(total)} ج`]);
+  });
+  rows.push(['عدد الموظفين في التقرير', String(g.count)]);
+  return rows;
+}
+
 // HTML الجدول نفسه — بتتنادى مرتين (مودال بستايل عادي، وPDF بستايل الطباعة) —
 // forPrint بيتحكم في الألوان/الفونت سايز عشان تتناسب مع باقي الـ PDF.
 function _wrGrandTotalsTableHtml_(employees, forPrint){
   const g = _wrComputeGrandTotals_(employees);
   if (!g.count) return '';
-  const rows = [];
-  // ⚡ إصلاح 2026-09-10: صفوف "الملخص الرسمي" (weekSummary) كلها كانت بتتحط
-  // ليها ' ج' أوتوماتيك حتى لو مش مبلغ فلوس أصلًا — "أيام الغياب" عدد أيام
-  // مش جنيه، فكانت بتظهر غلط "3 ج" بدل "3 يوم". دلوقتي: أيام الغياب بتتعرض
-  // بوحدة "يوم" + قيمتهم بالجنيه (يوم × يومية الموظف) جنب بعض، وساعات الأوفر
-  // بوحدة "ساعة"، والباقي (المبالغ الفعلية) لسه بالجنيه زي ما كان.
-  g.weekSumOrder.forEach(label => {
-    const total = g.weekSumTotals[label];
-    if (label === 'أيام الغياب') {
-      // ⚡ إصلاح 2026-09-10: خلية القيمة دايمًا LTR (CSS: direction:ltr) عشان
-      // الأرقام العادية ("1,600 ج") بتتعرض صح كده. بس الجملة دي فيها رقمين
-      // منفصلين ("3" و"1,600") وكلام عربي بينهم، فلما بتتحط جوه سياق LTR
-      // خالص، خوارزمية bidi كانت بتلخبط الترتيب (الرقم "3" بيتقفز لمكان غلط).
-      // الحل: نحوط الجملة كلها بعلامات RTL isolate (U+2067..U+2069) عشان
-      // تتقرا كوحدة عربية واحدة بترتيبها الطبيعي، بغض النظر عن اتجاه الخلية.
-      const absenceTxt = `${fmt(total)} يوم${g.absenceDaysCost ? ` — قيمتهم: ${fmt(g.absenceDaysCost)} ج` : ''}`;
-      rows.push([label, '⁧' + absenceTxt + '⁩']);
-    } else if (label === 'ساعات الأوفر') {
-      rows.push([label, fmt(total) + ' ساعة']);
-    } else {
-      rows.push([label, fmt(total) + ' ج']);
-    }
-  });
-  rows.push(['إجمالي الإضافات (سهرات)', fmt(g.totals.add) + ' ج']);
-  rows.push(['إجمالي الخصومات', fmt(g.totals.deduct) + ' ج']);
-  // ⚠️ إزالة 2026-09-10: صف "إجمالي الغياب" (المحسوب من كود 'غ' + عدد أيام
-  // الغياب الكامل) كان بيكرر نفس معنى صف "أيام الغياب" فوق (اللي بقى دلوقتي
-  // واضح ومفصّل لوحده)، وبيلخبط لأنه بيورّي "0 ج" غالبًا رغم وجود غياب فعلي —
-  // اتشال بناءً على طلب المستخدم.
-  rows.push(['إجمالي المسحوبات', fmt(g.totals.withdraw) + ' ج']);
-  if (g.totals.fridayWork) rows.push(['إجمالي شغل الجمعة', fmt(g.totals.fridayWork) + ' ج']);
-  rows.push(['عدد الموظفين في التقرير', String(g.count)]);
-
-  // ⚠️ إضافة 2026-08-22: بنشيل الصفوف اللي قيمتها صفر (زي "ساعات الأوفر" أو
-  // "خصم أيام" لما محدش أخد أوفر أو خصم أيام أصلاً) — مفيش داعي نعرضها فاضية
-  // في التقرير. "صافي الأسبوع" و"عدد الموظفين" بيفضلوا ظاهرين دايمًا مهما كانت قيمتهم.
-  const _grKeepAlways = /صافي|عدد الموظفين/;
-  const _grIsZero = (val) => {
-    const v = parseFloat(String(val || '').replace(/[^\d.\-]/g, ''));
-    return !v || v === 0;
-  };
-  const visibleRows = rows.filter(([label, val]) => _grKeepAlways.test(label) || !_grIsZero(val));
+  const chainRows = _wrGrandChainRows_(g);
+  const extraRows = _wrGrandExtraInfoRows_(g);
 
   if (forPrint) {
     return `
       <div style="margin-top:20px;border-top:2px solid #B8975A;padding-top:12px;">
         <div style="font-weight:700;font-size:13px;margin-bottom:6px;">📊 إجمالي التقرير (كل الموظفين المختارين)</div>
+        <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:10px;">
+          <tbody>
+            ${chainRows.map(r => {
+              const styleTd = r.isNet ? 'background:#1E1A15;color:#D4B483;font-weight:700;font-size:12px;' : 'color:#6B5E4E;';
+              const styleValTd = r.isNet ? 'background:#1E1A15;color:#D4B483;font-weight:700;' : 'font-weight:700;';
+              const runningCell = r.isNet ? `<td style="padding:5px 8px;background:#1E1A15;"></td>` : `<td style="padding:5px 8px;text-align:left;direction:ltr;color:#8a7a5f;font-size:10px;">الناتج: ${fmt(r.running)} ج</td>`;
+              return `<tr><td style="padding:5px 8px;${styleTd}">${qEsc(r.label)}</td><td style="padding:5px 8px;text-align:left;direction:ltr;${styleValTd}">${qEsc(r.val)}</td>${runningCell}</tr>`;
+            }).join('')}
+          </tbody>
+        </table>
         <table style="width:100%;border-collapse:collapse;font-size:11.5px;">
           <tbody>
-            ${visibleRows.map(([label, val]) => `<tr><td style="padding:5px 8px;border-bottom:1px solid #E7E0D4;color:#6B5E4E;">${qEsc(label)}</td><td style="padding:5px 8px;border-bottom:1px solid #E7E0D4;font-weight:700;">${qEsc(val)}</td></tr>`).join('')}
+            ${extraRows.map(([label, val]) => `<tr><td style="padding:5px 8px;border-bottom:1px solid #E7E0D4;color:#6B5E4E;">${qEsc(label)}</td><td style="padding:5px 8px;border-bottom:1px solid #E7E0D4;font-weight:700;">${qEsc(val)}</td></tr>`).join('')}
           </tbody>
         </table>
       </div>`;
@@ -3719,9 +3749,18 @@ function _wrGrandTotalsTableHtml_(employees, forPrint){
   return `
     <div class="panel" style="margin-top:4px;">
       <h4 style="margin-bottom:8px;">📊 إجمالي التقرير (كل الموظفين المختارين)</h4>
-      <table class="wr-grand-tbl">
+      <div class="wr-final-calc">
+        ${chainRows.map(r => `
+          <div class="wr-final-calc-row ${r.cls === 'add' ? 'wr-fc-add' : r.cls === 'wd' ? 'wr-fc-wd' : r.cls === 'net' ? 'wr-fc-net' : ''}">
+            <span>${qEsc(r.label)}</span>
+            ${r.isNet
+              ? `<b>${qEsc(r.val)}</b>`
+              : `<span class="wr-fc-vals"><b>${qEsc(r.val)}</b><small>الناتج حتى هنا: ${fmt(r.running)} ج</small></span>`}
+          </div>`).join('')}
+      </div>
+      <table class="wr-grand-tbl" style="margin-top:6px;">
         <tbody>
-          ${visibleRows.map(([label, val]) => `<tr><td>${qEsc(label)}</td><td>${qEsc(val)}</td></tr>`).join('')}
+          ${extraRows.map(([label, val]) => `<tr><td>${qEsc(label)}</td><td>${qEsc(val)}</td></tr>`).join('')}
         </tbody>
       </table>
     </div>`;
@@ -3760,13 +3799,25 @@ function _wrPerEmployeeTableHtml_(employees, forPrint){
   const headBg = forPrint ? '#2C5F3A' : '#1E1A15';
   const cellSize = forPrint ? '10.5px' : '12.5px';
   const th = label => `<th style="padding:6px 8px;text-align:center;">${qEsc(label)}</th>`;
+
+  // ⚡ إضافة 2026-09-10: لو كل الموظفين صفر في عمود معيّن (زي "خصومات" لو
+  // محدش عليه خصم خالص الأسبوع ده)، بنشيل العمود كله من الجدول بدل ما نعرضه
+  // فاضي بـ"—" في كل صف — عمود مالوش أي بيانات مالوش داعي يشغل مكان.
+  const optionalCols = [
+    { key: 'add', label: 'إضافات (سهرات)', unit: 'ج', positive: true },
+    { key: 'deduct', label: 'خصومات', unit: 'ج', positive: false },
+    { key: 'withdraw', label: 'مسحوبات', unit: 'ج', positive: false },
+    { key: 'fridayWork', label: 'شغل الجمعة', unit: 'ج', positive: true },
+    { key: 'absenceDays', label: 'أيام الغياب', unit: 'يوم', positive: false }
+  ].filter(col => rows.some(r => r[col.key]));
+
   const tableHtml = `
     <div style="overflow-x:auto;">
-      <table style="width:100%;border-collapse:collapse;font-size:${cellSize};min-width:560px;">
+      <table style="width:100%;border-collapse:collapse;font-size:${cellSize};min-width:${180 + optionalCols.length * 100}px;">
         <thead>
           <tr style="background:${headBg};color:#fff;">
             <th style="padding:6px 8px;text-align:right;">الموظف</th>
-            ${th('صافي الأسبوع')}${th('إضافات (سهرات)')}${th('خصومات')}${th('مسحوبات')}${th('شغل الجمعة')}${th('أيام الغياب')}
+            ${th('صافي الأسبوع')}${optionalCols.map(c => th(c.label)).join('')}
           </tr>
         </thead>
         <tbody>
@@ -3774,11 +3825,7 @@ function _wrPerEmployeeTableHtml_(employees, forPrint){
           <tr style="border-bottom:1px solid ${border};">
             <td style="padding:6px 8px;font-weight:700;">${qEsc(r.name)}</td>
             <td style="padding:6px 8px;text-align:center;font-weight:700;direction:ltr;">${fmt(r.net)} ج</td>
-            <td style="padding:6px 8px;text-align:center;">${signed(r.add, 'ج', true)}</td>
-            <td style="padding:6px 8px;text-align:center;">${signed(r.deduct, 'ج', false)}</td>
-            <td style="padding:6px 8px;text-align:center;">${signed(r.withdraw, 'ج', false)}</td>
-            <td style="padding:6px 8px;text-align:center;">${signed(r.fridayWork, 'ج', true)}</td>
-            <td style="padding:6px 8px;text-align:center;">${signed(r.absenceDays, 'يوم', false)}</td>
+            ${optionalCols.map(c => `<td style="padding:6px 8px;text-align:center;">${signed(r[c.key], c.unit, c.positive)}</td>`).join('')}
           </tr>`).join('')}
         </tbody>
       </table>
