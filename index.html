@@ -3947,19 +3947,26 @@ function wrConfirmNames_(){
   const includeTotals = document.getElementById('wrIncludeTotalsCb').checked;
   renderWeeklyReportModal_(_wrLastReport, _payrollSelectedNames_('wr'), includeTotals);
 }
-// ⚡ إضافة 2026-09-10: زرار فلوتينج ثابت (position:fixed) بيرجع لأول مودال
-// "تقرير اسبوعي" بسكرول smooth — لما اخترت أكتر من موظف، المودال بيبقى طويل
-// جدًا (كل موظف بتفاصيل أيامه)، فمحتاج طريقة سريعة ترجع فوق من غير ما تلف
-// بإيدك. #cardDetailModal نفسه هو اللي بيعمل سكرول (overflow-y:auto على
-// الأوفرلاي كله)، فبنعمل scrollTo عليه مباشرة. position:fixed بيخليه ثابت
-// في الشاشة طول ما المودال مفتوح، بغض النظر عن مكان السكرول الحالي.
+// ⚡ إضافة 2026-09-10: زرار بيرجع لأول مودال "تقرير اسبوعي" بسكرول smooth —
+// لما اخترت أكتر من موظف، المودال بيبقى طويل جدًا (كل موظف بتفاصيل أيامه)،
+// فمحتاج طريقة سريعة ترجع فوق من غير ما تلف بإيدك. #cardDetailModal نفسه
+// هو اللي بيعمل سكرول (overflow-y:auto على الأوفرلاي كله)، فبنعمل scrollTo
+// عليه مباشرة.
+// ⚠️ إصلاح 2026-09-10 (تاني): كان position:fixed على الشاشة كلها (يفضل
+// ظاهر حتى برا حدود التقرير نفسه) — المطلوب إنه يبقى جوه بطاقة التقرير
+// (.cd-card) نفسها، تحت في الركن الشمال، ويفضل ملزّق هناك وانت بتسكرول
+// جواها (مش يختفي برا حدودها). الحل: position:sticky جوه عنصر بارتفاع 0
+// (مبيحجبش أي حاجة تحته) — بيفضل ملزّق أسفل شاشة العرض طول ما إحنا لسه
+// بنسكرول جوه بطاقة التقرير، ويختفي طبيعي بعد ما تعدي آخرها.
 function _wrScrollTopBtnHtml_(){
   return `
-    <button type="button" title="ارجع لأول التقرير"
-      onclick="document.getElementById('cardDetailModal').scrollTo({top:0,behavior:'smooth'})"
-      style="position:fixed;bottom:22px;left:22px;z-index:980;width:46px;height:46px;border-radius:50%;
-        background:var(--dark);color:#D4B483;border:none;font-size:19px;line-height:1;cursor:pointer;
-        box-shadow:0 6px 18px rgba(30,26,21,.35);display:flex;align-items:center;justify-content:center;">↑</button>`;
+    <div style="position:sticky;bottom:16px;height:0;z-index:5;pointer-events:none;">
+      <button type="button" title="ارجع لأول التقرير"
+        onclick="document.getElementById('cardDetailModal').scrollTo({top:0,behavior:'smooth'})"
+        style="position:absolute;bottom:0;left:0;pointer-events:auto;width:46px;height:46px;border-radius:50%;
+          background:var(--dark);color:#D4B483;border:none;font-size:19px;line-height:1;cursor:pointer;
+          box-shadow:0 6px 18px rgba(30,26,21,.35);display:flex;align-items:center;justify-content:center;">↑</button>
+    </div>`;
 }
 
 function renderWeeklyReportModal_(data, selectedNames, includeTotals){
