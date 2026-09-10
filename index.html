@@ -3642,10 +3642,8 @@ function _wrComputeGrandTotals_(employees){
   const totals = { add: 0, deduct: 0, absent: 0, withdraw: 0, fridayWork: 0, fullAbsenceDays: 0 };
   const weekSumTotals = {}; const weekSumOrder = [];
   // ⚡ إضافة 2026-09-10: قيمة أيام الغياب بالجنيه (عدد الأيام × يومية كل موظف)
-  // — عشان صف "أيام الغياب" يقدر يورّي "كام يوم" و"سعرهم توتال" مع بعض، وكمان
-  // تفصيلة لكل موظف لوحده (مين أخد كام يوم وبقيمة كام) بدل رقم مجمّع غامض.
+  // — عشان صف "أيام الغياب" يقدر يورّي "كام يوم" و"سعرهم توتال" مع بعض.
   let absenceDaysCost = 0;
-  const absenceBreakdown = [];
   (employees || []).forEach(e => {
     const t = e.totals || {};
     totals.add += qNum(t.add); totals.deduct += qNum(t.deduct); totals.absent += qNum(t.absent);
@@ -3654,17 +3652,10 @@ function _wrComputeGrandTotals_(employees){
     (e.weekSummary || []).forEach(s => {
       if (!(s.label in weekSumTotals)) { weekSumTotals[s.label] = 0; weekSumOrder.push(s.label); }
       weekSumTotals[s.label] += qNum(s.value);
-      if (s.label === 'أيام الغياب') {
-        const days = qNum(s.value);
-        if (days > 0) {
-          const cost = days * qNum(e.dailyRate);
-          absenceDaysCost += cost;
-          absenceBreakdown.push({ name: e.name, days, cost });
-        }
-      }
+      if (s.label === 'أيام الغياب') absenceDaysCost += qNum(s.value) * qNum(e.dailyRate);
     });
   });
-  return { totals, weekSumTotals, weekSumOrder, absenceDaysCost, absenceBreakdown, count: (employees || []).length };
+  return { totals, weekSumTotals, weekSumOrder, absenceDaysCost, count: (employees || []).length };
 }
 // HTML الجدول نفسه — بتتنادى مرتين (مودال بستايل عادي، وPDF بستايل الطباعة) —
 // forPrint بيتحكم في الألوان/الفونت سايز عشان تتناسب مع باقي الـ PDF.
@@ -3680,12 +3671,7 @@ function _wrGrandTotalsTableHtml_(employees, forPrint){
   g.weekSumOrder.forEach(label => {
     const total = g.weekSumTotals[label];
     if (label === 'أيام الغياب') {
-      // ⚡ إضافة 2026-09-10: مش بس إجمالي مجمّع — تفصيلة كل موظف لوحده (مين
-      // أخد كام يوم وبقيمة كام) عشان الرقم يبقى واضح ومفهوم مين وراه.
-      const breakdownTxt = g.absenceBreakdown.length
-        ? ' — ' + g.absenceBreakdown.map(b => `${b.name}: ${fmt(b.days)} يوم (${fmt(b.cost)} ج)`).join(' · ')
-        : '';
-      rows.push([label, `${fmt(total)} يوم${g.absenceDaysCost ? ` — قيمتهم: ${fmt(g.absenceDaysCost)} ج` : ''}${breakdownTxt}`]);
+      rows.push([label, `${fmt(total)} يوم${g.absenceDaysCost ? ` — قيمتهم: ${fmt(g.absenceDaysCost)} ج` : ''}`]);
     } else if (label === 'ساعات الأوفر') {
       rows.push([label, fmt(total) + ' ساعة']);
     } else {
