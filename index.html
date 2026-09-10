@@ -3952,19 +3952,16 @@ function wrConfirmNames_(){
 // فمحتاج طريقة سريعة ترجع فوق من غير ما تلف بإيدك. #cardDetailModal نفسه
 // هو اللي بيعمل سكرول (overflow-y:auto على الأوفرلاي كله)، فبنعمل scrollTo
 // عليه مباشرة.
-// ⚠️ إصلاح 2026-09-10 (رابع): جربنا sticky وfixed (زرار طايف فوق المحتوى) —
-// المطلوب فعليًا إنه يكون عنصر عادي جوه الجدول نفسه (آخر حاجة في التقرير،
-// بعد كل الموظفين والإجماليات)، محاذي شمال، مش طايف فوق حاجة. اتحط هنا في
-// آخر الـHTML بتاع المودال (بعد _wrPerEmployeeTableHtml_).
+// ⚠️ إصلاح 2026-09-10 (خامس): المكان (تحت شمال) تمام، بس المطلوب يفضل طايف
+// (position:fixed) وينزل مع السكرول بدل ما يكون عنصر تابت في آخر الجدول —
+// يعني ظاهر طول الوقت في نفس البقعة دي من الشاشة، مش بس وانت واصل لآخر التقرير.
 function _wrScrollTopBtnHtml_(){
   return `
-    <div style="text-align:left;margin-top:14px;">
-      <button type="button" title="ارجع لأول التقرير"
-        onclick="document.getElementById('cardDetailModal').scrollTo({top:0,behavior:'smooth'})"
-        style="width:46px;height:46px;border-radius:50%;
-          background:var(--dark);color:#D4B483;border:none;font-size:19px;line-height:1;cursor:pointer;
-          box-shadow:0 6px 18px rgba(30,26,21,.35);display:inline-flex;align-items:center;justify-content:center;">↑</button>
-    </div>`;
+    <button type="button" title="ارجع لأول التقرير"
+      onclick="document.getElementById('cardDetailModal').scrollTo({top:0,behavior:'smooth'})"
+      style="position:fixed;bottom:22px;left:22px;z-index:980;width:46px;height:46px;border-radius:50%;
+        background:var(--dark);color:#D4B483;border:none;font-size:19px;line-height:1;cursor:pointer;
+        box-shadow:0 6px 18px rgba(30,26,21,.35);display:flex;align-items:center;justify-content:center;">↑</button>`;
 }
 
 function renderWeeklyReportModal_(data, selectedNames, includeTotals){
