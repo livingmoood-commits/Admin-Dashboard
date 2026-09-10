@@ -3641,6 +3641,9 @@ async function payrollShowWeeklyReport(weekIndex, employeeNames, includeTotals){
 function _wrComputeGrandTotals_(employees){
   const totals = { add: 0, deduct: 0, absent: 0, withdraw: 0, fridayWork: 0, fullAbsenceDays: 0 };
   const weekSumTotals = {}; const weekSumOrder = [];
+  // ⚡ إضافة 2026-09-10: قيمة أيام الغياب بالجنيه (عدد الأيام × يومية كل موظف)
+  // — عشان صف "أيام الغياب" يقدر يورّي "كام يوم" و"سعرهم توتال" مع بعض.
+  let absenceDaysCost = 0;
   (employees || []).forEach(e => {
     const t = e.totals || {};
     totals.add += qNum(t.add); totals.deduct += qNum(t.deduct); totals.absent += qNum(t.absent);
@@ -3649,9 +3652,10 @@ function _wrComputeGrandTotals_(employees){
     (e.weekSummary || []).forEach(s => {
       if (!(s.label in weekSumTotals)) { weekSumTotals[s.label] = 0; weekSumOrder.push(s.label); }
       weekSumTotals[s.label] += qNum(s.value);
+      if (s.label === 'أيام الغياب') absenceDaysCost += qNum(s.value) * qNum(e.dailyRate);
     });
   });
-  return { totals, weekSumTotals, weekSumOrder, count: (employees || []).length };
+  return { totals, weekSumTotals, weekSumOrder, absenceDaysCost, count: (employees || []).length };
 }
 // HTML الجدول نفسه — بتتنادى مرتين (مودال بستايل عادي، وPDF بستايل الطباعة) —
 // forPrint بيتحكم في الألوان/الفونت سايز عشان تتناسب مع باقي الـ PDF.
@@ -3659,7 +3663,21 @@ function _wrGrandTotalsTableHtml_(employees, forPrint){
   const g = _wrComputeGrandTotals_(employees);
   if (!g.count) return '';
   const rows = [];
-  g.weekSumOrder.forEach(label => rows.push([label, fmt(g.weekSumTotals[label]) + ' ج']));
+  // ⚡ إصلاح 2026-09-10: صفوف "الملخص الرسمي" (weekSummary) كلها كانت بتتحط
+  // ليها ' ج' أوتوماتيك حتى لو مش مبلغ فلوس أصلًا — "أيام الغياب" عدد أيام
+  // مش جنيه، فكانت بتظهر غلط "3 ج" بدل "3 يوم". دلوقتي: أيام الغياب بتتعرض
+  // بوحدة "يوم" + قيمتهم بالجنيه (يوم × يومية الموظف) جنب بعض، وساعات الأوفر
+  // بوحدة "ساعة"، والباقي (المبالغ الفعلية) لسه بالجنيه زي ما كان.
+  g.weekSumOrder.forEach(label => {
+    const total = g.weekSumTotals[label];
+    if (label === 'أيام الغياب') {
+      rows.push([label, `${fmt(total)} يوم${g.absenceDaysCost ? ` — قيمتهم: ${fmt(g.absenceDaysCost)} ج` : ''}`]);
+    } else if (label === 'ساعات الأوفر') {
+      rows.push([label, fmt(total) + ' ساعة']);
+    } else {
+      rows.push([label, fmt(total) + ' ج']);
+    }
+  });
   rows.push(['إجمالي الإضافات (سهرات)', fmt(g.totals.add) + ' ج']);
   rows.push(['إجمالي الخصومات', fmt(g.totals.deduct) + ' ج']);
   rows.push(['إجمالي الغياب', fmt(g.totals.absent) + ' ج' + (g.totals.fullAbsenceDays ? ` (${g.totals.fullAbsenceDays} يوم كامل)` : '')]);
