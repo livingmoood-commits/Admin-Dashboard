@@ -2299,11 +2299,17 @@ let _dashPrintSnapshot = null; // آخر نسخة بيانات اتحمّلت �
 
 async function renderDashboard(token) {
   try {
-    const [d, { customers }, { debts }, projSummary, partnerWithdrawals] = await Promise.all([
-      apiGet('getDashboardData'), apiGet('payListCustomers'), apiGet('listDebts'), apiGet('listProjectsSummary'), apiGet('listPartnerWithdrawals')
-    ]);
+    // ⚡ إصلاح بطء 2026-09-17: كان هنا 5 طلبات apiGet منفصلة مع بعض (Promise.all) —
+    // وبما إن الفرونت إند بيحدد أقصى 3 طلبات متزامنة بس (_API_MAX_CONCURRENT، راجع
+    // تعليقها فوق ليه مينفعش نرفعها)، كان دايمًا فيه طلبين واقفين في الطابور مستنيين
+    // دور بعد الثلاثة الأوائل — يعني فتح "نظرة عامة" كان عمليًا بياخد وقت رحلتين
+    // شبكة متتاليتين، مش رحلة واحدة. دلوقتي أكشن واحد بس (getDashboardBundle) بيرجّع
+    // نفس البيانات الخمسة دي مع بعض من السيرفر (نفس مفاتيح الكاش بالظبط لكل جزء)،
+    // فمفيش طابور خالص لفتح الصفحة دي.
+    const bundle = await apiGet('getDashboardBundle');
     if (isStaleNav(token)) return;
-    const projects = projSummary.projects || [];
+    const d = bundle.dashboard, customers = bundle.customers || [], debts = bundle.debts || [], partnerWithdrawals = bundle.partnerWithdrawals;
+    const projects = bundle.projects || [];
     _pmDashCustomers = customers;
     _debtsCache = debts; // نفس متغيّر صفحة "ديون" — عشان تفاصيل/تعديل الدين تشتغل من هنا برضه
     _dashProjectsCache = projects;
@@ -5596,6 +5602,16 @@ async function deleteTreasuryMoveConfirm(id){
 function _noAutofill(prefix){ return prefix + '-' + Math.random().toString(36).slice(2, 10); }
 
 let DSTATE = { rows: [], date: lastWorkingDayStr(), days: [] };
+// ⚡ إصلاح تسريب/إبطاء تراكمي: renderDailyExpenses() كانت بتضيف مستمعين جداد على
+// document/window (click/scroll/resize) في كل مرة تفتح فيها صفحة "مصاريف يومية"،
+// من غير ما تشيل القدامى — زي closePayAddPopover اللي بتشيل مستمعينها بالظبط،
+// دول ماكانوش بيتشالوا خالص. النتيجة: كل ما المستخدم يفتح الصفحة دي تاني في نفس
+// الجلسة، بيتراكم مستمع كليك/سكرول/رزايز جديد فوق القديم — وبما إنهم على document/
+// window (مش على عنصر بيتمسح مع الصفحة)، بيفضلوا شغالين لحد ما تقفل التاب، وكل
+// حدث (كليك/سكرول في أي صفحة تانية في الموقع كله) بينفذ كل النسخ المتراكمة دي مع
+// بعض — ده اللي بيخلي الموقع "يتقل" أكتر كل ما تستخدمه أكتر في نفس الجلسة. الحل:
+// نضيفهم مرة واحدة بس طول عمر الصفحة (guard بمتغير)، مش في كل render.
+let _dGlobalListenersBound = false;
 function dNewRow(){ return { _id: Math.random(), desc: '', amount: '', project: '', note: '', debtAllocation: null }; }
 function dTotal(){ return DSTATE.rows.reduce((s, r) => s + qNum(r.amount), 0); }
 
@@ -5712,15 +5728,18 @@ async function renderDailyExpenses(token) {
     document.getElementById('d-days-dd-btn').addEventListener('click', e => { e.stopPropagation(); dToggleDaysDropdown(); });
     document.getElementById('d-days-search').addEventListener('click', e => e.stopPropagation());
     document.getElementById('d-days-search').addEventListener('input', dRenderDaysList);
-    document.addEventListener('click', e => {
-      const wrap = document.getElementById('d-days-dropdown');
-      if (wrap && !wrap.contains(e.target)) dCloseDaysDropdown();
-    });
     document.getElementById('d-tbl-wrap').addEventListener('scroll', () => { dHideProjectSuggestions(); dCloseAllQuickTags(); }, { passive:true });
-    window.addEventListener('resize', () => { dHideProjectSuggestions(); dCloseAllQuickTags(); });
-    // سكرول الصفحة نفسها (مش سكرول الجدول الداخلي بس) كان ممكن يسيب القايمة "طايرة"
-    // بعيد عن الخلية بتاعتها لو اتفتحت وبعدين المستخدم عمل سكرول للصفحة — بنقفلها هنا برضه.
-    window.addEventListener('scroll', () => { dHideProjectSuggestions(); dCloseAllQuickTags(); }, { passive:true });
+    if (!_dGlobalListenersBound) {
+      _dGlobalListenersBound = true;
+      document.addEventListener('click', e => {
+        const wrap = document.getElementById('d-days-dropdown');
+        if (wrap && !wrap.contains(e.target)) dCloseDaysDropdown();
+      });
+      window.addEventListener('resize', () => { dHideProjectSuggestions(); dCloseAllQuickTags(); });
+      // سكرول الصفحة نفسها (مش سكرول الجدول الداخلي بس) كان ممكن يسيب القايمة "طايرة"
+      // بعيد عن الخلية بتاعتها لو اتفتحت وبعدين المستخدم عمل سكرول للصفحة — بنقفلها هنا برضه.
+      window.addEventListener('scroll', () => { dHideProjectSuggestions(); dCloseAllQuickTags(); }, { passive:true });
+    }
     // ⚠️ إضافة: تحميل قايمة الموظفين بهدوء في الخلفية بعد ما الصفحة خلصت ظهور —
     // من غير ما نستنى الرد ده (مفيش await)، فمتأثرش على سرعة فتح الصفحة نفسها.
     // الفايدة: غالبًا لما تدوس على 🧑 هتلاقي القايمة جاهزة فورًا من غير أي "جاري
