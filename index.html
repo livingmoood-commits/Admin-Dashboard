@@ -705,8 +705,16 @@
   .wr-fc-vals b{ font-size:13px; }
   .wr-fc-vals small{ color:var(--muted); font-weight:400; font-size:10.5px; }
   /* ⚠️ إضافة 2026-08-24: صفحة "الخامات" */
-  .mat-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; }
+  .mat-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; }
   .mat-card{ padding:14px; }
+  /* ⚡ إصلاح 2026-09-19 ("الموبايل فيو بايظ"): فورم "إضافة خامة جديدة" كان بـstyle
+     inline ثابت (grid-template-columns:2fr 1fr 1fr 1fr auto) من غير أي media query —
+     يعني 5 أعمدة جنب بعض دايمًا حتى على شاشة موبايل ضيقة، فكانت الحقول بتتلخبط/تتقص
+     فوق بعض. دلوقتي كلاس بدل الـinline style، بينهار لعمودين على تابلت وعمود واحد
+     على موبايل — زي باقي فورمات الإضافة في الموقع بالظبط (.form-grid2 وغيرها). */
+  .mat-add-grid{ display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr auto; gap:10px; align-items:end; }
+  @media(max-width:900px){ .mat-add-grid{ grid-template-columns:1fr 1fr; } }
+  @media(max-width:520px){ .mat-add-grid{ grid-template-columns:1fr; } }
   .mat-progress{ background:var(--cream); border-radius:20px; height:9px; overflow:hidden; margin-top:2px; }
   .mat-icon-btn{ all:unset; cursor:pointer; font-size:14px; line-height:1; padding:4px 6px; border-radius:8px; transition:background .15s; }
   .mat-icon-btn:hover{ background:var(--cream); }
@@ -5809,8 +5817,8 @@ async function dLoadDayLog(dateStr){
 let DPROJECT_NAMES = [];
 let DEMPLOYEE_NAMES = []; // ⚠️ إضافة: أسماء الموظفين — لزرار 🧑 اللي بيكتب "(الاسم) - مسحوبات" في خانة الوصف
 let DEMPLOYEE_NAMES_LOADED = false; // بنجيبها كسلًا (lazy) أول مرة تدوس على 🧑 بس، مش وقت فتح الصفحة
-const D_QUICK_TAGS = ['مسحوبات', 'مسحوبات ش ق', 'مرتبات', 'أكل', 'مشتريات', 'صيانة', 'مواصلات', 'بنزين', 'سداد دين', 'أخرى'];
-const D_QUICK_TAG_ICONS = { 'مسحوبات':'💸', 'مسحوبات ش ق':'🗓️', 'مرتبات':'💰', 'أكل':'🍔', 'مشتريات':'🛒', 'صيانة':'🔧', 'مواصلات':'🚗',  'بنزين':'⛽', 'سداد دين':'📕', 'أخرى':'✨' };
+const D_QUICK_TAGS = ['مسحوبات', 'مسحوبات ش ق', 'مرتبات', 'أكل', 'مشتريات', 'خامات', 'صيانة', 'مواصلات', 'بنزين', 'سداد دين', 'أخرى'];
+const D_QUICK_TAG_ICONS = { 'مسحوبات':'💸', 'مسحوبات ش ق':'🗓️', 'مرتبات':'💰', 'أكل':'🍔', 'مشتريات':'🛒', 'خامات':'🧱', 'صيانة':'🔧', 'مواصلات':'🚗',  'بنزين':'⛽', 'سداد دين':'📕', 'أخرى':'✨' };
 function dRenderRows(){
   const tb = document.getElementById('d-body'); if (!tb) return;
   tb.innerHTML = DSTATE.rows.map((r, i) => `
@@ -5978,7 +5986,7 @@ function dToggleQuickTag(id, btnEl){
   dCloseAllQuickTags();
   if (wasOpenForThisRow) return;
   box.innerHTML = '<div class="d-pop-items">' + D_QUICK_TAGS.map(t =>
-    `<div class="d-quick-item" onmousedown="event.preventDefault();${t==='سداد دين' ? `dCloseAllQuickTags();dOpenDebtPicker(${id})` : `dPickQuickTag(${id}, '${t.replace(/'/g, "\\'")}')`}"><span class="d-pop-icon">${D_QUICK_TAG_ICONS[t] || '📌'}</span><span class="d-pop-label">${qEsc(t)}</span></div>`
+    `<div class="d-quick-item" onmousedown="event.preventDefault();${t==='سداد دين' ? `dCloseAllQuickTags();dOpenDebtPicker(${id})` : t==='خامات' ? `dCloseAllQuickTags();dOpenMaterialPicker(${id})` : `dPickQuickTag(${id}, '${t.replace(/'/g, "\\'")}')`}"><span class="d-pop-icon">${D_QUICK_TAG_ICONS[t] || '📌'}</span><span class="d-pop-label">${qEsc(t)}</span></div>`
   ).join('') + '</div><div class="d-pop-hint">↑↓ للتنقل · Enter للاختيار</div>';
   box.dataset.rowId = id;
   const r = btnEl.getBoundingClientRect();
@@ -6046,6 +6054,89 @@ function dPickQuickTag(id, tag){
   if (!inserted) { if (input) input.value = newVal; }
   r.desc = newVal;
   dScheduleDraftSave();
+}
+/* ⚠️ إضافة 2026-09-19: اختيار "خامات" من قايمة "+ سريع" في صف مصروف يومي. الخامات
+ * نظام مخزون منفصل تمامًا (شيتات تانية) عن مصاريف اليوم، فمفيش معنى لتأجيل التسجيل
+ * لحد ما تحفظ صف المصروف — بيتسجل استخدام "كامل الكمية المتبقية" على طول لحظة
+ * الاختيار (زي ما اتطلب بالظبط)، والخامة تتقفل "خلصت" فورًا. بعد التأكيد، بنملى
+ * وصف الصف باسم الخامة والمبلغ بقيمتها (سعر الوحدة × الكمية) لو الخامة عندها سعر
+ * مسجل، عشان مصروف اليوم يعكس تكلفتها الحقيقية من غير ما المستخدم يكتب حاجة يدوي. */
+let _dMatPickerCache_ = [];
+async function dOpenMaterialPicker(id){
+  openCardModal(`<div class="cd-head"><h3>🧱 استخدام خامة</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="loading-row">جاري التحميل...</div>`);
+  try {
+    const { materials } = await apiGet('listMaterials');
+    _dMatPickerCache_ = (materials || []).filter(m => m.status !== 'خلصت');
+    dRenderMaterialPicker_(id);
+  } catch(err){ showError(err); }
+}
+function dRenderMaterialPicker_(rowId){
+  const list = _dMatPickerCache_;
+  if (!list.length) {
+    openCardModal(`<div class="cd-head"><h3>🧱 استخدام خامة</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="empty">مفيش خامات شغالة حاليًا — ضيفها الأول من صفحة "الخامات"</div>`);
+    return;
+  }
+  openCardModal(`
+    <div class="cd-head"><h3>🧱 اختار الخامة</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">اختيار خامة هنا هيسجلها "خلصت" على طول (استخدام كامل الكمية المتبقية) في صفحة "الخامات" — مش تسجيل جزئي.</div>
+    <div style="max-height:340px;overflow-y:auto;">
+      ${list.map(m => `
+        <div class="d-quick-item" style="align-items:center;" onmousedown="event.preventDefault();dConfirmMaterialFullUsage_(${rowId}, '${qEscJs(m.id)}')">
+          <span class="d-pop-icon">🧱</span>
+          <span class="d-pop-label">${qEsc(m.name)}<br><small style="color:var(--muted);">متبقي ${fmt(m.remainingQty)} ${qEsc(m.unit)}${m.unitPrice > 0 ? ' — قيمتها ' + fmt(m.remainingValue) + ' ج' : ''}</small></span>
+        </div>`).join('')}
+    </div>
+  `);
+}
+function dConfirmMaterialFullUsage_(rowId, materialId){
+  const m = _dMatPickerCache_.find(x => x.id === materialId); if (!m) return;
+  const valueTxt = m.unitPrice > 0 ? ` بقيمة ${fmt(m.remainingValue)} ج` : '';
+  openCardModal(`
+    <div class="cd-head"><h3>🧱 تأكيد الاستخدام</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div style="margin-bottom:14px;">هيتسجل استخدام كامل الكمية المتبقية (${fmt(m.remainingQty)} ${qEsc(m.unit)}) من "${qEsc(m.name)}"${valueTxt} في سجل الخامات، وتتقفل "خلصت". متأكد؟</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn btn-sm btn-outline" onclick="dRenderMaterialPicker_(${rowId})">رجوع</button>
+      <button class="btn btn-sm btn-primary" id="d-mat-confirm-btn" onclick="dDoMaterialFullUsage_(${rowId}, '${qEscJs(materialId)}')">تأكيد</button>
+    </div>
+    <div class="msg" id="d-mat-confirm-msg"></div>
+  `);
+}
+async function dDoMaterialFullUsage_(rowId, materialId){
+  const m = _dMatPickerCache_.find(x => x.id === materialId); if (!m) return;
+  const btn = document.getElementById('d-mat-confirm-btn');
+  const msg = document.getElementById('d-mat-confirm-msg');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري التسجيل...'; }
+  const r = DSTATE.rows.find(x => x._id === rowId);
+  const project = (r && String(r.project || '').trim()) || 'مصروفات عامة';
+  try {
+    const res = await apiPost('logMaterialUsage', {
+      usage: { materialId, amount: m.remainingQty, description: 'استخدام كامل - مصاريف يومية', project, date: DSTATE.date }
+    });
+    if (!res.success) {
+      if (msg) { msg.className = 'msg err'; msg.textContent = res.error || 'حصل خطأ'; }
+      if (btn) { btn.disabled = false; btn.textContent = 'تأكيد'; }
+      return;
+    }
+    closeCardModal();
+    showToast('✅ اتسجل استخدام "' + m.name + '" كامل');
+    if (r) {
+      const newVal = (String(r.desc || '').trim() ? r.desc + ' - ' : '') + 'خامة: ' + m.name;
+      r.desc = newVal;
+      const descInput = document.getElementById('d-desc-' + rowId);
+      if (descInput) descInput.value = newVal;
+      if (m.unitPrice > 0) {
+        r.amount = m.remainingValue;
+        const amtInput = document.getElementById('d-amt-' + rowId);
+        if (amtInput) amtInput.value = m.remainingValue;
+        dUpdateTotalBadge();
+      }
+      dScheduleDraftSave();
+    }
+    apiCacheClear(); // كاش listMaterials المحلي بقى قديم دلوقتي — نظفه عشان صفحة الخامات تجيب الحالة الجديدة لو اتفتحت
+  } catch (err) {
+    if (msg) { msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
+    if (btn) { btn.disabled = false; btn.textContent = 'تأكيد'; }
+  }
 }
 // ⚠️ إضافة: زرار 🧑 بيفتح قايمة الموظفين (نفس مصدر listEmployees المستخدم في باقي
 // الصفحات) — دوس على اسم أي موظف يكتب "(الاسم) - مسحوبات" في خانة الوصف على طول
@@ -12842,10 +12933,11 @@ async function renderMaterials(token){
     document.getElementById('content').innerHTML = `
       <div class="panel" style="margin-bottom:14px;">
         <h3 style="margin-bottom:10px;">➕ إضافة خامة جديدة</h3>
-        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:10px;align-items:end;">
+        <div class="mat-add-grid">
           <div class="field"><label>اسم الخامة</label><input type="text" class="d-input" id="mat-new-name" placeholder="مثال: بويه أبيض"></div>
           <div class="field"><label>الوحدة</label><input type="text" class="d-input" id="mat-new-unit" placeholder="مثال: لتر"></div>
           <div class="field"><label>الكمية</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="mat-new-qty" placeholder="مثال: 10" onkeypress="return /[0-9.]/.test(event.key)"></div>
+          <div class="field"><label>سعر الوحدة (ج) — اختياري</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="mat-new-price" placeholder="مثال: 150" onkeypress="return /[0-9.]/.test(event.key)"></div>
           <div class="field"><label>تاريخ الشراء</label><input type="date" class="d-input" id="mat-new-pdate" autocomplete="off" value="${todayStr()}"></div>
           <button type="button" class="btn btn-primary" id="mat-add-btn" onclick="matAddMaterial()">حفظ</button>
         </div>
@@ -12894,6 +12986,7 @@ function matCardHtml_(m){
       <div style="font-size:12.5px;color:var(--muted);margin:6px 0 4px;">
         المتبقي: <b style="color:var(--dark);">${fmt(m.remainingQty)} ${qEsc(m.unit)}</b> من أصل <b>${fmt(m.originalQty)} ${qEsc(m.unit)}</b>
       </div>
+      ${m.unitPrice > 0 ? `<div style="font-size:12.5px;color:var(--muted);margin-bottom:4px;">سعر الوحدة: <b style="color:var(--dark);">${fmt(m.unitPrice)} ج</b> — قيمة المتبقي: <b style="color:var(--gold-dim);">${fmt(m.remainingValue)} ج</b></div>` : ''}
       <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">تاريخ الشراء: ${qEsc(m.addedDate)}</div>
       <div class="mat-progress"><div class="mat-progress-fill" style="width:${m.usedPct}%;background:${pctColor};"></div></div>
       <div style="font-size:11px;color:var(--muted);margin-top:3px;">استُخدم ${m.usedPct}%</div>
@@ -12927,6 +13020,7 @@ function matOpenEditModal(materialId){
     <div class="field"><label>اسم الخامة</label><input class="d-input" id="mat-edit-name" value="${qEsc(m.name)}"></div>
     <div class="field"><label>الوحدة</label><input class="d-input" id="mat-edit-unit" value="${qEsc(m.unit)}"></div>
     <div class="field"><label>الكمية الأصلية</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="mat-edit-qty" value="${m.originalQty}" onkeypress="return /[0-9.]/.test(event.key)"></div>
+    <div class="field"><label>سعر الوحدة (ج) — اختياري</label><input type="text" inputmode="decimal" class="d-input ltr-num" id="mat-edit-price" value="${m.unitPrice || ''}" onkeypress="return /[0-9.]/.test(event.key)"></div>
     <div class="field"><label>تاريخ الشراء</label><input type="date" class="d-input" id="mat-edit-pdate" value="${m.addedDate}"></div>
     <div style="font-size:11.5px;color:var(--muted);margin:4px 0 10px;">تغيير الكمية الأصلية بيحرّك "المتبقي" بنفس الفرق، وسجل الاستخدام القديم مايتلمسش.</div>
     <button type="button" class="btn btn-primary" id="mat-edit-save-btn" onclick="matSaveEdit('${qEscJs(materialId)}')">حفظ التعديل</button>
@@ -12937,13 +13031,15 @@ async function matSaveEdit(materialId){
   const name = document.getElementById('mat-edit-name').value.trim();
   const unit = document.getElementById('mat-edit-unit').value.trim();
   const qty = document.getElementById('mat-edit-qty').value.trim();
+  const priceEl = document.getElementById('mat-edit-price');
+  const unitPrice = priceEl ? priceEl.value.trim() : '';
   const purchaseDate = document.getElementById('mat-edit-pdate').value;
   const msg = document.getElementById('mat-edit-msg');
   const btn = document.getElementById('mat-edit-save-btn');
   if (!name || !unit || !qty) { msg.className = 'msg err'; msg.textContent = 'كل الخانات مطلوبة'; return; }
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...'; }
   try {
-    const res = await apiPost('updateMaterial', { item: { id: materialId, name, unit, qty, purchaseDate } });
+    const res = await apiPost('updateMaterial', { item: { id: materialId, name, unit, qty, unitPrice, purchaseDate } });
     if (!res.success) { msg.className = 'msg err'; msg.textContent = res.error || 'حصل خطأ'; return; }
     closeCardModal();
     showToast('✅ اتعدلت الخامة');
@@ -12984,19 +13080,21 @@ async function matAddMaterial(){
   const nameEl = document.getElementById('mat-new-name');
   const unitEl = document.getElementById('mat-new-unit');
   const qtyEl = document.getElementById('mat-new-qty');
+  const priceEl = document.getElementById('mat-new-price');
   const pdateEl = document.getElementById('mat-new-pdate');
   const msg = document.getElementById('mat-add-msg');
   const btn = document.getElementById('mat-add-btn');
   const name = nameEl.value.trim(), unit = unitEl.value.trim(), qty = qtyEl.value.trim();
+  const unitPrice = priceEl ? priceEl.value.trim() : '';
   const purchaseDate = (pdateEl && pdateEl.value) ? pdateEl.value : todayStr();
   if (!name || !unit || !qty) { msg.className = 'msg err'; msg.textContent = 'محتاج تملأ اسم الخامة والوحدة والكمية'; return; }
   if (btn && btn.disabled) return; // منع الدوس المتكرر لحد ما الطلب اللي قبله يخلص
   msg.className = 'msg'; msg.textContent = '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...'; }
   try {
-    const res = await apiPost('addMaterial', { item: { name, unit, qty, purchaseDate } });
+    const res = await apiPost('addMaterial', { item: { name, unit, qty, unitPrice, purchaseDate } });
     if (!res.success) { msg.className = 'msg err'; msg.textContent = res.error || 'حصل خطأ'; return; }
-    nameEl.value = ''; unitEl.value = ''; qtyEl.value = ''; if (pdateEl) pdateEl.value = todayStr();
+    nameEl.value = ''; unitEl.value = ''; qtyEl.value = ''; if (priceEl) priceEl.value = ''; if (pdateEl) pdateEl.value = todayStr();
     msg.className = 'msg ok'; msg.textContent = '✅ اتضافت';
     const { materials } = await apiGet('listMaterials');
     MATSTATE.materials = materials || [];
