@@ -7543,12 +7543,28 @@ async function renderCostsEntriesTab() {
   ]);
   window._costsSummaryMap = {};
   (summaryProjects || []).forEach(p => { window._costsSummaryMap[p.project] = p; });
+  window._costsAllList = initialCosts || [];
   renderCostsList(initialCosts);
   document.getElementById('addCostItemBtn').addEventListener('click', () => { costItemRows.push({name:'',qty:'',unit:'',unitPrice:''}); renderCostDynRows(); });
   document.getElementById('addCostLaborBtn').addEventListener('click', () => { costLaborRows.push({employee:'',hours:'9',eveningHours:'',eveningAmount:'',showEvening:false}); renderCostDynRows(); });
+  // ⚡ إصلاح بطء الفلتر: القايمة بتتفلتر فورًا من البيانات المحمّلة أصلًا (initialCosts = كل التكاليف)
+  // بدل طلب سيرفر جديد في كل تغيير، وملخص المشروع بيتحمّل في الخلفية من غير ما يعطّل القايمة.
+  // لو الفلترة المحلية رجّعت صفر (مثلًا اسم الشيت مختلف عن اسم المشروع) بنرجع للطلب القديم كاحتياطي.
   document.getElementById('costFilterProject').addEventListener('change', async (e) => {
-    const list = await apiGet('listCosts', { filters:{project:e.target.value} }); renderCostsList(list.costs);
-    renderCostProjectSummary(e.target.value);
+    const proj = e.target.value;
+    const all = window._costsAllList || [];
+    const local = proj ? all.filter(c => c.project === proj) : all;
+    if (local.length || !proj) {
+      renderCostsList(local);
+    } else {
+      document.getElementById('costsListBox').innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+      try {
+        const list = await apiGet('listCosts', { filters:{project:proj} });
+        if (document.getElementById('costFilterProject').value !== proj) return; // اتغيّر الفلتر تاني أثناء التحميل
+        renderCostsList(list.costs);
+      } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
+    }
+    renderCostProjectSummary(proj);
   });
   document.getElementById('costForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -7655,6 +7671,8 @@ async function renderCostProjectSummary(project){
       apiGet('listProjectRevenueEntries', { name: project }),
       apiGet('listHoursEntries', { filters: { project } })
     ]);
+    const filterEl = document.getElementById('costFilterProject');
+    if (!filterEl || filterEl.value !== project) return; // المستخدم غيّر المشروع أثناء التحميل — متكتبش ملخص قديم فوق الجديد
     const entries = rev.entries || [];
     const hoursEntries = hoursRes.entries || [];
     const revenueTotal = d.financials ? d.financials.revenue : (rev.total || 0);
@@ -8008,6 +8026,8 @@ function renderCostsList(costs){
   box.innerHTML = projects.map(proj => {
     const rows = byProject[proj].slice().sort((a,b) => (b.date||'') < (a.date||'') ? -1 : ((b.date||'') > (a.date||'') ? 1 : 0));
     const projTotal = rows.reduce((s,r)=>s+r.totalCost,0);
+    const projItems = rows.reduce((s,r)=>s+(Number(r.itemsCost)||0),0);   // إجمالي الخامات/البنود
+    const projLabor = rows.reduce((s,r)=>s+(Number(r.laborCost)||0),0);   // إجمالي العمالة
     const s = summaryMap[proj];
     const revenue = s && s.financials ? s.financials.revenue : null;
     const netProfit = s ? s.netProfit : null;
@@ -8034,7 +8054,9 @@ function renderCostsList(costs){
             : '—';
           return `<tr><td>${qEsc(p.date||'—')}</td><td>${qEsc(p.name)}</td><td>${itemsTxt}</td><td>${laborTxt}</td><td><b>${fmt(p.totalCost)} ج</b></td>
           <td><button class="btn btn-sm btn-danger" onclick="deleteCostConfirm('${qEscJs(p.project)}','${qEscJs(p.id)}')">حذف</button></td></tr>`;
-        }).join('')}</tbody></table></div>
+        }).join('')}</tbody>
+        <tfoot><tr class="tbl-totals-row"><td colspan="2">الإجمالي (${rows.length} عملية)</td><td>خامات/بنود: ${fmt(projItems)} ج</td><td>عمالة: ${fmt(projLabor)} ج</td><td>${fmt(projTotal)} ج</td><td></td></tr></tfoot>
+      </table></div>
     </div>`;
   }).join('');
 }
