@@ -8470,26 +8470,51 @@ function toggleDebtNotePopover(id, btnEl){
 document.addEventListener('click', e => {
   if (!e.target.closest('.d-log-note-btn') && !e.target.closest('#debt-note-popover')) closeDebtNotePopover();
 });
-async function payDebtPrompt(id, remaining){
-  const val = await openGenPrompt('المبلغ المسدد دلوقتي (من إجمالي الباقي '+fmt(remaining)+' ج):', remaining, 'سداد دين');
-  if (val === null) return;
-  const amount = qNum(val);
+function payDebtPrompt(id, remaining){
+  const d = (_debtsCache||[]).find(x => x.id === id); if (!d) return;
+  const n = new Date();
+  const today = n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0'); // تاريخ الجهاز المحلي مش UTC
+  openCardModal(`
+    <div class="cd-head"><h3>📕 سداد دين</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">${qEsc(d.creditor||'')}${d.desc ? ' — ' + qEsc(d.desc) : ''} — الباقي: <b style="color:var(--dark);">${fmt(remaining)} ج</b></div>
+    <div class="field" style="margin-bottom:12px;"><label>المبلغ المسدد دلوقتي</label>
+      <input type="text" id="pd-amount" class="ltr-num" dir="ltr" inputmode="decimal" value="${remaining}" onkeydown="if(event.key==='Enter')submitDebtPayment('${id}')"></div>
+    <div class="field" style="margin-bottom:12px;"><label>تاريخ السداد</label>
+      <input type="date" id="pd-date" value="${today}" dir="ltr" onkeydown="if(event.key==='Enter')submitDebtPayment('${id}')"></div>
+    <div class="field" style="margin-bottom:16px;"><label>ملاحظة (اختياري)</label>
+      <input type="text" id="pd-note" dir="auto" placeholder="مثلًا: تحويل بنكي / كاش / دفعة أولى..." onkeydown="if(event.key==='Enter')submitDebtPayment('${id}')"></div>
+    <div class="q-confirm-btns">
+      <button class="btn btn-primary" id="pd-confirm-btn" onclick="submitDebtPayment('${id}')">تأكيد</button>
+      <button class="btn btn-outline" onclick="closeCardModal()">إلغاء</button>
+    </div>
+  `);
+  setTimeout(()=>{ const el = document.getElementById('pd-amount'); if (el){ el.focus(); el.select(); } }, 50);
+}
+async function submitDebtPayment(id){
+  const amount = qNum(document.getElementById('pd-amount').value);
+  const payDate = document.getElementById('pd-date').value;
+  const payNote = document.getElementById('pd-note').value.trim();
   if (!(amount > 0)) return showToast('اكتب مبلغ صحيح أكبر من صفر', 'error');
+  if (!payDate) return showToast('اختار تاريخ السداد', 'error');
   // ⚠️ إصلاح بطء "السداد بيتعلق": كانت 3 نداءات متتالية للسيرفر (listDebts للقراءة
   // + updateDebt للحفظ + listDebts تاني جوه renderDebts) وكل نداء لـ Apps Script بياخد
   // ثانية+ لوحده، فكان حاسس إنه "معلّق" لكذا ثانية من غير أي مؤشر إنه شغال. دلوقتي:
   // (1) بنستخدم _debtsCache المحمّل بالفعل بدل نداء قراءة زيادة، (2) نداء واحد بس
   // للحفظ (updateDebt)، (3) بعد الحفظ بنحدّث الكاش المحلي ونعيد الرسم من غيره نداء
   // تاني، (4) توست فوري "جاري السداد..." عشان يبان إنه شغال مش واقف.
+  // ⚠️ إضافة: التاريخ (تلقائي النهارده وممكن يتغير) والملاحظة بيتبعتوا مع السداد
+  // وبيتسجلوا في الشيت (تاريخ في "آخر سداد" + الملاحظة كـ Note على نفس الخلية).
   const d = (_debtsCache||[]).find(x => x.id === id); if (!d) return;
   const newPaid = d.paid + amount;
+  const btn = document.getElementById('pd-confirm-btn'); if (btn) btn.disabled = true;
+  closeCardModal();
   showToast('⏳ جاري السداد...');
   try {
-    const res = await apiPost('updateDebt', { debt: { id, total: d.total, paid: newPaid } });
+    const res = await apiPost('updateDebt', { debt: { id, total: d.total, paid: newPaid, payDate, payNote } });
     d.paid = newPaid;
     d.remaining = res.remaining != null ? res.remaining : (d.total - newPaid);
     d.settled = !!res.settled;
-    d.lastPayment = todayStr();
+    if (!d.lastPayment || payDate > d.lastPayment) d.lastPayment = payDate;
     renderDebtsPage(_debtsCache);
     showToast('✔ اتسجل السداد بنجاح', 'success');
   } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
