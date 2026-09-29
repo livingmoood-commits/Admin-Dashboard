@@ -2302,6 +2302,21 @@ function openPaymentsMasterDetail(kind, source){
   `);
 }
 
+// كارت "الباقي علينا (ديون)" في نظرة عامة → Pop فيه الديون غير المسددة (نفس شكل Pop "الباقي لينا برا")
+// ودوس على أي دين يفتحلك تعديله على طول (نفس سلوك كروت صفحة الديون)
+function openDebtsMasterDetail(){
+  const list = (_debtsCache || []).filter(d => d.remaining > 0.01).sort((a,b) => b.remaining - a.remaining);
+  const rows = list.length ? list.map(d => `
+    <div class="cd-list-row" style="cursor:pointer;" onclick="closeCardModal(); editDebtStart('${d.id}')">
+      <span class="n">${qEsc(d.creditor)}${d.desc ? ' — '+qEsc(d.desc) : ''}</span>
+      <span class="p">${fmt(d.total)} ج <span style="color:var(--muted);font-weight:600;">(الباقي ${fmt(d.remaining)} ج)</span></span>
+    </div>`).join('') : '<div class="empty">مفيش ديون مفتوحة حاليًا</div>';
+  openCardModal(`
+    <div class="cd-head"><h3>الديون غير المسددة — الباقي علينا (${list.length})</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div>${rows}</div>
+  `);
+}
+
 /* ⚠️ إعادة تصميم 2026-08-11: صفحة "نظرة عامة" بقت تجمع في نفس الشاشة:
  * جدولين جنب بعض بالجهات ("اللي لينا" = مستحقاتنا برا من العملاء، و"اللي علينا" =
  * ديون_النظام للموردين/الجهات)، الخزنة بالرصيد الحالي + تفاصيل عند الدوس عليها،
@@ -2345,7 +2360,7 @@ async function renderDashboard(token) {
       <!-- اللي لينا / اللي علينا / الفرق — جنب بعض في صف واحد مميز -->
       <div class="netgroup">
         <div class="card clickable" onclick="openPaymentsMasterDetail('incomplete','dash')"><div class="label">الباقي لينا برا (عملاء)</div><div class="value" style="color:${totalReceivable>0.01?'var(--green)':'var(--muted)'};">${fmt(totalReceivable)} ج</div></div>
-        <div class="card clickable" onclick="goTo('debts')"><div class="label">الباقي علينا (ديون)</div><div class="value" style="color:${totalPayable>0.01?'var(--red)':'var(--green)'};">${fmt(totalPayable)} ج</div></div>
+        <div class="card clickable" onclick="openDebtsMasterDetail()"><div class="label">الباقي علينا (ديون)</div><div class="value" style="color:${totalPayable>0.01?'var(--red)':'var(--green)'};">${fmt(totalPayable)} ج</div></div>
         <div class="card diff"><div class="label">الفرق (لينا − علينا)</div><div class="value" style="color:${netDiff>=0?'var(--green)':'var(--red)'};">${netDiff>=0?'':'-'}${fmt(Math.abs(netDiff))} ج</div></div>
       </div>
 
