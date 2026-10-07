@@ -12147,6 +12147,7 @@ function toQfFormHtml_(){
     ${TO_QF.emps.length ? `
       <div class="toqf-chips" style="margin:4px 0 12px;">
         <span style="font-size:12px;color:var(--muted);font-weight:700;">أسبوع ${weekLabel}</span>
+        <input type="date" class="d-input" style="max-width:160px;padding:6px 9px;" value="${toISO(TO_QF.weekAnchor)}" title="اختار أي يوم — هيفتح أسبوعه" onchange="toQfPickWeek_(this.value)">
         <button type="button" class="btn btn-outline btn-sm" onclick="toQfShiftWeek_(-1)">‹ اللي قبله</button>
         <button type="button" class="btn btn-outline btn-sm" onclick="toQfShiftWeek_(1)">اللي بعده ›</button>
         <button type="button" class="btn btn-outline btn-sm" onclick="toQfShiftWeek_(0)">الأسبوع ده</button>
@@ -12259,6 +12260,12 @@ function toQfToggleEmp_(craftsmanIdx){
   const idx = TO_QF.emps.indexOf(c.name);
   if (idx === -1) { TO_QF.emps.push(c.name); TO_QF.perEmp[c.name] = { dates: [], rows: {}, lastIso: null }; }
   else { TO_QF.emps.splice(idx, 1); delete TO_QF.perEmp[c.name]; }
+  toQfRenderBox_();
+}
+function toQfPickWeek_(iso){
+  if (!iso) return;
+  const d = new Date(iso + 'T00:00:00'); if (isNaN(d.getTime())) return;
+  TO_QF.weekAnchor = d;
   toQfRenderBox_();
 }
 function toQfShiftWeek_(delta){
@@ -12472,6 +12479,7 @@ function toRenderWeekGrid(dates, from, to) {
       <div class="to-week-toolbar">
         <span class="to-week-label">أسبوع ${weekLabel}</span>
         <div class="to-week-nav">
+          <input type="date" class="d-input" id="toWeekPickDate" style="max-width:160px;padding:6px 9px;" value="${toISO(TO_STATE.weekAnchor)}" title="اختار أي يوم — هيفتح أسبوعه">
           <button class="wn-arrow" id="toPrevWeek">&#8249;</button>
           <button class="btn btn-outline btn-sm" id="toThisWeekBtn">الأسبوع الحالي</button>
           <button class="wn-arrow" id="toNextWeek">&#8250;</button>
@@ -12512,6 +12520,13 @@ function toRenderWeekGrid(dates, from, to) {
   document.getElementById('toNextWeek').addEventListener('click', () => { TO_STATE.weekAnchor.setDate(TO_STATE.weekAnchor.getDate()+7); TO_STATE.selectedCells=[]; toLoadWeekTab(); toRenderStatStrip(); });
   document.getElementById('toThisWeekBtn').addEventListener('click', () => { TO_STATE.weekAnchor=new Date(); TO_STATE.selectedCells=[]; toLoadWeekTab(); toRenderStatStrip(); });
   // اختيار خلية: تفاعل UI بحت — بتحديث الشكل فورًا من غير أي فيتش أو مسح للشاشة
+  // ⚠️ إضافة 2026-10-07: كالندر — اختيار أي تاريخ بيفتح الأسبوع اللي فيه التاريخ ده على طول
+  const _wkPick = document.getElementById('toWeekPickDate');
+  if (_wkPick) _wkPick.addEventListener('change', () => {
+    if (!_wkPick.value) return;
+    const d = new Date(_wkPick.value + 'T00:00:00'); if (isNaN(d.getTime())) return;
+    TO_STATE.weekAnchor = d; TO_STATE.selectedCells = []; toLoadWeekTab(); toRenderStatStrip();
+  });
   // ⚠️ تعديل 2026-10-07: دوسة على خلية = تضيفها/تشيلها من التحديد (أكتر من يوم وأكتر من شخص)
   document.querySelectorAll('td.to-day-cell').forEach(td => {
     td.addEventListener('click', () => toWeekToggleCells_([{ emp: td.dataset.emp, date: td.dataset.date }]));
