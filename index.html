@@ -11269,6 +11269,57 @@ let TO_QF = { emps: [], perEmp: {}, weekAnchor: new Date() };
 // القعدة)، وشغله بيتسجل عادي بتسعيرته دي وتكلفته بتتحمّل على المشروع.
 let TO_QF_TEMPS = {}; // { اسم: { dailyRate, eveningRate } }
 let TO_QF_TEMP_OPEN = false;
+/* ⚠️ إضافة 2026-10-07 (حماية من قطع النت): كل اللي بتكتبه في فورم "تسجيل شغل" (الموظفين
+ * المختارين، أيامهم، مشاريعهم، ساعاتهم، الموظفين المؤقتين) بيتحفظ أول بأول في
+ * localStorage على الجهاز. لو النت قطع، الحفظ فشل، الصفحة اتحدّثت أو المتصفح اتقفل —
+ * بترجع تلاقيه زي ما هو وتدوس حفظ تاني. المسودة بتتمسح لوحدها أول ما الحفظ ينجح
+ * فعلاً في السيرفر. (مفتاح مستقل عن كاش الـAPI وعن مسودات النصوص التانية — محدش فيهم بيمسحه.) */
+const TO_QF_LS_KEY = 'lm_toqf_draft_v1';
+let TO_QF_RESTORED_AT = 0; // وقت حفظ المسودة اللي اترجعت (0 = مفيش) — بيتعرض كتنبيه فوق الفورم
+let _toQfPersistTimer = null;
+function toQfPersist_(now){
+  clearTimeout(_toQfPersistTimer);
+  const run = () => {
+    try {
+      const hasData = TO_QF.emps.length || Object.keys(TO_QF_TEMPS).length;
+      if (!hasData) { localStorage.removeItem(TO_QF_LS_KEY); return; }
+      localStorage.setItem(TO_QF_LS_KEY, JSON.stringify({ v: 1, savedAt: Date.now(), emps: TO_QF.emps, perEmp: TO_QF.perEmp, temps: TO_QF_TEMPS }));
+    } catch (e) { /* المساحة مليانة/وضع خاص — الفورم يكمل عادي من غير حفظ محلي */ }
+  };
+  if (now) run(); else _toQfPersistTimer = setTimeout(run, 300);
+}
+function toQfRestore_(){
+  try {
+    const raw = localStorage.getItem(TO_QF_LS_KEY); if (!raw) return;
+    const d = JSON.parse(raw);
+    if (!d || d.v !== 1 || !Array.isArray(d.emps) || !d.perEmp || typeof d.perEmp !== 'object') { localStorage.removeItem(TO_QF_LS_KEY); return; }
+    const emps = [], perEmp = {};
+    d.emps.forEach(name => {
+      const st = d.perEmp[name];
+      if (typeof name !== 'string' || !st || !Array.isArray(st.dates) || !st.rows || typeof st.rows !== 'object') return;
+      const dates = st.dates.filter(iso => /^\d{4}-\d{2}-\d{2}$/.test(iso) && Array.isArray(st.rows[iso]));
+      const rows = {};
+      dates.forEach(iso => { rows[iso] = st.rows[iso].map(r => ({ kind: r.kind === 'eve' ? 'eve' : 'work', project: String(r.project || ''), hours: String(r.hours == null ? '' : r.hours), title: String(r.title || ''), notes: String(r.notes || '') })); });
+      emps.push(name);
+      perEmp[name] = { dates, rows, lastIso: dates.indexOf(st.lastIso) !== -1 ? st.lastIso : (dates[dates.length - 1] || null), collapsed: !!st.collapsed };
+    });
+    const temps = {};
+    if (d.temps && typeof d.temps === 'object') Object.keys(d.temps).forEach(n => { const t = d.temps[n] || {}; temps[n] = { dailyRate: Number(t.dailyRate) || 0, eveningRate: Number(t.eveningRate) || 0 }; });
+    if (!emps.length && !Object.keys(temps).length) { localStorage.removeItem(TO_QF_LS_KEY); return; }
+    TO_QF.emps = emps; TO_QF.perEmp = perEmp; TO_QF_TEMPS = temps;
+    TO_QF_RESTORED_AT = Number(d.savedAt) || Date.now();
+  } catch (e) { try { localStorage.removeItem(TO_QF_LS_KEY); } catch (e2) {} }
+}
+toQfRestore_();
+function toQfDiscardDraft_(){
+  TO_QF = { emps: [], perEmp: {}, weekAnchor: TO_QF.weekAnchor };
+  TO_QF_TEMPS = {}; TO_QF_RESTORED_AT = 0;
+  toQfPersist_(true);
+  toQfRenderBox_();
+}
+// النت قطع/رجع — نطمّن المستخدم إن اللي كتبه محفوظ
+window.addEventListener('offline', () => { if (TO_QF.emps.length) showToast('النت قطع — اللي كتبته في تسجيل الشغل محفوظ على الجهاز', 'error'); });
+window.addEventListener('online', () => { if (TO_QF.emps.length) showToast('النت رجع — تقدر تدوس حفظ دلوقتي'); });
 // ⚠️ إضافة: دروب داون صارم للمشروع — مينفعش تكتب اسم حر، لازم تختار من قايمة
 // المشاريع الفعلية (نفس المصدر الموحّد listProjects() المستخدم في كل الموقع).
 // ده بيمنع إن يوم شغل يتسجل بغلطة إملائية أو اسم مشروع مش موجود أصلًا.
@@ -12165,6 +12216,7 @@ function toQfTotalHtml_(total, registered){
 // بيعيد رسم صندوق الفورم بس — "مين فين" تحت مش بيتلمس
 function toQfRenderBox_(){
   const box = document.getElementById('toqf-box');
+  toQfPersist_();
   if (!box) { toRenderDailyForm(); return; }
   box.innerHTML = toQfFormHtml_();
 }
@@ -12180,7 +12232,13 @@ function toQfFormHtml_(){
   const weekLabel = toFmtDayDate(dates[0]) + ' – ' + toFmtDayDate(dates[6]);
   const hasDays = TO_QF.emps.some(e => TO_QF.perEmp[e] && TO_QF.perEmp[e].dates.length);
   if (TO_QF.emps.length) toQfEnsureWeekHours_(); // في الخلفية — بيعيد رسم الصندوق مرة واحدة لما الساعات المتسجلة توصل
+  const restoredNote = TO_QF_RESTORED_AT && TO_QF.emps.length
+    ? `<div class="msg" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:12.5px;margin-bottom:10px;">
+        <span>📌 رجّعنالك اللي كنت كاتبه ومتحفظش (محفوظ على الجهاز ${new Date(TO_QF_RESTORED_AT).toLocaleString('ar-EG', { day: 'numeric', month: 'numeric', hour: 'numeric', minute: '2-digit' })}) — راجعه ودوس "حفظ الكل".</span>
+        <button type="button" class="btn btn-outline btn-sm" onclick="toQfDiscardDraft_()">امسحه وابدأ من جديد</button>
+      </div>` : '';
   return `
+    ${restoredNote}
     <div class="field"><label>الصنايعية (اختار واحد أو أكتر — كل واحد بياخد بلوك مستقل بأيامه ومشاريعه)</label>
       <div class="toqf-chips">${weekly.map(empChip).join('')}</div>
       ${weekly.length && monthly.length ? `<div class="toqf-emp-divider">شهري</div>` : ''}
@@ -12243,9 +12301,11 @@ function toQfEmpCardHtml_(emp, ei, weekDates){
         </span>
         <span class="toqf-chips">
           ${TO_QF.emps.length > 1 && st.dates.length ? `<button type="button" class="btn btn-outline btn-sm" onclick="toQfCopyEmpToOthers_(${ei})">📋 انسخ أيامه ومشاريعه لباقي المختارين</button>` : ''}
+          ${st.dates.length ? `<button type="button" class="btn btn-outline btn-sm" onclick="toQfOpenCopyPicker_(${ei})">📋 انسخ لموظف معين</button>` : ''}
           <button type="button" class="mat-icon-btn" title="شيل الصنيعي" onclick="toQfRemoveEmp_(${ei})">✕</button>
         </span>
       </div>
+      ${TO_QF_COPY && TO_QF_COPY.from === emp ? toQfCopyPickerHtml_(emp) : ''}
       ${collapsed ? '' : `
       ${TO_QF_TEMPS[emp] ? `
         <div class="toqf-chips" style="margin-bottom:8px;font-size:12px;">
@@ -12256,6 +12316,64 @@ function toQfEmpCardHtml_(emp, ei, weekDates){
       ${st.dates.slice().sort().map(iso => toQfDayHtml_(ei, iso, st)).join('')}
       `}
     </div>`;
+}
+// ⚠️ إضافة 2026-10-07 ("انسخ لموظف معين"): بيفتح تحت اسم الموظف قايمة بكل الموظفين التانيين
+// (المختارين الأول، وبعدهم باقي أسامي الشهر والمؤقتين) — تختار واحد أو أكتر وتدوس "انسخ".
+// أيامه ومشاريعه وساعاته وسهراته بتتنسخ لهم، واللي مش مختار في الفورم بيتضاف لوحده.
+// لو الموظف اللي هتنسخله عنده أيام مكتوبة، بتتبدل باللي منسوخ (ومتعلّم عليه "هيتبدل").
+let TO_QF_COPY = null; // { from: اسم, targets: [أسامي] }
+function toQfCopyCandidates_(from){
+  const names = [];
+  const push = n => { if (n && n !== from && names.indexOf(n) === -1) names.push(n); };
+  TO_QF.emps.forEach(push);
+  (TO_QF._chipList || TO_STATE.craftsmen).forEach(c => push(c.name));
+  Object.keys(TO_QF_TEMPS).forEach(push);
+  return names;
+}
+function toQfOpenCopyPicker_(ei){
+  const from = TO_QF.emps[ei]; if (from === undefined) return;
+  TO_QF_COPY = (TO_QF_COPY && TO_QF_COPY.from === from) ? null : { from, targets: [] };
+  toQfRenderBox_();
+}
+function toQfCopyPickerHtml_(from){
+  const cands = toQfCopyCandidates_(from);
+  TO_QF_COPY._cands = cands;
+  const n = TO_QF_COPY.targets.length;
+  return `
+    <div class="toqf-day" style="border:1.5px dashed var(--gold);margin-bottom:8px;">
+      <div style="font-size:12.5px;font-weight:700;margin-bottom:8px;">هتنسخ أيام ومشاريع ${qEsc(from)} لمين؟ <span style="font-weight:400;color:var(--muted);">(اختار واحد أو أكتر)</span></div>
+      <div class="toqf-chips">
+        ${cands.length ? cands.map((name, i) => {
+          const picked = TO_QF_COPY.targets.indexOf(name) !== -1;
+          const hasData = TO_QF.perEmp[name] && TO_QF.perEmp[name].dates.length;
+          return `<button type="button" class="btn btn-sm ${picked ? 'btn-primary' : 'btn-outline'}" onclick="toQfCopyToggleTarget_(${i})">${qEsc(name)}${TO_QF_TEMPS[name] ? ' (مؤقت)' : ''}${hasData ? ' <span style="font-weight:400;color:var(--red);">— هيتبدل</span>' : ''}</button>`;
+        }).join('') : '<span style="font-size:12px;color:var(--muted);">مفيش موظفين تانيين</span>'}
+      </div>
+      <div class="toqf-chips" style="margin-top:10px;">
+        <button type="button" class="btn btn-primary btn-sm" onclick="toQfCopyConfirm_()" ${n ? '' : 'disabled'}>📋 انسخ${n ? ' لـ ' + n : ''}</button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="TO_QF_COPY=null;toQfRenderBox_();">إلغاء</button>
+      </div>
+    </div>`;
+}
+function toQfCopyToggleTarget_(i){
+  if (!TO_QF_COPY) return;
+  const name = (TO_QF_COPY._cands || [])[i]; if (name === undefined) return;
+  const idx = TO_QF_COPY.targets.indexOf(name);
+  if (idx === -1) TO_QF_COPY.targets.push(name); else TO_QF_COPY.targets.splice(idx, 1);
+  toQfRenderBox_();
+}
+function toQfCopyConfirm_(){
+  if (!TO_QF_COPY) return;
+  const st = TO_QF.perEmp[TO_QF_COPY.from];
+  const targets = TO_QF_COPY.targets.slice();
+  if (!st || !targets.length) return;
+  targets.forEach(name => {
+    if (TO_QF.emps.indexOf(name) === -1) TO_QF.emps.push(name);
+    TO_QF.perEmp[name] = { dates: st.dates.slice(), rows: JSON.parse(JSON.stringify(st.rows)), lastIso: st.lastIso, collapsed: false };
+  });
+  TO_QF_COPY = null;
+  toQfRenderBox_();
+  showToast('اتنسخ لـ ' + targets.join('، '));
 }
 function toQfToggleCollapse_(ei){
   const st = toQfState_(ei); if (!st) return;
@@ -12329,7 +12447,7 @@ function toQfForgetTemp_(i){
   toQfRenderBox_();
 }
 function toQfSetTempRate_(ei, field, value){
-  const t = TO_QF_TEMPS[TO_QF.emps[ei]]; if (t) t[field] = Number(value) || 0;
+  const t = TO_QF_TEMPS[TO_QF.emps[ei]]; if (t) { t[field] = Number(value) || 0; toQfPersist_(); }
 }
 function toQfRemoveEmp_(ei){
   const name = TO_QF.emps[ei]; if (name === undefined) return;
@@ -12370,7 +12488,7 @@ function toQfToggleDay_(ei, iso){
 }
 function toQfSetRow_(ei, iso, ri, field, value){
   const st = toQfState_(ei);
-  if (st && st.rows[iso] && st.rows[iso][ri]) { st.rows[iso][ri][field] = value; st.lastIso = iso; }
+  if (st && st.rows[iso] && st.rows[iso][ri]) { st.rows[iso][ri][field] = value; st.lastIso = iso; toQfPersist_(); }
 }
 function toQfUpdateTotal_(ei, iso){
   const st = toQfState_(ei); const el = document.getElementById(`toqfTot-${ei}-${iso}`);
@@ -12444,6 +12562,11 @@ async function toQuickformSave_() {
     return;
   }
   if (!entries.length) { showToast('اختار صنيعي ويوم واحد على الأقل', 'error'); return; }
+  toQfPersist_(true); // نثبّت آخر نسخة على الجهاز قبل ما نبعت — لو الطلب وقع في النص، مفيش حاجة تضيع
+  if (navigator.onLine === false) {
+    if (msg) { msg.className = 'msg err'; msg.textContent = 'مفيش نت دلوقتي — اللي كتبته محفوظ على الجهاز. دوس "حفظ الكل" تاني لما النت يرجع.'; }
+    return;
+  }
   // ⚠️ تعديل 2026-10-07: بقى منع مش سؤال — أكتر من 9 ساعات شغل عادي في اليوم (الجديد +
   // المتسجل قبل كده) مبيتحفظش. الزيادة تتسجل سهرة. السيرفر بيعمل نفس الفحص برضه.
   if (over.length) {
@@ -12472,11 +12595,14 @@ async function toQuickformSave_() {
     TO_STATE.weekCache = {}; TO_STATE.weekHoursCache = {}; // الأسبوع اللي اتسجل فيه لازم يتجاب تاني من السيرفر
     TO_ROSTER.loadedDate = null;
     TO_QF = { emps: [], perEmp: {}, weekAnchor: TO_QF.weekAnchor };
+    TO_QF_RESTORED_AT = 0;
+    toQfPersist_(true); // الحفظ نجح في السيرفر — نمسح المسودة المحلية (الموظفين المؤقتين بيفضلوا لحد ما تشيلهم)
     await toLoadDailyTab(undefined, { force: true });
     if (wwTouched && TO_STATE.wwDate !== TO_STATE.formDate) await toLoadWhoWhere(undefined, { force: true });
     toRenderStatStrip();
   } catch (err) {
-    if (msg) { msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); }
+    // ⚠️ فشل (نت قطع/السيرفر مردّش): الفورم بيفضل زي ما هو ومحفوظ على الجهاز — المستخدم يدوس حفظ تاني
+    if (msg) { msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err) + ' — اللي كتبته لسه موجود ومحفوظ على الجهاز، جرب "حفظ الكل" تاني.'; }
     if (btn) { btn.disabled = false; btn.textContent = '💾 حفظ الكل'; }
   }
 }
