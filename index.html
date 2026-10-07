@@ -11215,7 +11215,8 @@ let TO_CRAFTSMEN_BY_MONTHS = {};   // { '9': {craftsmen, missingMonths, fallback
 let TO_CRAFTSMEN_LOADING = {};
 function toMonthsKey_(isos){
   const out = [];
-  (isos || []).forEach(iso => { const m = Number(String(iso).slice(5, 7)); if (m && out.indexOf(m) === -1) out.push(m); });
+  // "سنة-شهر" (مثال 2026-7) — السنة لازمة عشان الباك إند يلاقي كشف الحضور بتاع الشهر ده بالاسم
+  (isos || []).forEach(iso => { const m = Number(String(iso).slice(5, 7)); const k = String(iso).slice(0, 4) + '-' + m; if (m && out.indexOf(k) === -1) out.push(k); });
   return out.join(',');
 }
 // isos: الأيام المعروضة، rerender: دالة تتنادى لما أسامي الشهر توصل، extraNames: أسامي ليها تسجيل فعلي لازم تظهر
@@ -11741,7 +11742,7 @@ function toEveningItemHTML_(ev) {
             ${ev.project ? `<span><b>المشروع:</b> ${qEsc(ev.project)}</span>` : ''}
           </div>
           ${ev.notes ? `<div style="font-size:12.5px;color:var(--muted);margin-top:4px;">&#128221; ${qEsc(ev.notes)}</div>` : ''}
-          <div style="font-size:11px;color:var(--muted);margin-top:2px;">للعلم بس — مش بتتحسب في التكلفة ولا المرتب</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;">${Number(ev.eveningAmount) > 0 ? `<b style="color:#8a6d1f;">تكلفة السهرة على المشروع: ${fmt(ev.eveningAmount)} ج</b>` : 'للعلم بس — مفيش مبلغ متسجل لها'}</div>
         </div>
         <div class="to-status-row">
           <button type="button" class="mat-icon-btn" title="حذف السهرة" onclick="toEveningDelete_('${qEscJs(ev.id)}')">🗑️</button>
@@ -12174,7 +12175,7 @@ function toQfFormHtml_(){
   TO_QF._chipList = all; // أزرار الأسامي بتشاور على القايمة دي بالترتيب
   const weekly = all.filter(c => c.paymentType !== 'شهري');
   const monthly = all.filter(c => c.paymentType === 'شهري');
-  const empChip = c => `<button type="button" class="btn btn-sm ${TO_QF.emps.includes(c.name) ? 'btn-primary' : 'btn-outline'}" onclick="toQfToggleEmp_(${all.indexOf(c)})">${qEsc(c.name)}</button>`;
+  const empChip = c => `<button type="button" class="btn btn-sm ${TO_QF.emps.includes(c.name) ? 'btn-primary' : 'btn-outline'}" ${c.noRate ? 'title="اسمه في كشف الحضور بس مش في تفاصيل المرتبات — مفيش تسعيرة، تكلفته مش هتتحسب"' : ''} onclick="toQfToggleEmp_(${all.indexOf(c)})">${qEsc(c.name)}${c.noRate ? ' ⚠️' : ''}</button>`;
   const craftsmenNote = toCraftsmenNoteFor_(dates.map(d => toISO(d)));
   const weekLabel = toFmtDayDate(dates[0]) + ' – ' + toFmtDayDate(dates[6]);
   const hasDays = TO_QF.emps.some(e => TO_QF.perEmp[e] && TO_QF.perEmp[e].dates.length);
@@ -12185,6 +12186,7 @@ function toQfFormHtml_(){
       ${weekly.length && monthly.length ? `<div class="toqf-emp-divider">شهري</div>` : ''}
       <div class="toqf-chips">${monthly.map(empChip).join('')}</div>
       ${craftsmenNote ? `<div style="font-size:11.5px;color:var(--red);margin-top:6px;">⚠️ ${qEsc(craftsmenNote)}</div>` : ''}
+      ${all.some(c => c.noRate) ? `<div style="font-size:11.5px;color:var(--red);margin-top:6px;">⚠️ = اسمه في كشف الحضور بس مش في "تفاصيل المرتبات" بتاع الشهر ده (مفيش تسعيرة) — شغله هيتسجل بس تكلفته مش هتتحسب على المشروع لحد ما يتضاف في التفاصيل.</div>` : ''}
       <div class="toqf-chips" style="margin-top:8px;">
         ${Object.keys(TO_QF_TEMPS).map((n, i) => `<span style="display:inline-flex;align-items:center;gap:2px;"><button type="button" class="btn btn-sm ${TO_QF.emps.includes(n) ? 'btn-primary' : 'btn-outline'}" onclick="toQfToggleTemp_(${i})">${qEsc(n)} <span style="font-weight:400;">(مؤقت)</span></button><button type="button" class="mat-icon-btn" title="شيله من القايمة" onclick="toQfForgetTemp_(${i})">✕</button></span>`).join('')}
         ${TO_QF_TEMP_OPEN ? '' : `<button type="button" class="btn btn-outline btn-sm" style="border-style:dashed;" onclick="TO_QF_TEMP_OPEN=true;toQfRenderBox_();">+ إضافة موظف (مش في المرتبات)</button>`}
@@ -12206,6 +12208,7 @@ function toQfFormHtml_(){
         <button type="button" class="btn btn-outline btn-sm" onclick="toQfShiftWeek_(-1)">‹ اللي قبله</button>
         <button type="button" class="btn btn-outline btn-sm" onclick="toQfShiftWeek_(1)">اللي بعده ›</button>
         <button type="button" class="btn btn-outline btn-sm" onclick="toQfShiftWeek_(0)">الأسبوع ده</button>
+        ${TO_QF.emps.length > 1 ? `<span style="margin-inline-start:auto;display:flex;gap:6px;"><button type="button" class="btn btn-outline btn-sm" onclick="toQfCollapseAll_(true)">▸ اقفل الكل</button><button type="button" class="btn btn-outline btn-sm" onclick="toQfCollapseAll_(false)">▾ افتح الكل</button></span>` : ''}
       </div>
       ${TO_QF.emps.map((emp, ei) => toQfEmpCardHtml_(emp, ei, dates)).join('')}
       <div style="font-size:11.5px;color:var(--muted);margin:6px 0 12px;">اليوم 9 ساعات بالكتير (الزيادة تتسجل سهرة) — لو الصنيعي اشتغل في أكتر من مشروع قسّمهم بنفسك. علامة ✓ على اليوم = متسجله ساعات قبل كده. أي يوم جديد تختاره بياخد نفس مشاريع آخر يوم اخترته لنفس الصنيعي.</div>
@@ -12222,15 +12225,28 @@ function toQfEmpCardHtml_(emp, ei, weekDates){
     const reg = toQfRegistered_(emp, iso);
     return `<button type="button" class="btn btn-sm ${st.dates.includes(iso) ? 'btn-primary' : 'btn-outline'}" ${reg ? `title="متسجل قبل كده ${fmt(reg)} ساعة"` : ''} onclick="toQfToggleDay_(${ei},'${iso}')">${qEsc(toQfDayLabel_(iso))}${iso === today ? ' •' : ''}${reg ? ` <span style="font-weight:800;color:${reg >= 9 ? 'var(--red)' : 'var(--green)'};">✓${fmt(reg)}س</span>` : ''}</button>`;
   };
+  // ⚠️ إضافة 2026-10-07: سهم بيقفل/يفتح خانة الموظف — المقفولة بتبان سطر واحد فيه ملخص (كام يوم وكام ساعة)
+  // عشان الفورم ميطولش وانت بتسجل كذا موظف. اللي جواها بيفضل زي ما هو وبيتحفظ عادي.
+  const collapsed = !!st.collapsed;
+  const sumDays = st.dates.length;
+  const sumHours = st.dates.reduce((s, iso) => s + toQfDayTotal_(st.rows[iso]), 0);
+  const sumAbs = st.dates.filter(iso => (st.rows[iso] || []).some(r => r.kind === 'work' && r.project === 'إجازة')).length;
+  const sumEve = st.dates.filter(iso => (st.rows[iso] || []).some(r => r.kind === 'eve')).length;
+  const sumText = sumDays ? `${sumDays} يوم — ${fmt(sumHours)} ساعة${sumAbs ? ' — ' + sumAbs + ' إجازة' : ''}${sumEve ? ' — 🌙 ' + sumEve : ''}` : 'لسه مفيش أيام';
   return `
-    <div class="toqf-emp-card">
-      <div class="toqf-emp-head">
-        <span class="toqf-emp-name">${qEsc(emp)}${TO_QF_TEMPS[emp] ? ` <span style="font-size:11.5px;font-weight:700;color:var(--gold-dim);">مؤقت</span>` : ''}</span>
+    <div class="toqf-emp-card" ${collapsed ? 'style="padding-bottom:6px;"' : ''}>
+      <div class="toqf-emp-head" ${collapsed ? 'style="margin-bottom:0;"' : ''}>
+        <span class="toqf-emp-name" style="cursor:pointer;display:flex;align-items:center;gap:8px;flex-wrap:wrap;" title="${collapsed ? 'افتح' : 'اقفل'} خانة ${qEsc(emp)}" onclick="toQfToggleCollapse_(${ei})">
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;background:var(--gold);color:var(--dark);font-size:13px;">${collapsed ? '&#9666;' : '&#9662;'}</span>
+          ${qEsc(emp)}${TO_QF_TEMPS[emp] ? ` <span style="font-size:11.5px;font-weight:700;color:var(--gold-dim);">مؤقت</span>` : ''}
+          ${collapsed ? `<span style="font-size:12px;font-weight:600;color:var(--muted);">${sumText}</span>` : ''}
+        </span>
         <span class="toqf-chips">
           ${TO_QF.emps.length > 1 && st.dates.length ? `<button type="button" class="btn btn-outline btn-sm" onclick="toQfCopyEmpToOthers_(${ei})">📋 انسخ أيامه ومشاريعه لباقي المختارين</button>` : ''}
           <button type="button" class="mat-icon-btn" title="شيل الصنيعي" onclick="toQfRemoveEmp_(${ei})">✕</button>
         </span>
       </div>
+      ${collapsed ? '' : `
       ${TO_QF_TEMPS[emp] ? `
         <div class="toqf-chips" style="margin-bottom:8px;font-size:12px;">
           <span>اليومية</span><input type="text" inputmode="decimal" class="d-input ltr-num" style="width:96px;" value="${qEsc(String(TO_QF_TEMPS[emp].dailyRate || ''))}" onkeypress="return /[0-9.]/.test(event.key)" oninput="toQfSetTempRate_(${ei},'dailyRate',this.value)">
@@ -12238,7 +12254,17 @@ function toQfEmpCardHtml_(emp, ei, weekDates){
         </div>` : ''}
       <div class="toqf-chips">${weekDates.map(dayChip).join('')}</div>
       ${st.dates.slice().sort().map(iso => toQfDayHtml_(ei, iso, st)).join('')}
+      `}
     </div>`;
+}
+function toQfToggleCollapse_(ei){
+  const st = toQfState_(ei); if (!st) return;
+  st.collapsed = !st.collapsed;
+  toQfRenderBox_();
+}
+function toQfCollapseAll_(flag){
+  TO_QF.emps.forEach(e => { if (TO_QF.perEmp[e]) TO_QF.perEmp[e].collapsed = flag; });
+  toQfRenderBox_();
 }
 function toQfDayHtml_(ei, iso, st){
   const rows = st.rows[iso] || [];
@@ -12265,7 +12291,7 @@ function toQfRowHtml_(ei, iso, ri, r){
   const args = `${ei},'${iso}',${ri}`;
   return `
     <div class="toqf-row ${isEve ? 'eve' : ''}">
-      ${isEve ? `<div style="grid-column:1/-1;order:-1;font-size:11.5px;font-weight:700;">🌙 سهرة <span style="font-weight:400;color:var(--muted);">${TO_QF_TEMPS[TO_QF.emps[ei]] ? (Number(TO_QF_TEMPS[TO_QF.emps[ei]].eveningRate) > 0 ? '— موظف مؤقت: سعر السهرة (' + fmt(TO_QF_TEMPS[TO_QF.emps[ei]].eveningRate) + ' ج) بيتحمّل على المشروع' : '— موظف مؤقت من غير سعر سهرة: مش هتتحسب تكلفة') : '— ساعاتها للعلم بس، مش بتتحسب في التكلفة ولا المرتب'}</span></div>` : ''}
+      ${isEve ? `<div style="grid-column:1/-1;order:-1;font-size:11.5px;font-weight:700;">🌙 سهرة <span style="font-weight:400;color:var(--muted);">${TO_QF_TEMPS[TO_QF.emps[ei]] ? (Number(TO_QF_TEMPS[TO_QF.emps[ei]].eveningRate) > 0 ? '— موظف مؤقت: سعر السهرة (' + fmt(TO_QF_TEMPS[TO_QF.emps[ei]].eveningRate) + ' ج) بيتحمّل على المشروع' : '— موظف مؤقت من غير سعر سهرة: مش هتتحسب تكلفة') : '— تكلفتها = الإضافة (ج) المكتوبة في خانة اليوم ده في شيت المرتبات، بتتحمّل على المشروع ده تلقائي. لو مفيش إضافة هناك بتتسجل للعلم بس'}</span></div>` : ''}
       <div>${toProjDropdownHtml_(`toqfP-${ei}-${iso}-${ri}`, r.project, `toQfSetRow_(${args},'project',v);toQfRenderBox_();`)}</div>
       <input type="text" inputmode="decimal" class="d-input ltr-num" placeholder="${isEve ? '🌙 ساعات' : 'ساعات'}" value="${isAbs ? '' : qEsc(r.hours)}" ${isAbs ? 'disabled' : ''} onkeypress="return /[0-9.]/.test(event.key)" oninput="toQfSetRow_(${args},'hours',this.value);toQfUpdateTotal_(${ei},'${iso}')">
       <input class="d-input toqf-wide" placeholder="${isEve ? 'المطلوب في السهرة (اختياري)' : 'المطلوب (اختياري)'}" value="${qEsc(r.title)}" oninput="toQfSetRow_(${args},'title',this.value)">
@@ -12374,7 +12400,7 @@ function toQfCopyEmpToOthers_(ei){
   showToast('اتنسخ لباقي الصنايعية المختارين');
 }
 async function toQuickformSave_() {
-  const msg = document.getElementById('toSaveEntryMsg');
+  let msg = document.getElementById('toSaveEntryMsg');
   const btn = document.getElementById('toSaveEntryBtn');
   const entries = [], errs = [], over = [];
   TO_QF.emps.forEach(emp => {
@@ -12410,6 +12436,10 @@ async function toQuickformSave_() {
     });
   });
   if (errs.length) {
+    // لو فيه خانة مقفولة فيها غلط، نفتحها عشان تتشاف
+    let reopened = false;
+    TO_QF.emps.forEach(e => { const s = TO_QF.perEmp[e]; if (s && s.collapsed && errs.some(x => x.indexOf(e + ' — ') === 0 || x.indexOf(e + ':') === 0)) { s.collapsed = false; reopened = true; } });
+    if (reopened) { toQfRenderBox_(); msg = document.getElementById('toSaveEntryMsg'); }
     if (msg) { msg.className = 'msg err'; msg.textContent = errs.slice(0, 5).join(' • ') + (errs.length > 5 ? ` • و${errs.length - 5} تاني` : ''); }
     return;
   }
@@ -12429,8 +12459,13 @@ async function toQuickformSave_() {
     // موجود في شيت المرتبات) — لازم تبان للمستخدم بدل ما تعدّي في صمت. سطور السهرة
     // مستثناة: ساعاتها للعلم بس ومالهاش تكلفة أصلاً.
     const failed = ((res && res.results) || []).filter((r, i) => r && !r.success && r.error && entries[i] && entries[i].eveningHours === undefined);
+    // ⚠️ إضافة 2026-10-07: السهرات بتاخد مبلغها من إضافات (ج) شيت المرتبات — نقول للمستخدم اتحسب كام ومين ملقيناش له إضافة
+    const eveRes = ((res && res.results) || []).filter(r => r && r.isEvening);
+    const eveSum = eveRes.reduce((s, r) => s + (Number(r.eveningAmount) || 0), 0);
+    const eveNone = eveRes.filter(r => !(Number(r.eveningAmount) > 0));
+    const eveText = eveRes.length ? ' — سهرات: ' + fmt(eveSum) + ' ج اتحمّلت على المشاريع' + (eveNone.length ? '، و' + eveNone.length + ' سهرة ملهاش إضافة (ج) في المرتبات (' + eveNone.slice(0, 3).map(r => r.employee + ' ' + r.date).join('، ') + ') اتسجلت للعلم بس' : '') : '';
     if (failed.length) showToast('اتسجل، بس ' + failed.length + ' سطر تكلفته متسجلتش: ' + failed[0].employee + ' — ' + failed[0].error, 'error');
-    else showToast('✅ اتسجل ' + entries.length + ' سطر شغل');
+    else showToast('✅ اتسجل ' + entries.length + ' سطر شغل' + eveText, eveNone.length ? 'error' : undefined);
     Array.from(new Set(entries.map(e => e.date))).forEach(d => { delete TO_STATE.dailyCache[d]; delete TO_STATE.hoursDailyCache[d]; });
     delete TO_STATE.dailyCache[TO_STATE.formDate]; delete TO_STATE.hoursDailyCache[TO_STATE.formDate];
     const wwTouched = entries.some(e => e.date === TO_STATE.wwDate);
