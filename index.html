@@ -11151,6 +11151,47 @@ async function toLoadWhoWhere(token, opts) {
 // فتح الحقول الإضافية، تحديث حالة بند...) عشان مفيش داعي نكلم السيرفر ولا نمسح الشاشة كل ما نضغط حاجة.
 // ⚠️ إضافة: بتبني HTML قايمة الصنايعية مقسّمة (اسبوعيين فوق — خط فاصل صغير —
 // شهريين تحت). TO_STATE.craftsmen بقت {name, paymentType} بدل نص عادي.
+/* ⚠️ إضافة 2026-10-07 ("كل شهر ياخد الأسامي اللي موجودة في المرتبات"): أسامي الصنايعية في
+ * الورك فلو بقت بتتاخد من شيت "تفاصيل المرتبات" بتاع شهر الأيام المعروضة نفسها (مش
+ * دايمًا الشهر الحالي) — لأن الموظفين بيتغيّروا من شهر لشهر. أسبوع داخل على شهرين
+ * بياخد أسامي الشهرين مع بعض. القايمة بتتجاب مرة واحدة لكل شهر/شهرين وتتحفظ هنا؛
+ * لحد ما توصل بنعرض أسامي الشهر الحالي (TO_STATE.craftsmen) وبعدين نعيد الرسم.
+ * وأي صنيعي ليه تسجيل فعلي في الأيام المعروضة بيظهر حتى لو اتشال من مرتبات الشهر
+ * ده — عشان مفيش بيانات متسجلة تستخبى. */
+let TO_CRAFTSMEN_BY_MONTHS = {};   // { '9': {craftsmen, missingMonths, fallback}, '9,10': {...} }
+let TO_CRAFTSMEN_LOADING = {};
+function toMonthsKey_(isos){
+  const out = [];
+  (isos || []).forEach(iso => { const m = Number(String(iso).slice(5, 7)); if (m && out.indexOf(m) === -1) out.push(m); });
+  return out.join(',');
+}
+// isos: الأيام المعروضة، rerender: دالة تتنادى لما أسامي الشهر توصل، extraNames: أسامي ليها تسجيل فعلي لازم تظهر
+function toCraftsmenFor_(isos, rerender, extraNames){
+  const key = toMonthsKey_(isos);
+  let list = TO_STATE.craftsmen;
+  const hit = key && TO_CRAFTSMEN_BY_MONTHS[key];
+  if (hit) list = hit.craftsmen;
+  else if (key && !TO_CRAFTSMEN_LOADING[key]) {
+    TO_CRAFTSMEN_LOADING[key] = true;
+    apiGet('getTaskOrganizeCraftsmen', { months: key })
+      .then(res => { TO_CRAFTSMEN_BY_MONTHS[key] = { craftsmen: res.craftsmen || [], missingMonths: res.missingMonths || [], fallback: !!res.fallback }; })
+      // لو الباك إند لسه قديم/الطلب فشل: نثبّت أسامي الشهر الحالي للمفتاح ده عشان منفضلش نعيد المحاولة مع كل رسم
+      .catch(() => { TO_CRAFTSMEN_BY_MONTHS[key] = { craftsmen: TO_STATE.craftsmen, missingMonths: [], fallback: true }; })
+      .then(() => { delete TO_CRAFTSMEN_LOADING[key]; if (rerender) { try { rerender(); } catch (e) {} } });
+  }
+  if (extraNames && extraNames.length) {
+    const have = new Set(list.map(c => c.name));
+    const extras = [];
+    extraNames.forEach(n => { if (n && !have.has(n)) { have.add(n); extras.push({ name: n, paymentType: 'اسبوعي', notInPayroll: true }); } });
+    if (extras.length) list = list.concat(extras);
+  }
+  return list;
+}
+function toCraftsmenNoteFor_(isos){
+  const hit = TO_CRAFTSMEN_BY_MONTHS[toMonthsKey_(isos)];
+  if (!hit || !hit.missingMonths.length) return '';
+  return 'شهر ' + hit.missingMonths.join(' و') + ' لسه مش مبني في المرتبات' + (hit.fallback ? ' — الأسامي المعروضة من الشهر الحالي' : '');
+}
 function toRenderCraftsmenOptionsHtml_(craftsmen, selected){
   const weekly = craftsmen.filter(c => c.paymentType !== 'شهري');
   const monthly = craftsmen.filter(c => c.paymentType === 'شهري');
@@ -11257,7 +11298,9 @@ async function toRenderRosterView(){
   toRenderRosterBody_();
 }
 function toRosterEmployeesFor_(){
-  return TO_STATE.craftsmen.filter(c => c.paymentType !== 'شهري'); // أسبوعيين بس — الشهريين مش بيتسجلولهم شغل يومي بالطريقة دي
+  const extra = (TO_ROSTER.hoursToday || []).map(h => h.employee).concat((TO_ROSTER.workflowToday || []).map(w => w.craftsman));
+  return toCraftsmenFor_([TO_ROSTER.date], () => { if (TO_STATE.activeTab !== 'week' && TO_DAILY_VIEW === 'roster') toRenderRosterBody_(); }, extra)
+    .filter(c => c.paymentType !== 'شهري'); // أسبوعيين بس — الشهريين مش بيتسجلولهم شغل يومي بالطريقة دي
 }
 function toRosterStatusFor_(name){
   const has = TO_ROSTER.hoursToday.some(h => h.employee === name) || TO_ROSTER.workflowToday.some(w => w.craftsman === name);
@@ -11587,7 +11630,9 @@ function toRenderWhoWhereBlock() {
   // على حدة عن بنود الشغل العادية — عشان صنيعي ممكن يكون ليه سهرة بس من غير
   // ما يكون له بند وصفي متسجل خالص، أو العكس. لو فيها eveningProject مختلف
   // عن مشروع السطر نفسه (شوف إصلاح "مشروع السهرة" في مودال التعديل)، بنعرضه.
-  const wwGrouped = TO_STATE.craftsmen.map(c => {
+  const wwCraftsmen = toCraftsmenFor_([TO_STATE.wwDate], toRenderWhoWhereBlock,
+    TO_STATE.wwEntries.map(e => e.craftsman).concat(TO_STATE.wwHoursEntries.filter(h => Number(h.eveningHours) > 0).map(h => h.employee)));
+  const wwGrouped = wwCraftsmen.map(c => {
     const items = TO_STATE.wwEntries.filter(e => e.craftsman === c.name);
     const evenings = TO_STATE.wwHoursEntries.filter(h => h.employee === c.name && Number(h.eveningHours) > 0);
     return { name: c.name, items, evenings };
@@ -12061,11 +12106,14 @@ function toQfRenderBox_(){
   box.innerHTML = toQfFormHtml_();
 }
 function toQfFormHtml_(){
-  const all = TO_STATE.craftsmen;
+  const dates = toGetWeekDates(TO_QF.weekAnchor);
+  // أسامي الصنايعية = مرتبات شهر الأسبوع المعروض في الفورم (بتتغير لما تتنقل لأسبوع في شهر تاني)
+  const all = toCraftsmenFor_(dates.map(d => toISO(d)), () => { if (document.getElementById('toqf-box')) toQfRenderBox_(); });
+  TO_QF._chipList = all; // أزرار الأسامي بتشاور على القايمة دي بالترتيب
   const weekly = all.filter(c => c.paymentType !== 'شهري');
   const monthly = all.filter(c => c.paymentType === 'شهري');
   const empChip = c => `<button type="button" class="btn btn-sm ${TO_QF.emps.includes(c.name) ? 'btn-primary' : 'btn-outline'}" onclick="toQfToggleEmp_(${all.indexOf(c)})">${qEsc(c.name)}</button>`;
-  const dates = toGetWeekDates(TO_QF.weekAnchor);
+  const craftsmenNote = toCraftsmenNoteFor_(dates.map(d => toISO(d)));
   const weekLabel = toFmtDayDate(dates[0]) + ' – ' + toFmtDayDate(dates[6]);
   const hasDays = TO_QF.emps.some(e => TO_QF.perEmp[e] && TO_QF.perEmp[e].dates.length);
   if (TO_QF.emps.length) toQfEnsureWeekHours_(); // في الخلفية — بيعيد رسم الصندوق مرة واحدة لما الساعات المتسجلة توصل
@@ -12074,6 +12122,7 @@ function toQfFormHtml_(){
       <div class="toqf-chips">${weekly.map(empChip).join('')}</div>
       ${weekly.length && monthly.length ? `<div class="toqf-emp-divider">شهري</div>` : ''}
       <div class="toqf-chips">${monthly.map(empChip).join('')}</div>
+      ${craftsmenNote ? `<div style="font-size:11.5px;color:var(--red);margin-top:6px;">⚠️ ${qEsc(craftsmenNote)}</div>` : ''}
     </div>
     ${TO_QF.emps.length ? `
       <div class="toqf-chips" style="margin:4px 0 12px;">
@@ -12103,7 +12152,7 @@ function toQfEmpCardHtml_(emp, ei, weekDates){
         <span class="toqf-emp-name">${qEsc(emp)}</span>
         <span class="toqf-chips">
           ${TO_QF.emps.length > 1 && st.dates.length ? `<button type="button" class="btn btn-outline btn-sm" onclick="toQfCopyEmpToOthers_(${ei})">📋 انسخ أيامه ومشاريعه لباقي المختارين</button>` : ''}
-          <button type="button" class="mat-icon-btn" title="شيل الصنيعي" onclick="toQfToggleEmp_(${TO_STATE.craftsmen.findIndex(c => c.name === emp)})">✕</button>
+          <button type="button" class="mat-icon-btn" title="شيل الصنيعي" onclick="toQfRemoveEmp_(${ei})">✕</button>
         </span>
       </div>
       <div class="toqf-chips">${weekDates.map(dayChip).join('')}</div>
@@ -12143,8 +12192,13 @@ function toQfRowHtml_(ei, iso, ri, r){
       <button type="button" class="mat-icon-btn toqf-x" title="شيل السطر" onclick="toQfRemoveRow_(${args})">✕</button>
     </div>`;
 }
+function toQfRemoveEmp_(ei){
+  const name = TO_QF.emps[ei]; if (name === undefined) return;
+  TO_QF.emps.splice(ei, 1); delete TO_QF.perEmp[name];
+  toQfRenderBox_();
+}
 function toQfToggleEmp_(craftsmanIdx){
-  const c = TO_STATE.craftsmen[craftsmanIdx]; if (!c) return;
+  const c = (TO_QF._chipList || TO_STATE.craftsmen)[craftsmanIdx]; if (!c) return;
   const idx = TO_QF.emps.indexOf(c.name);
   if (idx === -1) { TO_QF.emps.push(c.name); TO_QF.perEmp[c.name] = { dates: [], rows: {}, lastIso: null }; }
   else { TO_QF.emps.splice(idx, 1); delete TO_QF.perEmp[c.name]; }
@@ -12344,8 +12398,15 @@ function toRenderWeekGrid(dates, from, to) {
   const box = document.getElementById('to-tab-content'); if (!box) return;
   const weekLabel = toFmtDayDate(dates[0]) + ' — ' + toFmtDayDate(dates[6]);
   const todayIso = todayStr();
+  // أسامي الصنايعية = مرتبات شهر/شهرين الأسبوع المعروض + أي حد ليه تسجيل فعلي في الأسبوع
+  const weekIsos = dates.map(dt => toISO(dt));
+  const weekCraftsmen = toCraftsmenFor_(weekIsos, () => { if (TO_STATE.activeTab === 'week' && document.getElementById('toPrevWeek')) toRenderWeekLocal(); },
+    TO_STATE.weekEntries.map(e => e.craftsman).concat(TO_STATE.weekHoursEntries.filter(h => Number(h.eveningHours) > 0).map(h => h.employee)));
+  TO_STATE.weekCraftsmenNames = weekCraftsmen.map(c => c.name);
+  const weekCraftsmenNote = toCraftsmenNoteFor_(weekIsos);
   box.innerHTML = `
     <div class="panel">
+      ${weekCraftsmenNote ? `<div style="font-size:11.5px;color:var(--red);margin-bottom:8px;">⚠️ ${qEsc(weekCraftsmenNote)}</div>` : ''}
       <div class="to-week-toolbar">
         <span class="to-week-label">أسبوع ${weekLabel}</span>
         <div class="to-week-nav">
@@ -12361,7 +12422,7 @@ function toRenderWeekGrid(dates, from, to) {
             ${dates.map((dt,i) => `<th class="${toISO(dt)===todayIso?'today':''}" data-date="${toISO(dt)}" style="cursor:pointer;" title="حدد كل الصنايعية في اليوم ده"><div class="dname">${TO_DAY_NAMES[i]}</div><div class="ddate">${toFmtDayDate(dt)}</div></th>`).join('')}
           </tr></thead>
           <tbody>
-            ${TO_STATE.craftsmen.map(c => c.name).map(emp => `
+            ${TO_STATE.weekCraftsmenNames.map(emp => `
               <tr>
                 <td class="to-emp-col" data-emp="${qEsc(emp)}" style="cursor:pointer;" title="حدد كل أيام ${qEsc(emp)}">${qEsc(emp)}</td>
                 ${dates.map(dt => {
@@ -12399,7 +12460,7 @@ function toRenderWeekGrid(dates, from, to) {
     td.addEventListener('click', () => toWeekToggleCells_(_wkIsos.map(iso => ({ emp: td.dataset.emp, date: iso }))));
   });
   document.querySelectorAll('table.to-weekgrid thead th[data-date]').forEach(th => {
-    th.addEventListener('click', () => toWeekToggleCells_(TO_STATE.craftsmen.map(c => ({ emp: c.name, date: th.dataset.date }))));
+    th.addEventListener('click', () => toWeekToggleCells_((TO_STATE.weekCraftsmenNames || []).map(name => ({ emp: name, date: th.dataset.date }))));
   });
   toRenderWeekDetail();
 }
@@ -12463,7 +12524,7 @@ function toRenderWeekDetail() {
   const weekIds = new Set(TO_STATE.weekEntries.map(e => String(e.id)));
   Array.from(TO_WEEK_SEL).forEach(id => { if (!weekIds.has(id)) TO_WEEK_SEL.delete(id); });
   // ترتيب العرض: باليوم، وجوه اليوم بترتيب الصنايعية في الجدول
-  const empOrder = {}; TO_STATE.craftsmen.forEach((c, i) => { empOrder[c.name] = i; });
+  const empOrder = {}; (TO_STATE.weekCraftsmenNames || []).forEach((name, i) => { empOrder[name] = i; });
   const cells = TO_STATE.selectedCells.slice().sort((a, b) => a.date === b.date ? ((empOrder[a.emp] ?? 999) - (empOrder[b.emp] ?? 999)) : (a.date < b.date ? -1 : 1));
   const groups = cells.map((c, i) => ({
     c, i,
