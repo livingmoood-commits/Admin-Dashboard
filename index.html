@@ -11209,6 +11209,12 @@ let TO_DAILY_VIEW = sessionStorage.getItem('lm_toDailyView') || 'quickform'; // 
 // emps: الموظفين المختارين بالترتيب، perEmp[اسم] = { dates:[iso], rows:{iso:[سطور]}, lastIso },
 // weekAnchor: الأسبوع المعروض في أزرار الأيام (الأيام المختارة من أسابيع تانية بتفضل زي ما هي).
 let TO_QF = { emps: [], perEmp: {}, weekAnchor: new Date() };
+// ⚠️ إضافة 2026-10-07 ("موظف مؤقت"): موظف مش في شيت المرتبات بيتضاف من زرار "+ إضافة موظف"
+// في الفورم باسمه ويوميته وسعر سهرته — مبيتحفظش في المرتبات ولا في أي شيت. بيفضل
+// هنا في الذاكرة لحد ما الصفحة تتقفل/تتحدّث بس (عشان تقدر تسجله كذا مرة في نفس
+// القعدة)، وشغله بيتسجل عادي بتسعيرته دي وتكلفته بتتحمّل على المشروع.
+let TO_QF_TEMPS = {}; // { اسم: { dailyRate, eveningRate } }
+let TO_QF_TEMP_OPEN = false;
 // ⚠️ إضافة: دروب داون صارم للمشروع — مينفعش تكتب اسم حر، لازم تختار من قايمة
 // المشاريع الفعلية (نفس المصدر الموحّد listProjects() المستخدم في كل الموقع).
 // ده بيمنع إن يوم شغل يتسجل بغلطة إملائية أو اسم مشروع مش موجود أصلًا.
@@ -12123,6 +12129,20 @@ function toQfFormHtml_(){
       ${weekly.length && monthly.length ? `<div class="toqf-emp-divider">شهري</div>` : ''}
       <div class="toqf-chips">${monthly.map(empChip).join('')}</div>
       ${craftsmenNote ? `<div style="font-size:11.5px;color:var(--red);margin-top:6px;">⚠️ ${qEsc(craftsmenNote)}</div>` : ''}
+      <div class="toqf-chips" style="margin-top:8px;">
+        ${Object.keys(TO_QF_TEMPS).map((n, i) => `<span style="display:inline-flex;align-items:center;gap:2px;"><button type="button" class="btn btn-sm ${TO_QF.emps.includes(n) ? 'btn-primary' : 'btn-outline'}" onclick="toQfToggleTemp_(${i})">${qEsc(n)} <span style="font-weight:400;">(مؤقت)</span></button><button type="button" class="mat-icon-btn" title="شيله من القايمة" onclick="toQfForgetTemp_(${i})">✕</button></span>`).join('')}
+        ${TO_QF_TEMP_OPEN ? '' : `<button type="button" class="btn btn-outline btn-sm" style="border-style:dashed;" onclick="TO_QF_TEMP_OPEN=true;toQfRenderBox_();">+ إضافة موظف (مش في المرتبات)</button>`}
+      </div>
+      ${TO_QF_TEMP_OPEN ? `
+        <div class="toqf-day" style="display:grid;grid-template-columns:minmax(140px,1.4fr) 1fr 1fr auto auto;gap:6px;align-items:center;">
+          <input class="d-input" id="toqfTempName" placeholder="اسم الموظف">
+          <input type="text" inputmode="decimal" class="d-input ltr-num" id="toqfTempDaily" placeholder="اليومية (ج)" onkeypress="return /[0-9.]/.test(event.key)">
+          <input type="text" inputmode="decimal" class="d-input ltr-num" id="toqfTempEve" placeholder="سعر السهرة (اختياري)" onkeypress="return /[0-9.]/.test(event.key)">
+          <button type="button" class="btn btn-primary btn-sm" onclick="toQfAddTemp_()">إضافة</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="TO_QF_TEMP_OPEN=false;toQfRenderBox_();">إلغاء</button>
+          <div class="msg" id="toqfTempMsg" style="grid-column:1/-1;"></div>
+          <div style="grid-column:1/-1;font-size:11.5px;color:var(--muted);">الموظف ده مش هيتحفظ في المرتبات — بيتسجل شغله بس بالتسعيرة دي (الساعة = اليومية ÷ 9) وتكلفته بتتحمّل على المشروع.</div>
+        </div>` : ''}
     </div>
     ${TO_QF.emps.length ? `
       <div class="toqf-chips" style="margin:4px 0 12px;">
@@ -12149,12 +12169,17 @@ function toQfEmpCardHtml_(emp, ei, weekDates){
   return `
     <div class="toqf-emp-card">
       <div class="toqf-emp-head">
-        <span class="toqf-emp-name">${qEsc(emp)}</span>
+        <span class="toqf-emp-name">${qEsc(emp)}${TO_QF_TEMPS[emp] ? ` <span style="font-size:11.5px;font-weight:700;color:var(--gold-dim);">مؤقت</span>` : ''}</span>
         <span class="toqf-chips">
           ${TO_QF.emps.length > 1 && st.dates.length ? `<button type="button" class="btn btn-outline btn-sm" onclick="toQfCopyEmpToOthers_(${ei})">📋 انسخ أيامه ومشاريعه لباقي المختارين</button>` : ''}
           <button type="button" class="mat-icon-btn" title="شيل الصنيعي" onclick="toQfRemoveEmp_(${ei})">✕</button>
         </span>
       </div>
+      ${TO_QF_TEMPS[emp] ? `
+        <div class="toqf-chips" style="margin-bottom:8px;font-size:12px;">
+          <span>اليومية</span><input type="text" inputmode="decimal" class="d-input ltr-num" style="width:96px;" value="${qEsc(String(TO_QF_TEMPS[emp].dailyRate || ''))}" onkeypress="return /[0-9.]/.test(event.key)" oninput="toQfSetTempRate_(${ei},'dailyRate',this.value)">
+          <span>سعر السهرة</span><input type="text" inputmode="decimal" class="d-input ltr-num" style="width:96px;" value="${qEsc(String(TO_QF_TEMPS[emp].eveningRate || ''))}" onkeypress="return /[0-9.]/.test(event.key)" oninput="toQfSetTempRate_(${ei},'eveningRate',this.value)">
+        </div>` : ''}
       <div class="toqf-chips">${weekDates.map(dayChip).join('')}</div>
       ${st.dates.slice().sort().map(iso => toQfDayHtml_(ei, iso, st)).join('')}
     </div>`;
@@ -12184,13 +12209,45 @@ function toQfRowHtml_(ei, iso, ri, r){
   const args = `${ei},'${iso}',${ri}`;
   return `
     <div class="toqf-row ${isEve ? 'eve' : ''}">
-      ${isEve ? `<div style="grid-column:1/-1;order:-1;font-size:11.5px;font-weight:700;">🌙 سهرة <span style="font-weight:400;color:var(--muted);">— ساعاتها للعلم بس، مش بتتحسب في التكلفة ولا المرتب</span></div>` : ''}
+      ${isEve ? `<div style="grid-column:1/-1;order:-1;font-size:11.5px;font-weight:700;">🌙 سهرة <span style="font-weight:400;color:var(--muted);">${TO_QF_TEMPS[TO_QF.emps[ei]] ? (Number(TO_QF_TEMPS[TO_QF.emps[ei]].eveningRate) > 0 ? '— موظف مؤقت: سعر السهرة (' + fmt(TO_QF_TEMPS[TO_QF.emps[ei]].eveningRate) + ' ج) بيتحمّل على المشروع' : '— موظف مؤقت من غير سعر سهرة: مش هتتحسب تكلفة') : '— ساعاتها للعلم بس، مش بتتحسب في التكلفة ولا المرتب'}</span></div>` : ''}
       <div>${toProjDropdownHtml_(`toqfP-${ei}-${iso}-${ri}`, r.project, `toQfSetRow_(${args},'project',v);toQfRenderBox_();`)}</div>
       <input type="text" inputmode="decimal" class="d-input ltr-num" placeholder="${isEve ? '🌙 ساعات' : 'ساعات'}" value="${isAbs ? '' : qEsc(r.hours)}" ${isAbs ? 'disabled' : ''} onkeypress="return /[0-9.]/.test(event.key)" oninput="toQfSetRow_(${args},'hours',this.value);toQfUpdateTotal_(${ei},'${iso}')">
       <input class="d-input toqf-wide" placeholder="${isEve ? 'المطلوب في السهرة (اختياري)' : 'المطلوب (اختياري)'}" value="${qEsc(r.title)}" oninput="toQfSetRow_(${args},'title',this.value)">
       <input class="d-input toqf-wide" placeholder="ملاحظات" value="${qEsc(r.notes)}" oninput="toQfSetRow_(${args},'notes',this.value)">
       <button type="button" class="mat-icon-btn toqf-x" title="شيل السطر" onclick="toQfRemoveRow_(${args})">✕</button>
     </div>`;
+}
+function toQfAddTemp_(){
+  const name = (document.getElementById('toqfTempName').value || '').trim().replace(/\s+/g, ' ');
+  const daily = Number(document.getElementById('toqfTempDaily').value) || 0;
+  const eve = Number(document.getElementById('toqfTempEve').value) || 0;
+  const msg = document.getElementById('toqfTempMsg');
+  const err = t => { msg.className = 'msg err'; msg.textContent = t; };
+  if (!name) return err('اكتب اسم الموظف');
+  if (!(daily > 0)) return err('اكتب اليومية');
+  if ((TO_QF._chipList || []).some(c => c.name === name) || TO_STATE.craftsmen.some(c => c.name === name)) return err('"' + name + '" موجود في المرتبات بالفعل — اختاره من الأسامي فوق');
+  if (TO_QF_TEMPS[name]) return err('"' + name + '" متضاف بالفعل');
+  TO_QF_TEMPS[name] = { dailyRate: daily, eveningRate: eve };
+  TO_QF.emps.push(name); TO_QF.perEmp[name] = { dates: [], rows: {}, lastIso: null };
+  TO_QF_TEMP_OPEN = false;
+  toQfRenderBox_();
+}
+function toQfToggleTemp_(i){
+  const name = Object.keys(TO_QF_TEMPS)[i]; if (name === undefined) return;
+  const idx = TO_QF.emps.indexOf(name);
+  if (idx === -1) { TO_QF.emps.push(name); TO_QF.perEmp[name] = { dates: [], rows: {}, lastIso: null }; }
+  else { TO_QF.emps.splice(idx, 1); delete TO_QF.perEmp[name]; }
+  toQfRenderBox_();
+}
+function toQfForgetTemp_(i){
+  const name = Object.keys(TO_QF_TEMPS)[i]; if (name === undefined) return;
+  delete TO_QF_TEMPS[name];
+  const idx = TO_QF.emps.indexOf(name);
+  if (idx !== -1) { TO_QF.emps.splice(idx, 1); delete TO_QF.perEmp[name]; }
+  toQfRenderBox_();
+}
+function toQfSetTempRate_(ei, field, value){
+  const t = TO_QF_TEMPS[TO_QF.emps[ei]]; if (t) t[field] = Number(value) || 0;
 }
 function toQfRemoveEmp_(ei){
   const name = TO_QF.emps[ei]; if (name === undefined) return;
@@ -12265,6 +12322,10 @@ async function toQuickformSave_() {
   const entries = [], errs = [], over = [];
   TO_QF.emps.forEach(emp => {
     const st = TO_QF.perEmp[emp]; if (!st) return;
+    // موظف مؤقت (مش في المرتبات): تسعيرته بتتبعت مع كل سطر — الساعة = اليومية ÷ 9
+    const temp = TO_QF_TEMPS[emp] || null;
+    if (temp && st.dates.length && !(Number(temp.dailyRate) > 0)) { errs.push(emp + ': اكتب اليومية بتاعة الموظف المؤقت'); return; }
+    const tempExtra = temp ? { customHourlyRate: Number(temp.dailyRate) / 9 } : {};
     st.dates.slice().sort().forEach(iso => {
       const rows = st.rows[iso] || [];
       const where = emp + ' — ' + toQfDayLabel_(iso);
@@ -12277,13 +12338,14 @@ async function toQuickformSave_() {
         if (!project) { errs.push(where + ': اختار المشروع' + (r.kind === 'eve' ? ' بتاع السهرة' : '') + ' (أو شيل السطر)'); return; }
         if (r.kind === 'eve') {
           if (hrs <= 0) { errs.push(where + ': اكتب ساعات السهرة'); return; }
-          entries.push({ employee: emp, project, hours: 0, date: iso, title: title || baseTitle, notes: ['سهرة', notes].filter(Boolean).join(' — '), eveningHours: r.hours });
+          entries.push(Object.assign({ employee: emp, project, hours: 0, date: iso, title: title || baseTitle, notes: ['سهرة', notes].filter(Boolean).join(' — '), eveningHours: r.hours },
+            temp ? Object.assign({ eveningAmount: Number(temp.eveningRate) || 0 }, tempExtra) : {}));
           return;
         }
         // غياب/إجازة — الساعات صفر يعني مفيش تكلفة، بتتسجل كملاحظة بس
         const isAbsence = project === 'إجازة' || toIsAbsenceNote_(notes);
         if (!isAbsence && hrs <= 0) { errs.push(where + ' (' + project + '): اكتب الساعات'); return; }
-        entries.push({ employee: emp, project, hours: isAbsence ? 0 : r.hours, date: iso, title, notes });
+        entries.push(Object.assign({ employee: emp, project, hours: isAbsence ? 0 : r.hours, date: iso, title, notes }, tempExtra));
       });
       const total = toQfDayTotal_(rows);
       const reg = toQfRegistered_(emp, iso) || 0;
