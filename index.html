@@ -10942,6 +10942,7 @@ async function renderTaskOrganize(token) {
   try {
     document.getElementById('content').innerHTML = `
       <div id="to-stat-strip"></div>
+      <div id="to-page-date-bar"></div>
       <div class="to-tabs" id="toTabs">
         <button data-t="daily" class="${TO_STATE.activeTab==='daily'?'active':''}"><span class="ico">&#128221;</span>شغل يومي</button>
         <button data-t="week" class="${TO_STATE.activeTab==='week'?'active':''}"><span class="ico">&#128197;</span>اسبوعي</button>
@@ -10974,6 +10975,7 @@ async function renderTaskOrganize(token) {
     document.getElementById('toOpenDailyReportBtn').addEventListener('click', toOpenDailyReport);
     document.getElementById('toOpenWeeklyReportBtn').addEventListener('click', toOpenWeeklyReport);
 
+    toRenderPageDateBar_();
     await toRenderActiveTab(token);
     toRenderStatStrip();
     toWarmupBackground(token); // مش بننتظرها — بتجيب كل حاجة في الخلفية عشان أي تنقل بعد كده يبان فورًا
@@ -11076,9 +11078,59 @@ async function toWarmupBackground(token) {
 
 // موجّه بس — كل تاب بقى ليه لودر مسؤول عن الكاش بتاعه، فمفيش "مسح الشاشة وابدأ من الأول"
 // إلا أول مرة فعلاً بيتفتح فيها التاب/اليوم/الأسبوع/المشروع ده.
+/* ⚠️ إضافة 2026-10-07 (Sync للتواريخ): تاريخ واحد للصفحة كلها (الشريط اللي فوق التابات).
+ * كل حاجة في الصفحة ماشية عليه: الجدول الأسبوعي بيفتح أسبوع التاريخ ده، و"مين فين"
+ * و"عرض كل الصنايعية" بيعرضوا اليوم ده، وفورم "تسجيل شغل" بيفتح أيام نفس الأسبوع.
+ * وأي تحكم تاريخ جوه التابات (أسهم الأسبوع، تاريخ "مين فين"، تاريخ الروستر، أسهم
+ * الفورم) بيغيّر نفس التاريخ ده — فالتنقل بين "شغل يومي" و"اسبوعي" بيفضل على نفس الأيام. */
+function toPageDate_(){ return TO_STATE.pageDate || toISO(TO_STATE.weekAnchor); }
+function toRenderPageDateBar_(){
+  const bar = document.getElementById('to-page-date-bar'); if (!bar) return;
+  const iso = toPageDate_();
+  const dts = toGetWeekDates(new Date(iso + 'T00:00:00'));
+  bar.innerHTML = `
+    <div class="panel" style="padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <b style="font-size:13px;">📅 التاريخ</b>
+      <button type="button" class="btn btn-outline btn-sm" title="اليوم اللي قبله" onclick="toShiftPageDate_(-1)">‹</button>
+      <input type="date" class="d-input" style="max-width:165px;padding:6px 9px;" value="${iso}" onchange="toSetPageDate_(this.value)">
+      <button type="button" class="btn btn-outline btn-sm" title="اليوم اللي بعده" onclick="toShiftPageDate_(1)">›</button>
+      <button type="button" class="btn btn-sm ${iso === todayStr() ? 'btn-primary' : 'btn-outline'}" onclick="toSetPageDate_(todayStr())">النهاردة</button>
+      <span style="font-size:12px;color:var(--muted);">${qEsc(toQfDayLabel_(iso))} — أسبوع ${toFmtDayDate(dts[0])} – ${toFmtDayDate(dts[6])}</span>
+    </div>`;
+}
+function toShiftPageDate_(days){
+  const d = new Date(toPageDate_() + 'T00:00:00'); d.setDate(d.getDate() + days);
+  toSetPageDate_(toISO(d));
+}
+function toSetPageDate_(iso){
+  if (!iso) return;
+  const d = new Date(iso + 'T00:00:00'); if (isNaN(d.getTime())) return;
+  const weekChanged = toQfWeekKey_(TO_STATE.weekAnchor) !== toQfWeekKey_(d);
+  TO_STATE.pageDate = iso;
+  TO_STATE.weekAnchor = d;
+  TO_STATE.wwDate = iso;
+  TO_ROSTER.date = iso;
+  TO_QF.weekAnchor = new Date(d);
+  if (weekChanged) TO_STATE.selectedCells = [];
+  toRenderPageDateBar_();
+  if (TO_STATE.activeTab === 'week') toLoadWeekTab();
+  else if (TO_STATE.activeTab === 'daily') {
+    if (TO_DAILY_VIEW === 'roster') toRenderRosterView();
+    else {
+      toQfRenderBox_();
+      const ww = document.getElementById('ww_date'); if (ww) ww.value = iso;
+      toLoadWhoWhere();
+    }
+  }
+  toRenderStatStrip();
+}
 async function toRenderActiveTab(token) {
   const box = document.getElementById('to-tab-content'); if (!box) return;
-  if (TO_STATE.activeTab === 'daily') await toLoadDailyTab(token);
+  if (TO_STATE.activeTab === 'daily') {
+    await toLoadDailyTab(token);
+    // "مين فين" ماشي بتاريخ الصفحة (فوق) — لو مختلف عن النهاردة لازم بياناته تتجاب لوحدها
+    if (TO_STATE.activeTab === 'daily' && TO_DAILY_VIEW !== 'roster' && TO_STATE.wwDate !== TO_STATE.formDate) toLoadWhoWhere(token);
+  }
   else if (TO_STATE.activeTab === 'week') await toLoadWeekTab(token);
   else await toLoadPlanTab(token);
 }
@@ -11116,7 +11168,7 @@ async function toLoadDailyTab(token, opts) {
     TO_STATE.hoursDailyCache[date] = hoursRes.entries || [];
     if (TO_STATE.wwDate === date) { TO_STATE.wwEntries = TO_STATE.todayEntries; TO_STATE.wwHoursEntries = TO_STATE.hoursDailyCache[date]; }
     toRenderDailyTabContent();
-  } catch (err) { box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
+  } catch (err) { if (TO_STATE.activeTab === 'daily') box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
 }
 
 // تحميل بانل "مين فين" لتاريخ TO_STATE.wwDate — مستقل تمامًا عن فورم التسجيل (to_date/formDate)،
@@ -11139,10 +11191,11 @@ async function toLoadWhoWhere(token, opts) {
       apiGet('listHoursEntries', { filters: { from: date, to: date } })
     ]);
     if (isStaleNav(token)) return;
-    TO_STATE.wwEntries = wfRes.entries || [];
-    TO_STATE.wwHoursEntries = hoursRes.entries || [];
-    TO_STATE.dailyCache[date] = TO_STATE.wwEntries;
-    TO_STATE.hoursDailyCache[date] = TO_STATE.wwHoursEntries;
+    TO_STATE.dailyCache[date] = wfRes.entries || [];
+    TO_STATE.hoursDailyCache[date] = hoursRes.entries || [];
+    if (date !== TO_STATE.wwDate) return; // ⚠️ حماية 2026-10-07: التاريخ اتغيّر والطلب ده لسه في الطريق — اتحفظ في الكاش بس
+    TO_STATE.wwEntries = TO_STATE.dailyCache[date];
+    TO_STATE.wwHoursEntries = TO_STATE.hoursDailyCache[date];
     toRenderWhoWhereBlock();
   } catch (err) { if (body) body.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
 }
@@ -11289,18 +11342,24 @@ let TO_ROSTER = { date: todayStr(), loadedDate: null, hoursToday: [], workflowTo
 
 async function toRenderRosterView(){
   const box = document.getElementById('to-tab-content'); if (!box) return;
+  // ⚠️ حماية 2026-10-07: طلب سيرفر لتاب تاني ممكن يخلص بعد ما المستخدم غيّر التاب — منرسمش فوق التاب المفتوح دلوقتي
+  const stillHere = () => TO_STATE.activeTab === 'daily' && TO_DAILY_VIEW === 'roster';
+  if (!stillHere()) return;
   if (TO_ROSTER.loadedDate !== TO_ROSTER.date) {
+    const reqDate = TO_ROSTER.date;
     box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
     try {
       const [hoursRes, wfRes] = await Promise.all([
-        apiGet('listHoursEntries', { filters: { from: TO_ROSTER.date, to: TO_ROSTER.date } }),
-        apiGet('listWorkflowEntries', { filters: { date: TO_ROSTER.date } })
+        apiGet('listHoursEntries', { filters: { from: reqDate, to: reqDate } }),
+        apiGet('listWorkflowEntries', { filters: { date: reqDate } })
       ]);
+      if (reqDate !== TO_ROSTER.date) return; // التاريخ اتغيّر والطلب ده لسه في الطريق — الطلب الأحدث هو اللي هيرسم
       TO_ROSTER.hoursToday = hoursRes.entries || [];
       TO_ROSTER.workflowToday = wfRes.entries || [];
-      TO_ROSTER.loadedDate = TO_ROSTER.date;
-    } catch(err){ showError(err); return; }
+      TO_ROSTER.loadedDate = reqDate;
+    } catch(err){ if (stillHere()) showError(err); return; }
   }
+  if (!stillHere()) return;
   toRenderRosterBody_();
 }
 function toRosterEmployeesFor_(){
@@ -11318,10 +11377,9 @@ function toRosterDraftFor_(name){
 }
 function toRosterId_(name){ return String(name).replace(/[^a-zA-Z0-9\u0600-\u06FF]/g, '_'); }
 function toRosterChangeDate_(delta){
-  const d = new Date(TO_ROSTER.date);
+  const d = new Date(TO_ROSTER.date + 'T00:00:00');
   d.setDate(d.getDate() + delta);
-  TO_ROSTER.date = toISO(d);
-  toRenderRosterView();
+  toSetPageDate_(toISO(d));
 }
 function toRenderRosterBody_(){
   const box = document.getElementById('to-tab-content'); if (!box) return;
@@ -11349,7 +11407,7 @@ function toRenderRosterBody_(){
     <datalist id="to-dl-projects">${TO_STATE.projects.map(p => `<option value="${qEsc(p)}">`).join('')}</datalist>
   `;
   const dateInput = document.getElementById('rosterDateInput');
-  if (dateInput) dateInput.addEventListener('change', e => { TO_ROSTER.date = e.target.value; toRenderRosterView(); });
+  if (dateInput) dateInput.addEventListener('change', e => { if (e.target.value) toSetPageDate_(e.target.value); });
 }
 function toRosterRowHtml_(name){
   const status = toRosterStatusFor_(name);
@@ -11599,6 +11657,8 @@ async function toRosterDoCancel_(name){
 
 function toRenderDailyForm() {
   const box = document.getElementById('to-tab-content'); if (!box) return;
+  // ⚠️ حماية 2026-10-07: طلب سيرفر لتاب تاني ممكن يخلص بعد ما المستخدم غيّر التاب — منرسمش فوق التاب المفتوح دلوقتي
+  if (TO_STATE.activeTab !== 'daily') return;
   box.innerHTML = `
     <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
       <button type="button" class="btn btn-outline btn-sm" onclick="toSetDailyView('roster')">📋 عرض كل الصنايعية</button>
@@ -12038,13 +12098,9 @@ function toWireDailyTab() {
 
   // فلتر تاريخ بانل "مين فين" — منفصل عن تاريخ فورم التسجيل، دفولته النهاردة
   const wwDateInput = document.getElementById('ww_date');
-  if (wwDateInput) wwDateInput.addEventListener('change', e => { TO_STATE.wwDate = e.target.value || todayStr(); toLoadWhoWhere(); });
+  if (wwDateInput) wwDateInput.addEventListener('change', e => toSetPageDate_(e.target.value || todayStr()));
   const wwTodayBtn = document.getElementById('wwTodayBtn');
-  if (wwTodayBtn) wwTodayBtn.addEventListener('click', () => {
-    TO_STATE.wwDate = todayStr();
-    if (wwDateInput) wwDateInput.value = TO_STATE.wwDate;
-    toLoadWhoWhere();
-  });
+  if (wwTodayBtn) wwTodayBtn.addEventListener('click', () => toSetPageDate_(todayStr()));
 }
 
 // بتجمع الأربع خانات (طول/عرض/ارتفاع/عمق) — كل واحدة اختيارية — في نص واحد
@@ -12147,7 +12203,6 @@ function toQfFormHtml_(){
     ${TO_QF.emps.length ? `
       <div class="toqf-chips" style="margin:4px 0 12px;">
         <span style="font-size:12px;color:var(--muted);font-weight:700;">أسبوع ${weekLabel}</span>
-        <input type="date" class="d-input" style="max-width:160px;padding:6px 9px;" value="${toISO(TO_QF.weekAnchor)}" title="اختار أي يوم — هيفتح أسبوعه" onchange="toQfPickWeek_(this.value)">
         <button type="button" class="btn btn-outline btn-sm" onclick="toQfShiftWeek_(-1)">‹ اللي قبله</button>
         <button type="button" class="btn btn-outline btn-sm" onclick="toQfShiftWeek_(1)">اللي بعده ›</button>
         <button type="button" class="btn btn-outline btn-sm" onclick="toQfShiftWeek_(0)">الأسبوع ده</button>
@@ -12262,16 +12317,11 @@ function toQfToggleEmp_(craftsmanIdx){
   else { TO_QF.emps.splice(idx, 1); delete TO_QF.perEmp[c.name]; }
   toQfRenderBox_();
 }
-function toQfPickWeek_(iso){
-  if (!iso) return;
-  const d = new Date(iso + 'T00:00:00'); if (isNaN(d.getTime())) return;
-  TO_QF.weekAnchor = d;
-  toQfRenderBox_();
-}
+// أسهم أسبوع الفورم بتحرّك تاريخ الصفحة كله (الشريط اللي فوق) — نفس التاريخ للجدول الأسبوعي و"مين فين"
 function toQfShiftWeek_(delta){
-  if (!delta) TO_QF.weekAnchor = new Date();
-  else { const d = new Date(TO_QF.weekAnchor); d.setDate(d.getDate() + delta * 7); TO_QF.weekAnchor = d; }
-  toQfRenderBox_();
+  if (!delta) { toSetPageDate_(todayStr()); return; }
+  const d = new Date(TO_QF.weekAnchor); d.setDate(d.getDate() + delta * 7);
+  toSetPageDate_(toISO(d));
 }
 function toQfToggleDay_(ei, iso){
   const st = toQfState_(ei); if (!st) return;
@@ -12449,12 +12499,14 @@ async function toLoadWeekTab(token, opts) {
       apiGet('listHoursEntries', { filters: { from, to } })
     ]);
     if (isStaleNav(token)) return;
-    TO_STATE.weekEntries = wfRes.entries || [];
-    TO_STATE.weekHoursEntries = hoursRes.entries || [];
-    TO_STATE.weekCache[key] = TO_STATE.weekEntries;
-    TO_STATE.weekHoursCache[key] = TO_STATE.weekHoursEntries;
+    TO_STATE.weekCache[key] = wfRes.entries || [];
+    TO_STATE.weekHoursCache[key] = hoursRes.entries || [];
+    // ⚠️ حماية 2026-10-07: لو التاريخ/الأسبوع اتغيّر والطلب ده لسه في الطريق، بنحفظه في الكاش بس — منرسمش أسبوع قديم فوق الجديد
+    if (key !== toQfWeekKey_(TO_STATE.weekAnchor)) return;
+    TO_STATE.weekEntries = TO_STATE.weekCache[key];
+    TO_STATE.weekHoursEntries = TO_STATE.weekHoursCache[key];
     toRenderWeekGrid(dates, from, to);
-  } catch (err) { box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
+  } catch (err) { if (TO_STATE.activeTab === 'week') box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
 }
 
 // إعادة رسم الأسبوع الحالي من الكاش (من غير فيتش) — بتتستخدم بعد أي تحديث محلي لحالة بند
@@ -12465,6 +12517,8 @@ function toRenderWeekLocal() {
 
 function toRenderWeekGrid(dates, from, to) {
   const box = document.getElementById('to-tab-content'); if (!box) return;
+  // ⚠️ حماية 2026-10-07: طلب سيرفر لتاب تاني ممكن يخلص بعد ما المستخدم غيّر التاب — منرسمش فوق التاب المفتوح دلوقتي
+  if (TO_STATE.activeTab !== 'week') return;
   const weekLabel = toFmtDayDate(dates[0]) + ' — ' + toFmtDayDate(dates[6]);
   const todayIso = todayStr();
   // أسامي الصنايعية = مرتبات شهر/شهرين الأسبوع المعروض + أي حد ليه تسجيل فعلي في الأسبوع
@@ -12479,7 +12533,6 @@ function toRenderWeekGrid(dates, from, to) {
       <div class="to-week-toolbar">
         <span class="to-week-label">أسبوع ${weekLabel}</span>
         <div class="to-week-nav">
-          <input type="date" class="d-input" id="toWeekPickDate" style="max-width:160px;padding:6px 9px;" value="${toISO(TO_STATE.weekAnchor)}" title="اختار أي يوم — هيفتح أسبوعه">
           <button class="wn-arrow" id="toPrevWeek">&#8249;</button>
           <button class="btn btn-outline btn-sm" id="toThisWeekBtn">الأسبوع الحالي</button>
           <button class="wn-arrow" id="toNextWeek">&#8250;</button>
@@ -12516,17 +12569,10 @@ function toRenderWeekGrid(dates, from, to) {
     </div>
   `;
   // التنقل بين الأسابيع: كل أسبوع اتشاف قبل كده هيبان فورًا من الكاش من غير أي فيتش
-  document.getElementById('toPrevWeek').addEventListener('click', () => { TO_STATE.weekAnchor.setDate(TO_STATE.weekAnchor.getDate()-7); TO_STATE.selectedCells=[]; toLoadWeekTab(); toRenderStatStrip(); });
-  document.getElementById('toNextWeek').addEventListener('click', () => { TO_STATE.weekAnchor.setDate(TO_STATE.weekAnchor.getDate()+7); TO_STATE.selectedCells=[]; toLoadWeekTab(); toRenderStatStrip(); });
-  document.getElementById('toThisWeekBtn').addEventListener('click', () => { TO_STATE.weekAnchor=new Date(); TO_STATE.selectedCells=[]; toLoadWeekTab(); toRenderStatStrip(); });
-  // اختيار خلية: تفاعل UI بحت — بتحديث الشكل فورًا من غير أي فيتش أو مسح للشاشة
-  // ⚠️ إضافة 2026-10-07: كالندر — اختيار أي تاريخ بيفتح الأسبوع اللي فيه التاريخ ده على طول
-  const _wkPick = document.getElementById('toWeekPickDate');
-  if (_wkPick) _wkPick.addEventListener('change', () => {
-    if (!_wkPick.value) return;
-    const d = new Date(_wkPick.value + 'T00:00:00'); if (isNaN(d.getTime())) return;
-    TO_STATE.weekAnchor = d; TO_STATE.selectedCells = []; toLoadWeekTab(); toRenderStatStrip();
-  });
+  // ⚠️ تعديل 2026-10-07: أسهم الأسبوع بتحرّك تاريخ الصفحة كله (الشريط اللي فوق) أسبوع — عشان "شغل يومي" يفضل متزامن معاها
+  document.getElementById('toPrevWeek').addEventListener('click', () => toShiftPageDate_(-7));
+  document.getElementById('toNextWeek').addEventListener('click', () => toShiftPageDate_(7));
+  document.getElementById('toThisWeekBtn').addEventListener('click', () => toSetPageDate_(todayStr()));
   // ⚠️ تعديل 2026-10-07: دوسة على خلية = تضيفها/تشيلها من التحديد (أكتر من يوم وأكتر من شخص)
   document.querySelectorAll('td.to-day-cell').forEach(td => {
     td.addEventListener('click', () => toWeekToggleCells_([{ emp: td.dataset.emp, date: td.dataset.date }]));
@@ -12707,6 +12753,8 @@ function toToggleTpCards(){
   if (arrow) arrow.style.transform = isOpen ? '' : 'rotate(180deg)';
 }
 function toRenderPlanBody(items) {
+  // ⚠️ حماية 2026-10-07: طلب سيرفر لتاب تاني ممكن يخلص بعد ما المستخدم غيّر التاب — منرسمش فوق التاب المفتوح دلوقتي
+  if (TO_STATE.activeTab !== 'plan') return;
   const box = document.getElementById('to-tab-content'); if (!box) return;
   const summaryMap = {};
   TO_STATE.missingSummary.forEach(s => { summaryMap[s.project] = s; });
