@@ -10899,7 +10899,7 @@ let TO_STATE = {
   weekEntries: [],       // كل شغل الأسبوع المعروض (تاب اسبوعي)
   weekHoursEntries: [],  // ⚠️ إضافة: ساعات/سهرات الأسبوع المعروض — عشان نعرض 🌙 في خلايا الجدول الأسبوعي
   weekAnchor: new Date(),
-  selectedCell: null,    // { emp, date } في التاب الاسبوعي
+  selectedCells: [],     // [{ emp, date }] الخلايا المحددة في التاب الاسبوعي (أكتر من يوم وأكتر من شخص)
   missingSummary: [],    // من getMissingItemsSummary — لعداد "بنود لسه ناقصة" في الشريط
   formDate: todayStr(),
   wwDate: todayStr(),    // فلتر تاريخ منفصل لبانل "مين فين" — دفولت النهاردة، مستقل عن formDate بتاع فورم التسجيل
@@ -12322,16 +12322,16 @@ function toRenderWeekGrid(dates, from, to) {
         <table class="to-weekgrid">
           <thead><tr>
             <th style="min-width:120px;">الصنيعي</th>
-            ${dates.map((dt,i) => `<th class="${toISO(dt)===todayIso?'today':''}"><div class="dname">${TO_DAY_NAMES[i]}</div><div class="ddate">${toFmtDayDate(dt)}</div></th>`).join('')}
+            ${dates.map((dt,i) => `<th class="${toISO(dt)===todayIso?'today':''}" data-date="${toISO(dt)}" style="cursor:pointer;" title="حدد كل الصنايعية في اليوم ده"><div class="dname">${TO_DAY_NAMES[i]}</div><div class="ddate">${toFmtDayDate(dt)}</div></th>`).join('')}
           </tr></thead>
           <tbody>
             ${TO_STATE.craftsmen.map(c => c.name).map(emp => `
               <tr>
-                <td class="to-emp-col">${qEsc(emp)}</td>
+                <td class="to-emp-col" data-emp="${qEsc(emp)}" style="cursor:pointer;" title="حدد كل أيام ${qEsc(emp)}">${qEsc(emp)}</td>
                 ${dates.map(dt => {
                   const iso = toISO(dt);
                   const items = TO_STATE.weekEntries.filter(e => e.craftsman === emp && e.date === iso);
-                  const isSel = TO_STATE.selectedCell && TO_STATE.selectedCell.emp === emp && TO_STATE.selectedCell.date === iso;
+                  const isSel = toWeekCellIsSel_(emp, iso);
                   const chipIcon = it2 => toIsAbsenceNote_(it2) ? '&#128683;' : (it2.status==='done' ? '&#10003;' : (it2.status==='blocked' ? '&#9940;' : '&#128205;'));
                   // ⚠️ إضافة: 🌙 لو فيه سهرة متسجلة لنفس الصنيعي واليوم ده (بغض النظر عن
                   // مشروعها) — تشيب منفصل يبان جنب شيبات المشاريع العادية جوه نفس الخلية
@@ -12349,44 +12349,56 @@ function toRenderWeekGrid(dates, from, to) {
     </div>
   `;
   // التنقل بين الأسابيع: كل أسبوع اتشاف قبل كده هيبان فورًا من الكاش من غير أي فيتش
-  document.getElementById('toPrevWeek').addEventListener('click', () => { TO_STATE.weekAnchor.setDate(TO_STATE.weekAnchor.getDate()-7); TO_STATE.selectedCell=null; toLoadWeekTab(); toRenderStatStrip(); });
-  document.getElementById('toNextWeek').addEventListener('click', () => { TO_STATE.weekAnchor.setDate(TO_STATE.weekAnchor.getDate()+7); TO_STATE.selectedCell=null; toLoadWeekTab(); toRenderStatStrip(); });
-  document.getElementById('toThisWeekBtn').addEventListener('click', () => { TO_STATE.weekAnchor=new Date(); TO_STATE.selectedCell=null; toLoadWeekTab(); toRenderStatStrip(); });
+  document.getElementById('toPrevWeek').addEventListener('click', () => { TO_STATE.weekAnchor.setDate(TO_STATE.weekAnchor.getDate()-7); TO_STATE.selectedCells=[]; toLoadWeekTab(); toRenderStatStrip(); });
+  document.getElementById('toNextWeek').addEventListener('click', () => { TO_STATE.weekAnchor.setDate(TO_STATE.weekAnchor.getDate()+7); TO_STATE.selectedCells=[]; toLoadWeekTab(); toRenderStatStrip(); });
+  document.getElementById('toThisWeekBtn').addEventListener('click', () => { TO_STATE.weekAnchor=new Date(); TO_STATE.selectedCells=[]; toLoadWeekTab(); toRenderStatStrip(); });
   // اختيار خلية: تفاعل UI بحت — بتحديث الشكل فورًا من غير أي فيتش أو مسح للشاشة
+  // ⚠️ تعديل 2026-10-07: دوسة على خلية = تضيفها/تشيلها من التحديد (أكتر من يوم وأكتر من شخص)
   document.querySelectorAll('td.to-day-cell').forEach(td => {
-    td.addEventListener('click', () => {
-      TO_STATE.selectedCell = { emp: td.dataset.emp, date: td.dataset.date };
-      document.querySelectorAll('td.to-day-cell').forEach(t => t.classList.toggle('selected', t===td));
-      toRenderWeekDetail();
-      document.getElementById('toWeekDetail').scrollIntoView({behavior:'smooth', block:'nearest'});
-    });
+    td.addEventListener('click', () => toWeekToggleCells_([{ emp: td.dataset.emp, date: td.dataset.date }]));
+  });
+  // اسم الصنيعي = كل أيامه في الأسبوع، عنوان اليوم = كل الصنايعية في اليوم ده
+  const _wkIsos = dates.map(dt => toISO(dt));
+  document.querySelectorAll('td.to-emp-col[data-emp]').forEach(td => {
+    td.addEventListener('click', () => toWeekToggleCells_(_wkIsos.map(iso => ({ emp: td.dataset.emp, date: iso }))));
+  });
+  document.querySelectorAll('table.to-weekgrid thead th[data-date]').forEach(th => {
+    th.addEventListener('click', () => toWeekToggleCells_(TO_STATE.craftsmen.map(c => ({ emp: c.name, date: th.dataset.date }))));
   });
   toRenderWeekDetail();
 }
 
-function toRenderWeekDetail() {
-  const box = document.getElementById('toWeekDetail'); if (!box) return;
-  if (!TO_STATE.selectedCell) { box.innerHTML = ''; return; }
-  const { emp, date } = TO_STATE.selectedCell;
-  const items = TO_STATE.weekEntries.filter(e => e.craftsman === emp && e.date === date);
-  // ⚠️ إضافة: سهرات نفس الصنيعي واليوم المختار — بتتعرض كارت منفصل تحت بنود
-  // الشغل العادية (نفس شكل كارت السهرة في بانل "مين فين")
-  const evenings = TO_STATE.weekHoursEntries.filter(h => h.employee === emp && h.date === date && Number(h.eveningHours) > 0);
-  // التحديد بيفضل وانت بتتنقل بين خلايا نفس الأسبوع، وبيتشال منه أي بند مبقاش في الأسبوع المعروض
-  const weekIds = new Set(TO_STATE.weekEntries.map(e => String(e.id)));
-  Array.from(TO_WEEK_SEL).forEach(id => { if (!weekIds.has(id)) TO_WEEK_SEL.delete(id); });
-  box.innerHTML = `
-    <div class="to-dp-head">
-      <span class="to-dp-title">${qEsc(emp)} — ${date}</span>
-      <button class="to-dp-close" id="toDpClose">&#10005;</button>
-    </div>
-    ${items.length ? `
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
-        <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;cursor:pointer;"><input type="checkbox" id="toWkSelAll" style="width:17px;height:17px;" onchange="toWeekSelAllInCell_(this.checked)"> تحديد كل بنود الخلية</label>
-        <button type="button" class="btn btn-sm btn-danger" id="toWkDelSelBtn" onclick="toWfItemsDelete_(Array.from(TO_WEEK_SEL))" ${TO_WEEK_SEL.size ? '' : 'disabled'}>🗑️ حذف المحدد${TO_WEEK_SEL.size ? ' (' + TO_WEEK_SEL.size + ')' : ''}</button>
-        <span style="font-size:11.5px;color:var(--muted);">تقدر تحدد من كذا خلية في نفس الأسبوع وتحذفهم مرة واحدة</span>
-      </div>` : ''}
-    ${items.length ? items.map(it => `
+// ⚠️ تعديل 2026-10-07 (تحديد أكتر من يوم وأكتر من شخص): التحديد في الجدول الأسبوعي بقى
+// قايمة خلايا (TO_STATE.selectedCells) بدل خلية واحدة. دوسة على خلية = تضيفها/تشيلها،
+// دوسة على اسم الصنيعي = كل أيامه، دوسة على عنوان اليوم = كل الصنايعية في اليوم ده.
+// التفاصيل تحت بتعرض بنود كل الخلايا المحددة، كل خلية بعنوانها (الصنيعي — اليوم).
+function toWeekCellKey_(emp, date){ return emp + '|' + date; }
+function toWeekCellIsSel_(emp, date){ return TO_STATE.selectedCells.some(c => c.emp === emp && c.date === date); }
+function toWeekApplyCellClasses_(){
+  document.querySelectorAll('td.to-day-cell').forEach(td => td.classList.toggle('selected', toWeekCellIsSel_(td.dataset.emp, td.dataset.date)));
+}
+// cells: [{emp,date}] — لو كلهم محددين بيتشالوا، وإلا بيتحددوا كلهم
+function toWeekToggleCells_(cells){
+  const wasEmpty = !TO_STATE.selectedCells.length;
+  const allSel = cells.length && cells.every(c => toWeekCellIsSel_(c.emp, c.date));
+  if (allSel) {
+    const drop = new Set(cells.map(c => toWeekCellKey_(c.emp, c.date)));
+    TO_STATE.selectedCells = TO_STATE.selectedCells.filter(c => !drop.has(toWeekCellKey_(c.emp, c.date)));
+  } else {
+    cells.forEach(c => { if (!toWeekCellIsSel_(c.emp, c.date)) TO_STATE.selectedCells.push({ emp: c.emp, date: c.date }); });
+  }
+  toWeekApplyCellClasses_();
+  toRenderWeekDetail();
+  // سكرول للتفاصيل مع أول خلية بس — بعد كده المستخدم بيكمّل تحديد في الجدول من غير ما الصفحة تتحرك
+  if (wasEmpty && TO_STATE.selectedCells.length) { const d = document.getElementById('toWeekDetail'); if (d) d.scrollIntoView({behavior:'smooth', block:'nearest'}); }
+}
+function toWeekClearCells_(){
+  TO_STATE.selectedCells = [];
+  toWeekApplyCellClasses_();
+  toRenderWeekDetail();
+}
+function toWeekTicketHtml_(it){
+  return `
       <div class="to-ticket" style="${it.status==='done'?'opacity:.7;':''}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;">
           <input type="checkbox" class="to-wk-sel" value="${qEsc(String(it.id))}" style="width:18px;height:18px;margin-top:3px;cursor:pointer;" ${TO_WEEK_SEL.has(String(it.id)) ? 'checked' : ''} onchange="toWeekSelToggle_(this.value,this.checked)">
@@ -12406,18 +12418,53 @@ function toRenderWeekDetail() {
           </div>
         </div>
         ${it.status==='blocked' ? `<div class="field to-blocked-note"><input class="d-input" placeholder="سبب التعطل (اختياري)" data-blockednote="${it.id}" value="${qEsc(it.blockedNote||'')}"></div>` : ''}
-      </div>
-    `).join('') : (evenings.length ? '' : `<div class="empty">مفيش تسجيل ليه في اليوم ده</div>`)}
-    ${evenings.map(ev => toEveningItemHTML_(ev)).join('')}
+      </div>`;
+}
+function toRenderWeekDetail() {
+  const box = document.getElementById('toWeekDetail'); if (!box) return;
+  if (!TO_STATE.selectedCells.length) { box.innerHTML = ''; return; }
+  // التحديد (بنود) بيتشال منه أي بند مبقاش في الأسبوع المعروض
+  const weekIds = new Set(TO_STATE.weekEntries.map(e => String(e.id)));
+  Array.from(TO_WEEK_SEL).forEach(id => { if (!weekIds.has(id)) TO_WEEK_SEL.delete(id); });
+  // ترتيب العرض: باليوم، وجوه اليوم بترتيب الصنايعية في الجدول
+  const empOrder = {}; TO_STATE.craftsmen.forEach((c, i) => { empOrder[c.name] = i; });
+  const cells = TO_STATE.selectedCells.slice().sort((a, b) => a.date === b.date ? ((empOrder[a.emp] ?? 999) - (empOrder[b.emp] ?? 999)) : (a.date < b.date ? -1 : 1));
+  const groups = cells.map((c, i) => ({
+    c, i,
+    items: TO_STATE.weekEntries.filter(e => e.craftsman === c.emp && e.date === c.date),
+    // سهرات نفس الصنيعي واليوم — كارت منفصل تحت بنود الشغل العادية (نفس شكل "مين فين")
+    evenings: TO_STATE.weekHoursEntries.filter(h => h.employee === c.emp && h.date === c.date && Number(h.eveningHours) > 0)
+  }));
+  const totalItems = groups.reduce((s, g) => s + g.items.length, 0);
+  const emptyCount = groups.filter(g => !g.items.length && !g.evenings.length).length;
+  const shown = groups.filter(g => g.items.length || g.evenings.length);
+  const single = cells.length === 1;
+  window._toWeekShownCells = cells; // لزرار ✕ بتاع كل خلية
+  box.innerHTML = `
+    <div class="to-dp-head">
+      <span class="to-dp-title">${single ? qEsc(cells[0].emp) + ' — ' + cells[0].date : cells.length + ' خلية محددة — ' + totalItems + ' بند'}</span>
+      <button class="to-dp-close" id="toDpClose" title="إلغاء تحديد الخلايا">&#10005;</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
+      ${totalItems ? `
+        <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;cursor:pointer;"><input type="checkbox" id="toWkSelAll" style="width:17px;height:17px;" onchange="toWeekSelAllInCell_(this.checked)"> تحديد كل البنود المعروضة</label>
+        <button type="button" class="btn btn-sm btn-danger" id="toWkDelSelBtn" onclick="toWfItemsDelete_(Array.from(TO_WEEK_SEL))" ${TO_WEEK_SEL.size ? '' : 'disabled'}>🗑️ حذف المحدد${TO_WEEK_SEL.size ? ' (' + TO_WEEK_SEL.size + ')' : ''}</button>` : ''}
+      <span style="font-size:11.5px;color:var(--muted);">دوس على أي خلايا تانية تضيفها — أو على اسم الصنيعي لكل أيامه، أو على عنوان اليوم لكل الصنايعية</span>
+    </div>
+    ${shown.map(g => `
+      ${single ? '' : `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0 6px;padding:6px 10px;background:var(--dark);color:#f0e6d8;border-radius:8px;font-size:12.5px;font-weight:800;">
+        <span>${qEsc(g.c.emp)} — ${qEsc(toQfDayLabel_(g.c.date))} <span style="font-weight:400;color:var(--gold);">(${g.items.length} بند${g.evenings.length ? ' + 🌙' : ''})</span></span>
+        <button type="button" class="mat-icon-btn" style="color:#f0e6d8;" title="شيل الخلية دي من التحديد" onclick="toWeekToggleCells_([window._toWeekShownCells[${g.i}]])">✕</button>
+      </div>`}
+      ${g.items.map(toWeekTicketHtml_).join('')}
+      ${g.evenings.map(ev => toEveningItemHTML_(ev)).join('')}
+    `).join('')}
+    ${!shown.length ? `<div class="empty">${single ? 'مفيش تسجيل ليه في اليوم ده' : 'مفيش تسجيل في الخلايا المحددة'}</div>` : (emptyCount ? `<div style="font-size:11.5px;color:var(--muted);margin-top:8px;">${emptyCount} خلية محددة مفيهاش تسجيل</div>` : '')}
   `;
   toWeekSelUpdateBar_();
   const closeBtn = document.getElementById('toDpClose');
   // قفل التفاصيل: تفاعل UI بحت — من غير فيتش ولا إعادة رسم الجدول كله
-  if (closeBtn) closeBtn.addEventListener('click', () => {
-    TO_STATE.selectedCell = null;
-    document.querySelectorAll('td.to-day-cell').forEach(t => t.classList.remove('selected'));
-    box.innerHTML = '';
-  });
+  if (closeBtn) closeBtn.addEventListener('click', () => toWeekClearCells_());
   box.querySelectorAll('[data-statusid]').forEach(btn => {
     btn.addEventListener('click', () => toSetItemStatus(btn.dataset.statusid, btn.dataset.status));
   });
