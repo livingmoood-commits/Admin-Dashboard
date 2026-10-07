@@ -11839,16 +11839,72 @@ async function toWfItemSaveEdit_(id, craftsman, oldDate){
 // ⚠️ تعديل 2026-10-07: الحذف بقى بيشيل البند من "سجل الشغل اليومي" + ساعاته من
 // "ساعات_وسهرات" + تكلفته من شيت تكلفة المشروع (في السيرفر — deleteWorkflowEntry)،
 // فبقى فيه سؤال تأكيد قبله. ومتاح كمان من تفاصيل الخلية في الجدول الأسبوعي.
-async function toWfItemDelete_(id){
-  const ok = await openGenConfirm('البند هيتحذف نهائي من سجل الشغل، وساعاته وتكلفته هيتشالوا من المشروع. مينفعش يترجع.', 'حذف البند');
+async function toWfItemDelete_(id){ return toWfItemsDelete_([id]); }
+// ⚠️ إضافة 2026-10-07 (تحديد كذا بند وحذفهم + تسريع الحذف):
+// - نداء سيرفر واحد لكل البنود المحددة (deleteWorkflowEntries) بدل نداء لكل بند.
+// - "تفاؤلي": البنود بتتشال من الشاشة فورًا من الكاش المحلي من غير ما نستنى السيرفر
+//   ومن غير إعادة تحميل الأسبوع/اليوم كله بعد الحذف (ده كان أبطأ جزء). لو السيرفر
+//   رفض، بنرجّع نحمّل البيانات الحقيقية تاني ونطلع رسالة الخطأ.
+let TO_WEEK_SEL = new Set(); // ids البنود المحددة في الجدول الأسبوعي (بتفضل وانت بتتنقل بين خلايا نفس الأسبوع)
+function toWfStripById_(idSet, lists){
+  lists.forEach(arr => {
+    if (!Array.isArray(arr)) return;
+    for (let i = arr.length - 1; i >= 0; i--) if (arr[i] && idSet.has(String(arr[i].id))) arr.splice(i, 1);
+  });
+}
+function toWfRenderLocal_(){
+  if (TO_STATE.activeTab === 'week') toRenderWeekLocal();
+  else if (TO_DAILY_VIEW !== 'roster') toRenderWhoWhereBlock();
+}
+async function toWfItemsDelete_(ids){
+  ids = Array.from(new Set((ids || []).map(String).filter(Boolean)));
+  if (!ids.length) return;
+  const n = ids.length;
+  const ok = await openGenConfirm((n > 1 ? n + ' بند هيتحذفوا' : 'البند هيتحذف') + ' نهائي من سجل الشغل، والساعات والتكلفة بتاعتهم هيتشالوا من المشروع. مينفعش يترجع.', n > 1 ? 'حذف ' + n + ' بند' : 'حذف البند');
   if (!ok) return;
+  const idSet = new Set(ids);
+  toWfStripById_(idSet, [TO_STATE.weekEntries, TO_STATE.wwEntries, TO_STATE.todayEntries]
+    .concat(Object.values(TO_STATE.weekCache), Object.values(TO_STATE.dailyCache)));
+  ids.forEach(id => TO_WEEK_SEL.delete(id));
+  toWfRenderLocal_(); // اختفوا من الشاشة فورًا
   try {
-    const res = await apiPost('deleteWorkflowEntry', { id });
-    showToast(res && res.hoursDeleted ? '🗑️ اتحذف البند واتشالت تكلفته من المشروع' : '🗑️ اتحذف البند');
-    TO_STATE.weekCache = {}; TO_STATE.weekHoursCache = {}; // الساعات المتسجلة اتغيرت — أي أسبوع محفوظ في الكاش بقى قديم
-    TO_STATE.dailyCache = {}; TO_STATE.hoursDailyCache = {};
-    await toWfRefreshCurrentView_();
-  } catch(err){ showError(err); }
+    const res = await apiPost('deleteWorkflowEntries', { ids });
+    // سطور الساعات اللي اتشالت معاهم — نشيلها من الكاش المحلي كمان (السهرات + "متسجل قبل كده" في فورم تسجيل شغل)
+    const hSet = new Set(((res && res.hoursDeletedIds) || []).map(String));
+    if (hSet.size) {
+      toWfStripById_(hSet, [TO_STATE.weekHoursEntries, TO_STATE.wwHoursEntries]
+        .concat(Object.values(TO_STATE.weekHoursCache), Object.values(TO_STATE.hoursDailyCache)));
+    }
+    TO_ROSTER.loadedDate = null;
+    toWfRenderLocal_();
+    toRenderStatStrip();
+    const done = (res && res.deleted) || 0;
+    showToast('🗑️ اتحذف ' + (done === 1 ? 'البند' : done + ' بند') + (hSet.size ? ' واتشالت تكلفة ' + hSet.size + ' من المشاريع' : ''));
+    if (TO_STATE.activeTab !== 'week' && TO_DAILY_VIEW === 'roster') await toRenderRosterView();
+  } catch(err){
+    showToast('الحذف فشل: ' + (err.message || err), 'error');
+    TO_STATE.weekCache = {}; TO_STATE.weekHoursCache = {}; TO_STATE.dailyCache = {}; TO_STATE.hoursDailyCache = {};
+    await toWfRefreshCurrentView_(); // نرجّع البيانات الحقيقية من السيرفر
+  }
+}
+function toWeekSelToggle_(id, checked){
+  if (checked) TO_WEEK_SEL.add(String(id)); else TO_WEEK_SEL.delete(String(id));
+  toWeekSelUpdateBar_();
+}
+function toWeekSelAllInCell_(checked){
+  document.querySelectorAll('#toWeekDetail input.to-wk-sel').forEach(cb => {
+    cb.checked = checked;
+    if (checked) TO_WEEK_SEL.add(cb.value); else TO_WEEK_SEL.delete(cb.value);
+  });
+  toWeekSelUpdateBar_();
+}
+function toWeekSelUpdateBar_(){
+  const btn = document.getElementById('toWkDelSelBtn'); if (!btn) return;
+  btn.disabled = !TO_WEEK_SEL.size;
+  btn.textContent = '🗑️ حذف المحدد' + (TO_WEEK_SEL.size ? ' (' + TO_WEEK_SEL.size + ')' : '');
+  const all = document.getElementById('toWkSelAll');
+  const cbs = Array.from(document.querySelectorAll('#toWeekDetail input.to-wk-sel'));
+  if (all) all.checked = cbs.length > 0 && cbs.every(cb => cb.checked);
 }
 // بترجّع تحدّث أي واجهة كانت شايف فيها البند (مين فين / الجدول الأسبوعي /
 // الروستر) — كلهم بيعتمدوا على كاش محلي، فلازم نمسحه ونجيب البيانات تاني
@@ -12316,14 +12372,24 @@ function toRenderWeekDetail() {
   // ⚠️ إضافة: سهرات نفس الصنيعي واليوم المختار — بتتعرض كارت منفصل تحت بنود
   // الشغل العادية (نفس شكل كارت السهرة في بانل "مين فين")
   const evenings = TO_STATE.weekHoursEntries.filter(h => h.employee === emp && h.date === date && Number(h.eveningHours) > 0);
+  // التحديد بيفضل وانت بتتنقل بين خلايا نفس الأسبوع، وبيتشال منه أي بند مبقاش في الأسبوع المعروض
+  const weekIds = new Set(TO_STATE.weekEntries.map(e => String(e.id)));
+  Array.from(TO_WEEK_SEL).forEach(id => { if (!weekIds.has(id)) TO_WEEK_SEL.delete(id); });
   box.innerHTML = `
     <div class="to-dp-head">
       <span class="to-dp-title">${qEsc(emp)} — ${date}</span>
       <button class="to-dp-close" id="toDpClose">&#10005;</button>
     </div>
+    ${items.length ? `
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;cursor:pointer;"><input type="checkbox" id="toWkSelAll" style="width:17px;height:17px;" onchange="toWeekSelAllInCell_(this.checked)"> تحديد كل بنود الخلية</label>
+        <button type="button" class="btn btn-sm btn-danger" id="toWkDelSelBtn" onclick="toWfItemsDelete_(Array.from(TO_WEEK_SEL))" ${TO_WEEK_SEL.size ? '' : 'disabled'}>🗑️ حذف المحدد${TO_WEEK_SEL.size ? ' (' + TO_WEEK_SEL.size + ')' : ''}</button>
+        <span style="font-size:11.5px;color:var(--muted);">تقدر تحدد من كذا خلية في نفس الأسبوع وتحذفهم مرة واحدة</span>
+      </div>` : ''}
     ${items.length ? items.map(it => `
       <div class="to-ticket" style="${it.status==='done'?'opacity:.7;':''}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;">
+          <input type="checkbox" class="to-wk-sel" value="${qEsc(String(it.id))}" style="width:18px;height:18px;margin-top:3px;cursor:pointer;" ${TO_WEEK_SEL.has(String(it.id)) ? 'checked' : ''} onchange="toWeekSelToggle_(this.value,this.checked)">
           <div style="flex:1;min-width:0;">
             <div class="proj">${it.status==='done'?'&#10003;':(it.status==='blocked'?'&#9940;':'&#128205;')} ${qEsc(it.project)}</div>
             ${it.title?`<div style="font-size:12.5px;font-weight:700;margin-top:2px;${it.status==='done'?'text-decoration:line-through;':''}">${qEsc(it.title)}</div>`:''}
@@ -12344,6 +12410,7 @@ function toRenderWeekDetail() {
     `).join('') : (evenings.length ? '' : `<div class="empty">مفيش تسجيل ليه في اليوم ده</div>`)}
     ${evenings.map(ev => toEveningItemHTML_(ev)).join('')}
   `;
+  toWeekSelUpdateBar_();
   const closeBtn = document.getElementById('toDpClose');
   // قفل التفاصيل: تفاعل UI بحت — من غير فيتش ولا إعادة رسم الجدول كله
   if (closeBtn) closeBtn.addEventListener('click', () => {
