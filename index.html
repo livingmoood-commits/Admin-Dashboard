@@ -1269,6 +1269,7 @@
     <button data-page="treasury"><span class="icon">&#128176;</span><span class="label">الخزنة (Cash Flow)</span></button>
     <button data-page="dailyExpenses" data-exp-group="1"><span class="icon">&#128221;</span><span class="label">مصاريف</span></button>
     <button data-page="projectsPage"><span class="icon">&#127959;</span><span class="label">المشاريع</span></button>
+    <button data-page="projectSpend"><span class="icon">&#128202;</span><span class="label">مصاريف المشاريع</span></button>
     <button data-page="debts"><span class="icon">&#128308;</span><span class="label">ديون</span></button>
     <button data-page="partnerWithdrawals"><span class="icon">&#129309;</span><span class="label">مسحوبات شركاء</span></button>
     <div class="sep"></div>
@@ -2028,6 +2029,7 @@ const PAGES = {
   costs:        { title:'التكاليف', sub:'خامات + عمالة + إيرادات — تابين جنب بعض لكل مشروع', render: renderCosts },
   fixedExp:     { title:'المصاريف الثابتة', sub:'إيجار / كهرباء / إلخ — وطريقة توزيعها على المشاريع', render: renderFixedExp },
   projectsPage: { title:'المشاريع', sub:'كل المشاريع في مكان واحد — إضافة، تعديل، أرشفة، وإيرادات موحّدة من التكاليف والمصاريف', render: renderProjectsPage },
+  projectSpend: { title:'مصاريف المشاريع', sub:'لكل مشروع: مصاريفه من شيت المصاريف + العمالة — بالتفاصيل', render: renderProjectSpend },
   quotation:    { title:'Quotations', sub:'قائمة العملاء وعروض الأسعار', render: renderQuotation },
   debtors:      { title:'Payment Statements', sub:'متابعة تحصيل الدفعات من العملاء — كل حاجة عن المستحق والمتبقي', render: renderDebtors },
   debts:        { title:'ديون', sub:'المبالغ اللي المصنع مديون بيها لجهات تانية ومتابعة سدادها', render: renderDebts },
@@ -7454,6 +7456,185 @@ function renderInstallList(items){
 async function deleteInstallConfirm(id){
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح عملية التركيب دي؟', 'حذف عملية التركيب'))) return;
   try { await apiPost('deleteInstall', { id }); renderInstall(); } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ *  صفحة "مصاريف المشاريع" (إضافة 2026-10-07) — لكل مشروع: مصاريفه من شيت
+ *  المصاريف (شيت المشروع نفسه في ملف "مصاريف المشاريع"، سطر سطر بالأسابيع)
+ *  + العمالة (شيت "ساعات_وسهرات": كل موظف، أيامه، ساعاته، تكلفته) والإجمالي.
+ *  عرض بس — مفيش أي كتابة. من غير أي أكشن جديد في الباك إند: بتستخدم
+ *  listProjectsSummary (القايمة) + getProjectExpensesDetail + listHoursEntries.
+ * ═══════════════════════════════════════════════════════════════════════ */
+let PSP = { projects: [], sel: sessionStorage.getItem('lm_pspProject') || '', exp: null, expErr: '', labor: [], q: '', laborView: 'emp', openEmp: {}, tok: 0 };
+async function renderProjectSpend(token){
+  const box = document.getElementById('content');
+  box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
+  try {
+    const { projects } = await apiGet('listProjectsSummary');
+    if (isStaleNav(token)) return;
+    PSP.projects = (projects || []).map(p => {
+      const expenses = (p.financials && Number(p.financials.cashExpenses)) || 0;
+      const labor = Number(p.laborCost) || 0;
+      return { project: p.project, expenses, labor, hours: Number(p.laborHours) || 0, total: expenses + labor };
+    }).sort((a, b) => b.total - a.total);
+    box.innerHTML = `
+      <div class="panel">
+        <h3>كل المشاريع <span class="sub">دوس على أي مشروع تشوف تفاصيل مصاريفه وعمالته</span></h3>
+        <div id="pspListBox"></div>
+      </div>
+      <div id="pspDetailBox"></div>`;
+    pspRenderList_();
+    if (PSP.sel && PSP.projects.some(p => p.project === PSP.sel)) pspSelect(PSP.sel, true);
+  } catch(err){ showError(err); }
+}
+function pspRenderList_(){
+  const box = document.getElementById('pspListBox'); if (!box) return;
+  if (!PSP.projects.length) { box.innerHTML = '<div class="empty">مفيش مشاريع</div>'; return; }
+  const sum = k => PSP.projects.reduce((s, p) => s + p[k], 0);
+  box.innerHTML = `
+    <div class="tbl-wrap"><table><thead><tr>
+      <th>المشروع</th><th>مصاريف (شيت المصاريف)</th><th>عمالة</th><th>ساعات</th><th>الإجمالي</th>
+    </tr></thead><tbody>
+      ${PSP.projects.map((p, i) => `
+        <tr class="row-clickable" style="cursor:pointer;${p.project === PSP.sel ? 'background:var(--cream);font-weight:700;' : ''}" onclick="pspSelect(PSP.projects[${i}].project)">
+          <td>${qEsc(p.project)}</td>
+          <td>${p.expenses ? fmt(p.expenses) + ' ج' : '—'}</td>
+          <td>${p.labor ? fmt(p.labor) + ' ج' : '—'}</td>
+          <td>${p.hours ? fmt(p.hours) : '—'}</td>
+          <td><b>${fmt(p.total)} ج</b></td>
+        </tr>`).join('')}
+      <tr>${['الإجمالي', fmt(sum('expenses')) + ' ج', fmt(sum('labor')) + ' ج', fmt(sum('hours')), fmt(sum('total')) + ' ج'].map(v => `<td style="background:var(--dark);color:#fff;font-weight:800;">${v}</td>`).join('')}</tr>
+    </tbody></table></div>`;
+}
+async function pspSelect(name, noScroll){
+  PSP.sel = name;
+  try { sessionStorage.setItem('lm_pspProject', name); } catch(e){}
+  PSP.q = ''; PSP.openEmp = {};
+  pspRenderList_();
+  const box = document.getElementById('pspDetailBox'); if (!box) return;
+  box.innerHTML = '<div class="panel"><div class="loading-row">جاري تحميل تفاصيل ' + qEsc(name) + '...</div></div>';
+  if (!noScroll) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const myTok = ++PSP.tok;
+  try {
+    const [exp, hrs] = await Promise.all([
+      // مشروع من غير شيت مصاريف (أو الشيت اتشال) — منوقفش الصفحة، بنعرض العمالة لوحدها والسبب مكتوب
+      apiGet('getProjectExpensesDetail', { name }).catch(e => ({ weeks: [], _err: e.message || String(e) })),
+      apiGet('listHoursEntries', { filters: { project: name } })
+    ]);
+    if (myTok !== PSP.tok || !document.getElementById('pspDetailBox')) return;
+    PSP.exp = exp; PSP.expErr = exp._err || '';
+    PSP.labor = (hrs.entries || []).slice().sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    pspRenderDetail_();
+  } catch(err){ if (myTok === PSP.tok) box.innerHTML = `<div class="panel"><div class="msg err" style="display:block;">خطأ: ${qEsc(err.message || err)}</div></div>`; }
+}
+function pspTotals_(){
+  const weeks = (PSP.exp && PSP.exp.weeks) || [];
+  const itemsSum = weeks.reduce((s, w) => s + w.items.reduce((a, it) => a + (Number(it.amount) || 0), 0), 0);
+  const itemsCount = weeks.reduce((s, w) => s + w.items.length, 0);
+  // الرقم الرسمي = إجمالي المصروف المكتوب في شيت المشروع نفسه (J2) لو موجود، وإلا مجموع السطور
+  const sheetTotal = Number(PSP.exp && PSP.exp.expense) || 0;
+  const expenses = sheetTotal || itemsSum;
+  const labor = PSP.labor.reduce((s, h) => s + (Number(h.cost) || 0), 0);
+  const hours = PSP.labor.reduce((s, h) => s + (Number(h.hours) || 0), 0);
+  return { weeks, itemsSum, itemsCount, sheetTotal, expenses, labor, hours, total: expenses + labor };
+}
+function pspRenderDetail_(){
+  const box = document.getElementById('pspDetailBox'); if (!box) return;
+  const t = pspTotals_();
+  const pct = v => t.total ? ' <span style="font-size:11.5px;color:var(--muted);font-weight:600;">(' + Math.round(v / t.total * 100) + '%)</span>' : '';
+  box.innerHTML = `
+    <div class="panel">
+      <h3>${qEsc(PSP.sel)} <span class="sub">مصاريف المشروع + العمالة</span></h3>
+      <div class="cards">
+        <div class="card"><div class="label">مصاريف المشروع (${t.itemsCount} سطر)</div><div class="value gold">${fmt(t.expenses)} ج${pct(t.expenses)}</div></div>
+        <div class="card"><div class="label">العمالة (${fmt(t.hours)} ساعة)</div><div class="value gold">${fmt(t.labor)} ج${pct(t.labor)}</div></div>
+        <div class="card"><div class="label">الإجمالي (مصاريف + عمالة)</div><div class="value green">${fmt(t.total)} ج</div></div>
+      </div>
+      ${t.sheetTotal && Math.abs(t.sheetTotal - t.itemsSum) >= 1 ? `<div class="msg" style="display:block;font-size:12px;margin-bottom:12px;">إجمالي المصروف المكتوب في شيت المشروع ${fmt(t.sheetTotal)} ج، ومجموع السطور المعروضة تحت ${fmt(t.itemsSum)} ج (فرق ${fmt(t.sheetTotal - t.itemsSum)} ج) — الكروت فوق ماشية برقم الشيت.</div>` : ''}
+    </div>
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+        <div><h3 style="margin:0;">🧾 المصاريف</h3><div style="font-size:12px;color:var(--muted);margin-top:3px;">من شيت المشروع في "مصاريف المشاريع" — بالأسابيع</div></div>
+        <input class="d-input" style="max-width:240px;" placeholder="بحث في الوصف..." value="${qEsc(PSP.q)}" oninput="PSP.q=this.value;pspRenderExpenses_()">
+      </div>
+      <div id="pspExpBox"></div>
+    </div>
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+        <div><h3 style="margin:0;">👷 العمالة</h3><div style="font-size:12px;color:var(--muted);margin-top:3px;">من "ساعات_وسهرات" — ساعات × أجر الساعة + السهرات</div></div>
+        <div style="display:flex;gap:6px;">
+          <button type="button" class="btn btn-sm ${PSP.laborView === 'emp' ? 'btn-primary' : 'btn-outline'}" onclick="PSP.laborView='emp';pspRenderDetail_()">بالموظف</button>
+          <button type="button" class="btn btn-sm ${PSP.laborView === 'day' ? 'btn-primary' : 'btn-outline'}" onclick="PSP.laborView='day';pspRenderDetail_()">باليوم</button>
+        </div>
+      </div>
+      <div id="pspLaborBox"></div>
+    </div>`;
+  pspRenderExpenses_();
+  pspRenderLabor_();
+}
+function pspRenderExpenses_(){
+  const box = document.getElementById('pspExpBox'); if (!box) return;
+  const weeks = (PSP.exp && PSP.exp.weeks) || [];
+  if (PSP.expErr) { box.innerHTML = `<div class="empty">مفيش شيت مصاريف للمشروع ده — ${qEsc(PSP.expErr)}</div>`; return; }
+  const q = PSP.q.trim();
+  const shown = weeks.map(w => ({ w, items: q ? w.items.filter(it => String(it.desc).includes(q)) : w.items })).filter(x => x.items.length);
+  if (!shown.length) { box.innerHTML = `<div class="empty">${q ? 'مفيش مصروف بالوصف ده' : 'مفيش مصاريف متسجلة على المشروع ده'}</div>`; return; }
+  const qSum = shown.reduce((s, x) => s + x.items.reduce((a, it) => a + (Number(it.amount) || 0), 0), 0);
+  box.innerHTML = (q ? `<div style="font-size:12.5px;font-weight:700;margin-bottom:8px;">نتيجة البحث: ${shown.reduce((s, x) => s + x.items.length, 0)} سطر — ${fmt(qSum)} ج</div>` : '') +
+    shown.map(x => {
+      const sum = x.items.reduce((a, it) => a + (Number(it.amount) || 0), 0);
+      return `
+      <div class="cost-day-group">
+        <div class="cost-day-head"><b>${qEsc(x.w.label)}</b><span style="margin-inline-start:auto;font-weight:800;">${fmt(sum)} ج</span></div>
+        <div class="tbl-wrap"><table><thead><tr><th>الوصف</th><th>التاريخ</th><th>المبلغ</th></tr></thead><tbody>
+          ${x.items.map(it => `<tr><td>${qEsc(it.desc)}</td><td style="white-space:nowrap;">${qEsc(it.date || '—')}</td><td style="white-space:nowrap;"><b>${fmt(it.amount)} ج</b></td></tr>`).join('')}
+        </tbody></table></div>
+      </div>`;
+    }).join('');
+}
+function pspLaborRowHtml_(h, firstCol){
+  return `<tr><td>${qEsc(firstCol)}</td><td>${fmt(h.hours)}</td><td>${h.hourlyRate ? fmt(h.hourlyRate) + ' ج' : '—'}</td>
+    <td>${h.eveningHours || h.eveningAmount ? (h.eveningHours ? fmt(h.eveningHours) + ' س' : '') + (h.eveningAmount ? ' — ' + fmt(h.eveningAmount) + ' ج' : '') : '—'}</td>
+    <td><b>${fmt(h.cost)} ج</b></td><td style="font-size:12px;color:var(--muted);">${qEsc(h.notes || '')}</td></tr>`;
+}
+function pspRenderLabor_(){
+  const box = document.getElementById('pspLaborBox'); if (!box) return;
+  if (!PSP.labor.length) { box.innerHTML = '<div class="empty">مفيش ساعات عمالة متسجلة على المشروع ده</div>'; return; }
+  const group = key => {
+    const map = {}, order = [];
+    PSP.labor.forEach(h => { const k = h[key] || '—'; if (!map[k]) { map[k] = []; order.push(k); } map[k].push(h); });
+    return order.map(k => ({ k, rows: map[k], hours: map[k].reduce((s, h) => s + (Number(h.hours) || 0), 0), eve: map[k].reduce((s, h) => s + (Number(h.eveningAmount) || 0), 0), cost: map[k].reduce((s, h) => s + (Number(h.cost) || 0), 0) }));
+  };
+  if (PSP.laborView === 'day') {
+    box.innerHTML = group('date').map(g => `
+      <div class="cost-day-group">
+        <div class="cost-day-head"><b>${qEsc(g.k)}</b><span style="font-size:12px;">${g.rows.length} تسجيل — ${fmt(g.hours)} ساعة</span><span style="margin-inline-start:auto;font-weight:800;">${fmt(g.cost)} ج</span></div>
+        <div class="tbl-wrap"><table><thead><tr><th>الموظف</th><th>ساعات</th><th>أجر الساعة</th><th>سهرة</th><th>التكلفة</th><th>ملاحظات</th></tr></thead>
+        <tbody>${g.rows.map(h => pspLaborRowHtml_(h, h.employee)).join('')}</tbody></table></div>
+      </div>`).join('');
+    return;
+  }
+  const groups = group('employee').sort((a, b) => b.cost - a.cost);
+  box.innerHTML = `
+    <div class="tbl-wrap"><table><thead><tr><th>الموظف</th><th>أيام</th><th>ساعات</th><th>سهرات</th><th>التكلفة</th><th></th></tr></thead><tbody>
+    ${groups.map((g, i) => {
+      const open = !!PSP.openEmp[g.k];
+      const days = new Set(g.rows.map(h => h.date)).size;
+      return `
+      <tr class="row-clickable" style="cursor:pointer;${open ? 'background:var(--cream);' : ''}" onclick="pspToggleEmp_(${i})">
+        <td><b>${qEsc(g.k)}</b></td><td>${days}</td><td>${fmt(g.hours)}</td><td>${g.eve ? fmt(g.eve) + ' ج' : '—'}</td><td><b>${fmt(g.cost)} ج</b></td>
+        <td style="text-align:left;color:var(--muted);">${open ? '▴' : '▾ تفاصيل'}</td>
+      </tr>
+      ${open ? `<tr><td colspan="6" style="padding:0 0 10px;"><div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>ساعات</th><th>أجر الساعة</th><th>سهرة</th><th>التكلفة</th><th>ملاحظات</th></tr></thead>
+        <tbody>${g.rows.map(h => pspLaborRowHtml_(h, h.date)).join('')}</tbody></table></div></td></tr>` : ''}`;
+    }).join('')}
+    </tbody></table></div>`;
+  PSP._empOrder = groups.map(g => g.k);
+}
+function pspToggleEmp_(i){
+  const k = (PSP._empOrder || [])[i]; if (k === undefined) return;
+  PSP.openEmp[k] = !PSP.openEmp[k];
+  pspRenderLabor_();
 }
 
 /* ================= Costs (التكاليف — بديل موحّد لتكلفة المنتجات + تكلفة التركيب) =================
