@@ -11655,10 +11655,17 @@ async function toWfItemSaveEdit_(id, craftsman, oldDate){
     await toWfRefreshCurrentView_();
   } catch(err){ msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); btn.disabled = false; btn.textContent = 'حفظ التعديل'; }
 }
+// ⚠️ تعديل 2026-10-07: الحذف بقى بيشيل البند من "سجل الشغل اليومي" + ساعاته من
+// "ساعات_وسهرات" + تكلفته من شيت تكلفة المشروع (في السيرفر — deleteWorkflowEntry)،
+// فبقى فيه سؤال تأكيد قبله. ومتاح كمان من تفاصيل الخلية في الجدول الأسبوعي.
 async function toWfItemDelete_(id){
+  const ok = await openGenConfirm('البند هيتحذف نهائي من سجل الشغل، وساعاته وتكلفته هيتشالوا من المشروع. مينفعش يترجع.', 'حذف البند');
+  if (!ok) return;
   try {
-    await apiPost('deleteWorkflowEntry', { id });
-    showToast('🗑️ اتحذف البند');
+    const res = await apiPost('deleteWorkflowEntry', { id });
+    showToast(res && res.hoursDeleted ? '🗑️ اتحذف البند واتشالت تكلفته من المشروع' : '🗑️ اتحذف البند');
+    TO_STATE.weekCache = {}; TO_STATE.weekHoursCache = {}; // الساعات المتسجلة اتغيرت — أي أسبوع محفوظ في الكاش بقى قديم
+    TO_STATE.dailyCache = {}; TO_STATE.hoursDailyCache = {};
     await toWfRefreshCurrentView_();
   } catch(err){ showError(err); }
 }
@@ -11744,8 +11751,35 @@ function toQfState_(ei){ return TO_QF.perEmp[TO_QF.emps[ei]]; }
 function toQfDayTotal_(rows){
   return (rows || []).reduce((s, r) => s + ((r.kind === 'work' && r.project !== 'إجازة') ? (Number(r.hours) || 0) : 0), 0);
 }
-function toQfTotalHtml_(total){
-  return total ? `<span style="font-weight:700;color:${total > 9 ? 'var(--red)' : 'var(--muted)'};">الإجمالي: ${fmt(total)} ساعة${total > 9 ? ' ⚠️' : ''}</span>` : '';
+// ⚠️ إضافة 2026-10-07 (منع التسجيل المكرر): الساعات العادية المتسجلة فعلاً قبل كده
+// لكل موظف/يوم — بتتجاب مرة واحدة لكل أسبوع معروض (نفس كاش التاب الاسبوعي
+// TO_STATE.weekHoursCache، نفس المفتاح from_to) وبتتعرض على زرار اليوم وجوه بلوك
+// اليوم، وبتدخل في حساب حد الـ9 ساعات. السيرفر بيرفض برضه لو الكاش مش محمّل.
+let TO_QF_WEEK_LOADING = {};
+function toQfWeekKey_(dateObj){ const d = toGetWeekDates(dateObj); return toISO(d[0]) + '_' + toISO(d[6]); }
+function toQfRegistered_(emp, iso){
+  const list = TO_STATE.weekHoursCache[toQfWeekKey_(new Date(iso + 'T00:00:00'))];
+  if (!list) return null; // لسه مش محمّل
+  return list.reduce((s, h) => s + ((h.employee === emp && h.date === iso && Number(h.hours) > 0) ? Number(h.hours) : 0), 0);
+}
+async function toQfEnsureWeekHours_(){
+  const dates = toGetWeekDates(TO_QF.weekAnchor);
+  const from = toISO(dates[0]), to = toISO(dates[6]), key = from + '_' + to;
+  if (TO_STATE.weekHoursCache[key] || TO_QF_WEEK_LOADING[key]) return;
+  TO_QF_WEEK_LOADING[key] = true;
+  try {
+    const res = await apiGet('listHoursEntries', { filters: { from, to } });
+    TO_STATE.weekHoursCache[key] = res.entries || [];
+    if (document.getElementById('toqf-box') && TO_QF.emps.length) toQfRenderBox_();
+  } catch (e) { /* السيرفر هو اللي بيمنع فعليًا — العرض هنا مساعدة بس */ }
+  finally { delete TO_QF_WEEK_LOADING[key]; }
+}
+function toQfTotalHtml_(total, registered){
+  const reg = Number(registered) || 0;
+  const sum = total + reg;
+  if (!sum) return '';
+  const over = sum > 9;
+  return `<span style="font-weight:700;color:${over ? 'var(--red)' : 'var(--muted)'};">${reg ? `متسجل قبل كده: ${fmt(reg)} + الجديد: ${fmt(total)} = ${fmt(sum)} ساعة` : `الإجمالي: ${fmt(total)} ساعة`}${over ? ' ⚠️ أكتر من 9' : ''}</span>`;
 }
 // بيعيد رسم صندوق الفورم بس — "مين فين" تحت مش بيتلمس
 function toQfRenderBox_(){
@@ -11761,6 +11795,7 @@ function toQfFormHtml_(){
   const dates = toGetWeekDates(TO_QF.weekAnchor);
   const weekLabel = toFmtDayDate(dates[0]) + ' – ' + toFmtDayDate(dates[6]);
   const hasDays = TO_QF.emps.some(e => TO_QF.perEmp[e] && TO_QF.perEmp[e].dates.length);
+  if (TO_QF.emps.length) toQfEnsureWeekHours_(); // في الخلفية — بيعيد رسم الصندوق مرة واحدة لما الساعات المتسجلة توصل
   return `
     <div class="field"><label>الصنايعية (اختار واحد أو أكتر — كل واحد بياخد بلوك مستقل بأيامه ومشاريعه)</label>
       <div class="toqf-chips">${weekly.map(empChip).join('')}</div>
@@ -11775,7 +11810,7 @@ function toQfFormHtml_(){
         <button type="button" class="btn btn-outline btn-sm" onclick="toQfShiftWeek_(0)">الأسبوع ده</button>
       </div>
       ${TO_QF.emps.map((emp, ei) => toQfEmpCardHtml_(emp, ei, dates)).join('')}
-      <div style="font-size:11.5px;color:var(--muted);margin:6px 0 12px;">اليوم 9 ساعات — لو الصنيعي اشتغل في أكتر من مشروع قسّمهم بنفسك. أي يوم جديد تختاره بياخد نفس مشاريع آخر يوم اخترته لنفس الصنيعي.</div>
+      <div style="font-size:11.5px;color:var(--muted);margin:6px 0 12px;">اليوم 9 ساعات بالكتير (الزيادة تتسجل سهرة) — لو الصنيعي اشتغل في أكتر من مشروع قسّمهم بنفسك. علامة ✓ على اليوم = متسجله ساعات قبل كده. أي يوم جديد تختاره بياخد نفس مشاريع آخر يوم اخترته لنفس الصنيعي.</div>
       <button type="button" class="btn btn-primary" id="toSaveEntryBtn" data-hotkey-save onclick="toQuickformSave_()" ${hasDays ? '' : 'disabled'}>💾 حفظ الكل</button>
       <div class="msg" id="toSaveEntryMsg"></div>
     ` : `<div class="empty">اختار صنيعي واحد أو أكتر الأول</div>`}
@@ -11786,7 +11821,8 @@ function toQfEmpCardHtml_(emp, ei, weekDates){
   const today = todayStr();
   const dayChip = d => {
     const iso = toISO(d);
-    return `<button type="button" class="btn btn-sm ${st.dates.includes(iso) ? 'btn-primary' : 'btn-outline'}" onclick="toQfToggleDay_(${ei},'${iso}')">${qEsc(toQfDayLabel_(iso))}${iso === today ? ' •' : ''}</button>`;
+    const reg = toQfRegistered_(emp, iso);
+    return `<button type="button" class="btn btn-sm ${st.dates.includes(iso) ? 'btn-primary' : 'btn-outline'}" ${reg ? `title="متسجل قبل كده ${fmt(reg)} ساعة"` : ''} onclick="toQfToggleDay_(${ei},'${iso}')">${qEsc(toQfDayLabel_(iso))}${iso === today ? ' •' : ''}${reg ? ` <span style="font-weight:800;color:${reg >= 9 ? 'var(--red)' : 'var(--green)'};">✓${fmt(reg)}س</span>` : ''}</button>`;
   };
   return `
     <div class="toqf-emp-card">
@@ -11808,7 +11844,7 @@ function toQfDayHtml_(ei, iso, st){
       <div class="toqf-day-head">
         <span>${qEsc(toQfDayLabel_(iso))} <span style="color:var(--muted);font-weight:400;font-size:11.5px;">(${iso})</span></span>
         <span class="toqf-chips">
-          <span id="toqfTot-${ei}-${iso}">${toQfTotalHtml_(toQfDayTotal_(rows))}</span>
+          <span id="toqfTot-${ei}-${iso}">${toQfTotalHtml_(toQfDayTotal_(rows), toQfRegistered_(TO_QF.emps[ei], iso))}</span>
           <button type="button" class="mat-icon-btn" title="شيل اليوم" onclick="toQfToggleDay_(${ei},'${iso}')">✕</button>
         </span>
       </div>
@@ -11871,7 +11907,7 @@ function toQfSetRow_(ei, iso, ri, field, value){
 }
 function toQfUpdateTotal_(ei, iso){
   const st = toQfState_(ei); const el = document.getElementById(`toqfTot-${ei}-${iso}`);
-  if (st && el) el.innerHTML = toQfTotalHtml_(toQfDayTotal_(st.rows[iso]));
+  if (st && el) el.innerHTML = toQfTotalHtml_(toQfDayTotal_(st.rows[iso]), toQfRegistered_(TO_QF.emps[ei], iso));
 }
 function toQfAddRow_(ei, iso, kind){
   const st = toQfState_(ei); if (!st || !st.rows[iso]) return;
@@ -11923,7 +11959,8 @@ async function toQuickformSave_() {
         entries.push({ employee: emp, project, hours: isAbsence ? 0 : r.hours, date: iso, title, notes });
       });
       const total = toQfDayTotal_(rows);
-      if (total > 9) over.push(where + ': ' + fmt(total) + ' ساعة');
+      const reg = toQfRegistered_(emp, iso) || 0;
+      if (total > 0 && total + reg > 9) over.push(where + ': ' + (reg ? 'متسجله ' + fmt(reg) + ' ساعة قبل كده + ' + fmt(total) + ' جديدة' : fmt(total) + ' ساعة'));
     });
   });
   if (errs.length) {
@@ -11931,9 +11968,11 @@ async function toQuickformSave_() {
     return;
   }
   if (!entries.length) { showToast('اختار صنيعي ويوم واحد على الأقل', 'error'); return; }
+  // ⚠️ تعديل 2026-10-07: بقى منع مش سؤال — أكتر من 9 ساعات شغل عادي في اليوم (الجديد +
+  // المتسجل قبل كده) مبيتحفظش. الزيادة تتسجل سهرة. السيرفر بيعمل نفس الفحص برضه.
   if (over.length) {
-    const ok = await openGenConfirm('أكتر من 9 ساعات شغل في نفس اليوم:\n' + over.join('\n') + '\n\nتكمل الحفظ؟', 'تأكيد ساعات العمل');
-    if (!ok) return;
+    if (msg) { msg.className = 'msg err'; msg.textContent = 'أكتر من 9 ساعات شغل عادي في اليوم (الزيادة تتسجل سهرة): ' + over.slice(0, 6).join(' • ') + (over.length > 6 ? ` • و${over.length - 6} تاني` : ''); }
+    return;
   }
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...'; }
   if (msg) { msg.className = 'msg'; msg.textContent = ''; }
@@ -12110,6 +12149,7 @@ function toRenderWeekDetail() {
             ${it.feedback?`<div class="fb">&#128172; ${qEsc(it.feedback)}</div>`:''}
           </div>
           <div class="to-status-row" style="margin-top:0;">
+            <button type="button" class="mat-icon-btn" title="حذف البند (وتكلفته من المشروع)" onclick="toWfItemDelete_('${qEscJs(it.id)}')">🗑️</button>
             <button type="button" class="to-status-btn ${it.status==='blocked'?'blocked-active':''}" data-statusid="${it.id}" data-status="blocked">
               <span class="ic">&#10005;</span><span class="lbl">متعطل</span>
             </button>
