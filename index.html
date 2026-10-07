@@ -10917,7 +10917,8 @@ let TO_STATE = {
   planCache: {},    // { [project]: items[] }
   hoursDailyCache: {}, // ⚠️ إضافة: { [date]: hoursEntries[] } — لبانل "مين فين" عشان يعرض السهرات
 };
-const TO_DAY_NAMES = ["السبت","الأحد","الاثنين","الثلاثاء","الأربعاء","الخميس","الجمعة"];
+// ⚠️ تعديل 2026-10-07: أسبوع الورك فلو بقى يبدأ الجمعة وينتهي الخميس (كان سبت → جمعة) — الجمعة أول عمود مش آخره
+const TO_DAY_NAMES = ["الجمعة","السبت","الأحد","الاثنين","الثلاثاء","الأربعاء","الخميس"];
 let TO_WARMED = false; // عشان التحميل المسبق في الخلفية ما يتكررش كل ما ندخل الصفحة تاني
 
 function toISO(d){ const x = new Date(d); x.setMinutes(x.getMinutes() - x.getTimezoneOffset()); return x.toISOString().slice(0,10); }
@@ -10931,7 +10932,7 @@ function toDateQuickLabel(iso){
 }
 function toGetWeekDates(anchor){
   const dow = anchor.getDay();
-  const diff = (dow - 6 + 7) % 7; // السبت أول يوم في الأسبوع
+  const diff = (dow - 5 + 7) % 7; // الجمعة أول يوم في الأسبوع (تعديل 2026-10-07 — كان السبت)
   const start = new Date(anchor); start.setDate(anchor.getDate()-diff); start.setHours(0,0,0,0);
   const dates = [];
   for(let i=0;i<7;i++){ const dt=new Date(start); dt.setDate(start.getDate()+i); dates.push(dt); }
@@ -12231,7 +12232,7 @@ function toBuildSizesString_(){
 function toQfNewRow_(kind, hours){ return { kind: kind || 'work', project: '', hours: hours || '', title: '', notes: '' }; }
 function toQfDayLabel_(iso){
   const d = new Date(iso + 'T00:00:00');
-  return TO_DAY_NAMES[(d.getDay() + 1) % 7] + ' ' + toFmtDayDate(d);
+  return TO_DAY_NAMES[(d.getDay() + 2) % 7] + ' ' + toFmtDayDate(d); // TO_DAY_NAMES[0] = الجمعة
 }
 function toQfState_(ei){ return TO_QF.perEmp[TO_QF.emps[ei]]; }
 function toQfDayTotal_(rows){
