@@ -11856,6 +11856,14 @@ function toWfRenderLocal_(){
   if (TO_STATE.activeTab === 'week') toRenderWeekLocal();
   else if (TO_DAILY_VIEW !== 'roster') toRenderWhoWhereBlock();
 }
+// ⚠️ تعديل 2026-10-07 ("مش عاوز الحذف يعلق الموقع"): الحذف بقى في الخلفية بالكامل —
+// البنود بتختفي من الشاشة فورًا وتقدر تكمل شغل/تحديد/حذف تاني من غير ما تستنى.
+// طلبات الحذف بتتبعت للسيرفر واحد ورا التاني من طابور (مش مع بعض)، وأي بنود اتحذفت
+// والطلب اللي قبلها لسه شغال بتتجمع وتتبعت كلها في الطلب اللي بعده. ده بيمنع إن
+// طلبين حذف يتخانقوا على قفل السيرفر (كان بيطلع "في عملية تانية شغالة" بعد 8 ثواني).
+// ولو السيرفر مشغول بحفظ تاني، بنعيد المحاولة لوحدنا كام مرة قبل ما نطلع خطأ.
+let TO_DEL_QUEUE = [];      // ids مستنية تتبعت
+let TO_DEL_RUNNING = false; // فيه طلب حذف شغال دلوقتي
 async function toWfItemsDelete_(ids){
   ids = Array.from(new Set((ids || []).map(String).filter(Boolean)));
   if (!ids.length) return;
@@ -11867,26 +11875,54 @@ async function toWfItemsDelete_(ids){
     .concat(Object.values(TO_STATE.weekCache), Object.values(TO_STATE.dailyCache)));
   ids.forEach(id => TO_WEEK_SEL.delete(id));
   toWfRenderLocal_(); // اختفوا من الشاشة فورًا
-  try {
-    const res = await apiPost('deleteWorkflowEntries', { ids });
-    // سطور الساعات اللي اتشالت معاهم — نشيلها من الكاش المحلي كمان (السهرات + "متسجل قبل كده" في فورم تسجيل شغل)
-    const hSet = new Set(((res && res.hoursDeletedIds) || []).map(String));
-    if (hSet.size) {
-      toWfStripById_(hSet, [TO_STATE.weekHoursEntries, TO_STATE.wwHoursEntries]
-        .concat(Object.values(TO_STATE.weekHoursCache), Object.values(TO_STATE.hoursDailyCache)));
-    }
-    TO_ROSTER.loadedDate = null;
-    toWfRenderLocal_();
-    toRenderStatStrip();
-    const done = (res && res.deleted) || 0;
-    showToast('🗑️ اتحذف ' + (done === 1 ? 'البند' : done + ' بند') + (hSet.size ? ' واتشالت تكلفة ' + hSet.size + ' من المشاريع' : ''));
-    if (TO_STATE.activeTab !== 'week' && TO_DAILY_VIEW === 'roster') await toRenderRosterView();
-  } catch(err){
-    showToast('الحذف فشل: ' + (err.message || err), 'error');
-    TO_STATE.weekCache = {}; TO_STATE.weekHoursCache = {}; TO_STATE.dailyCache = {}; TO_STATE.hoursDailyCache = {};
-    await toWfRefreshCurrentView_(); // نرجّع البيانات الحقيقية من السيرفر
-  }
+  toRenderStatStrip();
+  ids.forEach(id => { if (TO_DEL_QUEUE.indexOf(id) === -1) TO_DEL_QUEUE.push(id); });
+  toWfDeleteWorker_(); // من غير await — الشغل في الخلفية
 }
+async function toWfDeleteWorker_(){
+  if (TO_DEL_RUNNING) return; // الطلب الشغال لما يخلص هياخد اللي في الطابور
+  TO_DEL_RUNNING = true;
+  let done = 0, costRemoved = 0, failed = null;
+  try {
+    while (TO_DEL_QUEUE.length) {
+      const batch = TO_DEL_QUEUE.splice(0, TO_DEL_QUEUE.length);
+      let res = null, lastErr = null;
+      for (let attempt = 0; attempt < 5 && !res; attempt++) {
+        try { res = await apiPost('deleteWorkflowEntries', { ids: batch }); }
+        catch (err) {
+          lastErr = err;
+          // السيرفر مشغول بعملية حفظ تانية — نستنى شوية ونجرب تاني لوحدنا. أي خطأ تاني = فشل حقيقي.
+          if (!/عملية تانية شغالة/.test(String(err && err.message || err))) break;
+          await new Promise(r => setTimeout(r, 2000));
+        }
+      }
+      if (!res) { failed = lastErr; break; }
+      done += res.deleted || 0;
+      // سطور الساعات اللي اتشالت معاهم — نشيلها من الكاش المحلي كمان (السهرات + "متسجل قبل كده" في فورم تسجيل شغل)
+      const hSet = new Set((res.hoursDeletedIds || []).map(String));
+      costRemoved += hSet.size;
+      if (hSet.size) {
+        const hadEvening = [TO_STATE.weekHoursEntries, TO_STATE.wwHoursEntries].some(arr => (arr || []).some(h => hSet.has(String(h.id)) && Number(h.eveningHours) > 0));
+        toWfStripById_(hSet, [TO_STATE.weekHoursEntries, TO_STATE.wwHoursEntries]
+          .concat(Object.values(TO_STATE.weekHoursCache), Object.values(TO_STATE.hoursDailyCache)));
+        if (hadEvening) toWfRenderLocal_(); // الشاشة بتترسم تاني بس لو فيه سهرة ظاهرة اتشالت — وإلا مفيش داعي نقاطع المستخدم
+      }
+      TO_ROSTER.loadedDate = null;
+    }
+  } finally { TO_DEL_RUNNING = false; }
+  if (failed) {
+    TO_DEL_QUEUE = [];
+    showToast('الحذف فشل: ' + (failed.message || failed) + ' — البيانات هتتحدّث من السيرفر', 'error');
+    TO_STATE.weekCache = {}; TO_STATE.weekHoursCache = {}; TO_STATE.dailyCache = {}; TO_STATE.hoursDailyCache = {};
+    try { await toWfRefreshCurrentView_(); } catch (e) {} // نرجّع البيانات الحقيقية من السيرفر
+    return;
+  }
+  if (done) showToast('🗑️ اتحذف ' + (done === 1 ? 'البند' : done + ' بند') + (costRemoved ? ' واتشالت تكلفة ' + costRemoved + ' من المشاريع' : ''));
+  if (TO_STATE.activeTab !== 'week' && TO_DAILY_VIEW === 'roster') { try { await toRenderRosterView(); } catch (e) {} }
+  if (TO_DEL_QUEUE.length) toWfDeleteWorker_(); // اتضاف حاجة في اللحظة الأخيرة
+}
+// لو المستخدم قفل/حدّث الصفحة وفيه حذف لسه مبعتش للسيرفر — ننبهه بدل ما يضيع
+window.addEventListener('beforeunload', e => { if (TO_DEL_QUEUE.length) { e.preventDefault(); e.returnValue = ''; } });
 function toWeekSelToggle_(id, checked){
   if (checked) TO_WEEK_SEL.add(String(id)); else TO_WEEK_SEL.delete(String(id));
   toWeekSelUpdateBar_();
