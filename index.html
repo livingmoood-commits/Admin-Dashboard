@@ -13365,6 +13365,7 @@ async function toRenderWeeklyReportModal_(){
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
       <label style="font-size:12.5px;font-weight:700;color:var(--muted);">أو اختار أي يوم جوه الأسبوع اللي عايزه:</label>
       <input type="date" class="d-input" id="wrpDatePick" style="width:170px;" value="${from}">
+      <button type="button" class="btn btn-primary btn-sm" style="margin-inline-start:auto;" onclick="toWeeklyReportPdf_()">📄 PDF</button>
     </div>
     <div id="to-week-report-box"><div class="loading-row">جاري التحميل...</div></div>
   `);
@@ -13382,6 +13383,32 @@ async function toRenderWeeklyReportModal_(){
 // ⚠️ تعديل 2026-10-08 ("عاوز التقرير ده يطلع في نفس هيئة الجدول"): التقرير بقى جدول أيام × صنايعية
 // زي تاب "اسبوعي" بالظبط (نفس الألوان والتوسيط والإجازة والسهرة والجمعة اللي بتختفي لو فاضية) —
 // للعرض بس (من غير تحديد/حذف)، وعنوان البند (المطلوب) بيظهر تحت اسم المشروع.
+let TO_WEEK_REPORT_LAST = null;
+// ⚠️ إضافة 2026-10-08: PDF للتقرير الأسبوعي — نفس الجدول بالظبط (A4 بالعرض)، بيفتح نافذة الطباعة ← "Save as PDF"
+function toWeeklyReportPdf_(){
+  const r = TO_WEEK_REPORT_LAST;
+  if (!r || !document.getElementById('to-week-report-box') || !document.querySelector('#to-week-report-box table')) { showToast('مفيش جدول يتطبع — استنى التحميل أو اختار أسبوع فيه شغل', 'error'); return; }
+  const body = `
+    <h2 class="sec">${qEsc(r.title.replace('تقرير اسبوعي — ', ''))}</h2>
+    <table class="wkp">
+      <thead><tr><th style="width:120px;">الصنيعي</th>${r.days.map(d => `<th><div>${TO_DAY_NAMES[d.i]}</div><div class="dd">${toFmtDayDate(d.dt)}</div></th>`).join('')}</tr></thead>
+      <tbody>${r.crafts.map(c => `<tr><td class="emp">${qEsc(c.name)}</td>${r.days.map(d => `<td>${r.cellHtml(c.name, d.iso)}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>`;
+  const css = `
+    @page{size:A4 landscape;margin:10mm;}
+    table.wkp{table-layout:fixed;border:1.5px solid #b8a888;}
+    table.wkp thead tr{background:#1E1A15;color:#f0e6d8;}
+    table.wkp th{text-align:center;padding:6px 3px;font-size:11px;border:1px solid #b8a888;}
+    table.wkp th .dd{font-size:9.5px;color:#B8975A;font-weight:400;}
+    table.wkp td{border:1px solid #b8a888;padding:4px;text-align:center;vertical-align:middle;}
+    table.wkp td.emp{background:#f6f1e8;font-weight:800;font-size:11px;}
+    table.wkp tr{page-break-inside:avoid;}
+    .to-cell-chip{display:block;font-size:10px;font-weight:700;padding:3px 4px;border-radius:5px;margin:2px 0;background:#eee6d6;color:#1E1A15;text-align:center;}
+    .to-cell-chip.status-done{background:#dcece1;color:#2C5F3A;} .to-cell-chip.status-blocked{background:#fbe2e2;color:#b23b3b;}
+    .to-cell-chip.to-cell-absence{background:#fbe2e2;color:#b23b3b;border:1px solid #b23b3b;}
+    .to-cell-empty{color:#cbbfae;}`;
+  _openPrintDoc(buildGenericPrintShell_(r.title, body).replace('</style>', css + '</style>'));
+}
 async function toLoadWeeklyReportBox_(from, to){
   const box = document.getElementById('to-week-report-box'); if (!box) return;
   try {
@@ -13400,8 +13427,10 @@ async function toLoadWeeklyReportBox_(from, to){
     const isos = dates.map(d => toISO(d));
     const render = () => {
       if (!box.isConnected) return;
-      const crafts = toCraftsmenFor_(isos, render, entries.map(e => e.craftsman).concat(hours.filter(h => Number(h.eveningHours) > 0 || Number(h.hours) > 0).map(h => h.employee)));
-      const monthly = new Set(crafts.filter(c => c.paymentType === 'شهري').map(c => c.name));
+      const allCrafts = toCraftsmenFor_(isos, render, entries.map(e => e.craftsman).concat(hours.filter(h => Number(h.eveningHours) > 0 || Number(h.hours) > 0).map(h => h.employee)));
+      const monthly = new Set(allCrafts.filter(c => c.paymentType === 'شهري').map(c => c.name));
+      // الشهريين اللي مالهمش أي تسجيل في الأسبوع ده مبيظهروش في التقرير (ولا في الـ PDF)
+      const crafts = allCrafts.filter(c => !monthly.has(c.name) || entries.some(e => e.craftsman === c.name) || hours.some(h => h.employee === c.name));
       const todayIso = todayStr();
       const hasAny = iso => entries.some(e => e.date === iso) || hours.some(h => h.date === iso);
       const days = dates.map((dt, i) => ({ dt, i, iso: toISO(dt) })).filter(d => d.dt.getDay() !== 5 || hasAny(d.iso));
@@ -13424,6 +13453,7 @@ async function toLoadWeeklyReportBox_(from, to){
           + (regH > 9 ? `<span class="to-cell-chip" style="background:#fdeaea;color:var(--red);">⚠️ ${fmt(regH)} ساعة</span>` : '')
           + (hasEve ? `<span class="to-cell-chip" style="background:rgba(212,175,55,.18);color:#8a6d1f;">🌙 سهرة</span>` : '');
       };
+      TO_WEEK_REPORT_LAST = { title: 'تقرير اسبوعي — أسبوع ' + toFmtDayDate(dates[0]) + ' — ' + toFmtDayDate(dates[6]), days, crafts, cellHtml, todayIso };
       box.innerHTML = `
         <div class="to-grid-wrap">
           <table class="to-weekgrid">
