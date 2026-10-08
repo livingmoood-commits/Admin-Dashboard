@@ -12803,6 +12803,9 @@ function toRenderWeekGrid(dates, from, to) {
   TO_STATE.weekCraftsmenNames = weekCraftsmen.map(c => c.name);
   TO_STATE.weekMonthlyNames = new Set(weekCraftsmen.filter(c => c.paymentType === 'شهري').map(c => c.name)); // الشهريين مبيظهرلهمش "إجازة"
   const weekCraftsmenNote = toCraftsmenNoteFor_(weekIsos);
+  // ⚠️ إضافة 2026-10-08: عمود الجمعة بيختفي لو مفيش ولا موظف ليه أي تسجيل فيها (شغل أو سهرة)
+  const _hasAny = iso => TO_STATE.weekEntries.some(e => e.date === iso) || TO_STATE.weekHoursEntries.some(h => h.date === iso);
+  const shownDays = dates.map((dt, i) => ({ dt, i })).filter(d => d.dt.getDay() !== 5 || _hasAny(toISO(d.dt)));
   box.innerHTML = `
     <div class="panel">
       ${weekCraftsmenNote ? `<div style="font-size:11.5px;color:var(--red);margin-bottom:8px;">⚠️ ${qEsc(weekCraftsmenNote)}</div>` : ''}
@@ -12818,13 +12821,13 @@ function toRenderWeekGrid(dates, from, to) {
         <table class="to-weekgrid">
           <thead><tr>
             <th style="min-width:120px;">الصنيعي</th>
-            ${dates.map((dt,i) => `<th class="${toISO(dt)===todayIso?'today':''}" data-date="${toISO(dt)}" style="cursor:pointer;" title="حدد كل الصنايعية في اليوم ده"><div class="dname">${TO_DAY_NAMES[i]}</div><div class="ddate">${toFmtDayDate(dt)}</div></th>`).join('')}
+            ${shownDays.map(({ dt, i }) => `<th class="${toISO(dt)===todayIso?'today':''}" data-date="${toISO(dt)}" style="cursor:pointer;" title="حدد كل الصنايعية في اليوم ده"><div class="dname">${TO_DAY_NAMES[i]}</div><div class="ddate">${toFmtDayDate(dt)}</div></th>`).join('')}
           </tr></thead>
           <tbody>
             ${TO_STATE.weekCraftsmenNames.map(emp => `
               <tr>
                 <td class="to-emp-col" data-emp="${qEsc(emp)}" style="cursor:pointer;" title="حدد كل أيام ${qEsc(emp)}">${qEsc(emp)}</td>
-                ${dates.map(dt => {
+                ${shownDays.map(({ dt }) => {
                   const iso = toISO(dt);
                   const allCellItems = TO_STATE.weekEntries.filter(e => e.craftsman === emp && e.date === iso);
                   const items = allCellItems.filter(it => !toIsEveningWf_(it)); // السهرة ليها تشيب 🌙 واحد — متتعرضش كمان كأنها مشروع عادي
@@ -12861,7 +12864,7 @@ function toRenderWeekGrid(dates, from, to) {
     td.addEventListener('click', () => toWeekToggleCells_([{ emp: td.dataset.emp, date: td.dataset.date }]));
   });
   // اسم الصنيعي = كل أيامه في الأسبوع، عنوان اليوم = كل الصنايعية في اليوم ده
-  const _wkIsos = dates.map(dt => toISO(dt));
+  const _wkIsos = shownDays.map(d => toISO(d.dt));
   document.querySelectorAll('td.to-emp-col[data-emp]').forEach(td => {
     td.addEventListener('click', () => toWeekToggleCells_(_wkIsos.map(iso => ({ emp: td.dataset.emp, date: iso }))));
   });
