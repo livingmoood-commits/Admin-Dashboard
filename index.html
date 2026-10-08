@@ -11808,6 +11808,43 @@ function toSplitDayItems_(items, hoursEvenings){
   });
   return { normal, eve, extraEvenings: (hoursEvenings || []).filter(h => !used.has(h)) };
 }
+// ⚠️ إضافة 2026-10-08 ("مفيش حاجه متسجلة ده ايه؟"): سطور ساعات عادية في "ساعات_وسهرات" مالهاش بند
+// مقابل في "سجل الشغل" (اتحذف البند بإيد من الشيت، أو حذف قديم قبل ما الحذف يشيل الساعات، أو حفظ
+// اتقطع في النص). كانت مش بتظهر في الجدول بس بتتحسب في الـ9 ساعات وتكلفتها على المشروع —
+// دلوقتي بتظهر ⚠️ وتقدر تحذفها (الحذف بيشيل تكلفتها من المشروع كمان).
+function toOrphanHours_(wfItems, hoursRows){
+  const trim = v => String(v || '').trim();
+  const left = (hoursRows || []).filter(h => Number(h.hours) > 0);
+  const normal = (wfItems || []).filter(it => !toIsEveningWf_(it) && !toIsAbsenceNote_(it));
+  // الأول المطابقة الكاملة (مشروع + ساعات)، بعدين بالمشروع بس
+  [it => h => trim(h.project) === trim(it.project) && Number(h.hours) === Number(it.hours),
+   it => h => trim(h.project) === trim(it.project)].forEach(mk => {
+    for (let i = normal.length - 1; i >= 0; i--) {
+      const k = left.findIndex(mk(normal[i]));
+      if (k !== -1) { left.splice(k, 1); normal.splice(i, 1); }
+    }
+  });
+  return left;
+}
+function toOrphanHoursHTML_(h){
+  return `
+    <div class="to-wf-item" style="background:#fdeaea;border:1px dashed var(--red);border-radius:8px;padding:9px 8px;margin-bottom:6px;">
+      <div class="to-wf-item-head" style="display:flex;align-items:flex-start;gap:8px;">
+        <input type="checkbox" class="to-wk-sel" value="h:${qEsc(String(h.id))}" style="width:18px;height:18px;margin-top:3px;cursor:pointer;" ${TO_WEEK_SEL.has('h:' + String(h.id)) ? 'checked' : ''} onchange="toWeekSelToggle_(this.value,this.checked)">
+        <div style="flex:1;min-width:0;">
+          <div class="wf-item-row">
+            <span style="font-weight:700;color:var(--red);">⚠️ ساعات من غير بند — ${fmt(Number(h.hours) || 0)} ساعة</span>
+            ${h.project ? `<span><b>المشروع:</b> ${qEsc(h.project)}</span>` : ''}
+          </div>
+          <div style="font-size:11.5px;color:var(--muted);margin-top:3px;">متسجلة في شيت الساعات${Number(h.cost) > 0 ? ' وتكلفتها ' + fmt(h.cost) + ' ج على المشروع' : ''} — بس مالهاش بند في سجل الشغل (غالبًا البند اتمسح لوحده). لو مش مظبوطة احذفها.</div>
+          ${h.notes ? `<div style="font-size:12px;color:var(--muted);margin-top:3px;">&#128221; ${qEsc(h.notes)}</div>` : ''}
+        </div>
+        <div class="to-status-row" style="margin-top:0;">
+          <button type="button" class="mat-icon-btn" title="حذف الساعات دي (وتكلفتها من المشروع)" onclick="toWfItemsDelete_(['h:${qEscJs(String(h.id))}'])">🗑️</button>
+        </div>
+      </div>
+    </div>`;
+}
 function toEveningWfHTML_(x, withSelect){
   const it = x.it, amt = x.h ? Number(x.h.eveningAmount) || 0 : 0;
   const notes = String(it.notes || '').replace(/^\s*سهرة\s*(—\s*)?/, '').trim();
@@ -12086,6 +12123,20 @@ async function toWfItemsDelete_(ids){
   // "h:<id>" = سطر سهرة من "ساعات_وسهرات" (مالوش بند في سجل الشغل) — الباقي ids بنود سجل الشغل
   const idSet = new Set(ids.filter(x => x.indexOf('h:') !== 0));
   const hIdSet = new Set(ids.filter(x => x.indexOf('h:') === 0).map(x => x.slice(2)));
+  // سطر الساعات المقابل لكل بند شغل بيتحذف بيختفي محليًا كمان (السيرفر بيحذفه معاه) — عشان ميبانش لحظة كأنه "ساعات من غير بند"
+  const _trim = v => String(v || '').trim();
+  const _allH = [];
+  [TO_STATE.weekHoursEntries, TO_STATE.wwHoursEntries].concat(Object.values(TO_STATE.weekHoursCache), Object.values(TO_STATE.hoursDailyCache))
+    .forEach(arr => (arr || []).forEach(h => { if (h && _allH.indexOf(h) === -1) _allH.push(h); }));
+  const _wfSeen = new Set();
+  [TO_STATE.weekEntries, TO_STATE.wwEntries, TO_STATE.todayEntries].concat(Object.values(TO_STATE.weekCache), Object.values(TO_STATE.dailyCache))
+    .forEach(arr => (arr || []).forEach(it => {
+      if (!it || !idSet.has(String(it.id)) || _wfSeen.has(String(it.id))) return;
+      _wfSeen.add(String(it.id));
+      if (!(Number(it.hours) > 0)) return;
+      const h = _allH.find(x => !hIdSet.has(String(x.id)) && _trim(x.employee) === _trim(it.craftsman) && x.date === it.date && _trim(x.project) === _trim(it.project) && Number(x.hours) === Number(it.hours));
+      if (h) hIdSet.add(String(h.id));
+    }));
   toWfStripById_(idSet, [TO_STATE.weekEntries, TO_STATE.wwEntries, TO_STATE.todayEntries]
     .concat(Object.values(TO_STATE.weekCache), Object.values(TO_STATE.dailyCache)));
   if (hIdSet.size) toWfStripById_(hIdSet, [TO_STATE.weekHoursEntries, TO_STATE.wwHoursEntries]
@@ -12120,7 +12171,7 @@ async function toWfDeleteWorker_(){
       const hSet = new Set((res.hoursDeletedIds || []).map(String));
       costRemoved += hSet.size;
       if (hSet.size) {
-        const hadEvening = [TO_STATE.weekHoursEntries, TO_STATE.wwHoursEntries].some(arr => (arr || []).some(h => hSet.has(String(h.id)) && Number(h.eveningHours) > 0));
+        const hadEvening = [TO_STATE.weekHoursEntries, TO_STATE.wwHoursEntries].some(arr => (arr || []).some(h => hSet.has(String(h.id)) && (Number(h.eveningHours) > 0 || Number(h.hours) > 0)));
         toWfStripById_(hSet, [TO_STATE.weekHoursEntries, TO_STATE.wwHoursEntries]
           .concat(Object.values(TO_STATE.weekHoursCache), Object.values(TO_STATE.hoursDailyCache)));
         if (hadEvening) toWfRenderLocal_(); // الشاشة بتترسم تاني بس لو فيه سهرة ظاهرة اتشالت — وإلا مفيش داعي نقاطع المستخدم
@@ -12480,7 +12531,10 @@ function toQfAddTemp_(){
   const err = t => { msg.className = 'msg err'; msg.textContent = t; };
   if (!name) return err('اكتب اسم الموظف');
   if (!(daily > 0)) return err('اكتب اليومية');
-  if ((TO_QF._chipList || []).some(c => c.name === name) || TO_STATE.craftsmen.some(c => c.name === name)) return err('"' + name + '" موجود في المرتبات بالفعل — اختاره من الأسامي فوق');
+  // ⚠️ إصلاح 2026-10-07: الفحص كان بيبص كمان على مرتبات الشهر الحالي، فموظف موجود دلوقتي بس مش في مرتبات
+  // الشهر المعروض (زي تسجيل أيام قديمة قبل ما يتعيّن) كان بيترفض ويتقال "اختاره من فوق" وهو مش ظاهر فوق أصلاً.
+  // دلوقتي الفحص على الأسامي الظاهرة فوق بس (مرتبات شهر الأسبوع المعروض).
+  if ((TO_QF._chipList || TO_STATE.craftsmen).some(c => c.name === name)) return err('"' + name + '" موجود في الأسامي فوق — اختاره من هناك');
   if (TO_QF_TEMPS[name]) return err('"' + name + '" متضاف بالفعل');
   TO_QF_TEMPS[name] = { dailyRate: daily, eveningRate: eve };
   TO_QF.emps.push(name); TO_QF.perEmp[name] = { dates: [], rows: {}, lastIso: null };
@@ -12740,7 +12794,7 @@ function toRenderWeekGrid(dates, from, to) {
   // أسامي الصنايعية = مرتبات شهر/شهرين الأسبوع المعروض + أي حد ليه تسجيل فعلي في الأسبوع
   const weekIsos = dates.map(dt => toISO(dt));
   const weekCraftsmen = toCraftsmenFor_(weekIsos, () => { if (TO_STATE.activeTab === 'week' && document.getElementById('toPrevWeek')) toRenderWeekLocal(); },
-    TO_STATE.weekEntries.map(e => e.craftsman).concat(TO_STATE.weekHoursEntries.filter(h => Number(h.eveningHours) > 0).map(h => h.employee)));
+    TO_STATE.weekEntries.map(e => e.craftsman).concat(TO_STATE.weekHoursEntries.filter(h => Number(h.eveningHours) > 0 || Number(h.hours) > 0).map(h => h.employee)));
   TO_STATE.weekCraftsmenNames = weekCraftsmen.map(c => c.name);
   const weekCraftsmenNote = toCraftsmenNoteFor_(weekIsos);
   box.innerHTML = `
@@ -12773,7 +12827,9 @@ function toRenderWeekGrid(dates, from, to) {
                   // ⚠️ إضافة: 🌙 لو فيه سهرة متسجلة لنفس الصنيعي واليوم ده (بغض النظر عن
                   // مشروعها) — تشيب منفصل يبان جنب شيبات المشاريع العادية جوه نفس الخلية
                   const hasEvening = allCellItems.length !== items.length || TO_STATE.weekHoursEntries.some(h => h.employee === emp && h.date === iso && Number(h.eveningHours) > 0);
-                  const inner = (items.length ? items.map(it => `<span class="to-cell-chip ${toIsAbsenceNote_(it)?'to-cell-absence':'status-'+(it.status||'working')}">${chipIcon(it)} ${qEsc(it.project)}</span>`).join('') : (hasEvening ? '' : `<span class="to-cell-empty">—</span>`))
+                  const orphans = toOrphanHours_(allCellItems, TO_STATE.weekHoursEntries.filter(h => h.employee === emp && h.date === iso));
+                  const inner = (items.length ? items.map(it => `<span class="to-cell-chip ${toIsAbsenceNote_(it)?'to-cell-absence':'status-'+(it.status||'working')}">${chipIcon(it)} ${qEsc(it.project)}</span>`).join('') : ((hasEvening || orphans.length) ? '' : `<span class="to-cell-empty">—</span>`))
+                    + orphans.map(h => `<span class="to-cell-chip" style="background:#fdeaea;color:var(--red);font-weight:700;border:1px dashed var(--red);" title="ساعات متسجلة من غير بند في سجل الشغل">⚠️ ${fmt(Number(h.hours) || 0)}س ${qEsc(h.project || '')}</span>`).join('')
                     + (hasEvening ? `<span class="to-cell-chip" style="background:rgba(212,175,55,.18);color:#8a6d1f;font-weight:700;">🌙 سهرة</span>` : '');
                   return `<td class="to-day-cell ${isSel?'selected':''}" data-emp="${qEsc(emp)}" data-date="${iso}">${inner}</td>`;
                 }).join('')}
@@ -12870,11 +12926,13 @@ function toRenderWeekDetail() {
     // بنود الشغل العادية + سهرات سجل الشغل (كارت 🌙 واحد لكل سهرة) + سهرات مالهاش سطر في سجل الشغل
     const split = toSplitDayItems_(TO_STATE.weekEntries.filter(e => e.craftsman === c.emp && e.date === c.date),
       TO_STATE.weekHoursEntries.filter(h => h.employee === c.emp && h.date === c.date && Number(h.eveningHours) > 0));
-    return { c, i, items: split.normal, eveWf: split.eve, evenings: split.extraEvenings };
+    const orphans = toOrphanHours_(TO_STATE.weekEntries.filter(e => e.craftsman === c.emp && e.date === c.date),
+      TO_STATE.weekHoursEntries.filter(h => h.employee === c.emp && h.date === c.date));
+    return { c, i, items: split.normal, eveWf: split.eve, evenings: split.extraEvenings, orphans };
   });
-  const totalItems = groups.reduce((s, g) => s + g.items.length + g.eveWf.length + g.evenings.length, 0);
-  const emptyCount = groups.filter(g => !g.items.length && !g.eveWf.length && !g.evenings.length).length;
-  const shown = groups.filter(g => g.items.length || g.eveWf.length || g.evenings.length);
+  const totalItems = groups.reduce((s, g) => s + g.items.length + g.eveWf.length + g.evenings.length + g.orphans.length, 0);
+  const emptyCount = groups.filter(g => !g.items.length && !g.eveWf.length && !g.evenings.length && !g.orphans.length).length;
+  const shown = groups.filter(g => g.items.length || g.eveWf.length || g.evenings.length || g.orphans.length);
   const single = cells.length === 1;
   window._toWeekShownCells = cells; // لزرار ✕ بتاع كل خلية
   box.innerHTML = `
@@ -12896,6 +12954,7 @@ function toRenderWeekDetail() {
       ${g.items.map(toWeekTicketHtml_).join('')}
       ${g.eveWf.map(x => toEveningWfHTML_(x, true)).join('')}
       ${g.evenings.map(ev => toEveningItemHTML_(ev, true)).join('')}
+      ${g.orphans.map(toOrphanHoursHTML_).join('')}
     `).join('')}
     ${!shown.length ? `<div class="empty">${single ? 'مفيش تسجيل ليه في اليوم ده' : 'مفيش تسجيل في الخلايا المحددة'}</div>` : (emptyCount ? `<div style="font-size:11.5px;color:var(--muted);margin-top:8px;">${emptyCount} خلية محددة مفيهاش تسجيل</div>` : '')}
   `;
