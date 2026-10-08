@@ -300,11 +300,11 @@
   .to-blocked-note input{ border-color:#f0c9c9; }
 
   .to-cell-chip{ display:block; font-size:11px; font-weight:700; padding:4px 6px; border-radius:6px; margin-bottom:3px;
-    background:#eee6d6; color:var(--dark); line-height:1.35; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    background:#eee6d6; color:var(--dark); line-height:1.35; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:center; }
   .to-cell-chip.status-done{ background:#dcece1; color:var(--green); }
   .to-cell-chip.status-blocked{ background:#fbe2e2; color:var(--red); }
   .to-cell-chip.to-cell-absence{ background:#fbe2e2; color:var(--red); border:1px solid var(--red); }
-  .to-cell-empty{ display:block; text-align:center; color:#cbbfae; font-size:14px; padding-top:4px; }
+  .to-cell-empty{ display:block; text-align:center; color:#cbbfae; font-size:14px; }
 
   .to-week-toolbar{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
   .to-week-nav{ display:flex; align-items:center; gap:8px; }
@@ -321,9 +321,9 @@
   table.to-weekgrid thead th .ddate{ font-size:10.5px; color:var(--gold); margin-top:2px; }
   table.to-weekgrid thead th.today{ background:var(--gold); color:var(--dark); }
   table.to-weekgrid thead th.today .ddate{ color:var(--dark2); }
-  td.to-emp-col{ background:var(--cream); padding:11px 10px; font-weight:800; font-size:12.5px; white-space:nowrap;
+  td.to-emp-col{ background:var(--cream); padding:11px 10px; font-weight:800; font-size:12.5px; white-space:nowrap; text-align:center; vertical-align:middle;
     position:sticky; right:0; z-index:1; border-inline-end:2px solid var(--border); }
-  td.to-day-cell{ vertical-align:top; min-width:110px; padding:5px; cursor:pointer; transition:.12s; }
+  td.to-day-cell{ vertical-align:middle; text-align:center; min-width:110px; padding:5px; cursor:pointer; transition:.12s; }
   td.to-day-cell:hover{ background:#fdf6e8; }
   td.to-day-cell.selected{ background:#fbeecb; outline:2px solid var(--gold); outline-offset:-2px; }
 
@@ -12801,6 +12801,7 @@ function toRenderWeekGrid(dates, from, to) {
   const weekCraftsmen = toCraftsmenFor_(weekIsos, () => { if (TO_STATE.activeTab === 'week' && document.getElementById('toPrevWeek')) toRenderWeekLocal(); },
     TO_STATE.weekEntries.map(e => e.craftsman).concat(TO_STATE.weekHoursEntries.filter(h => Number(h.eveningHours) > 0 || Number(h.hours) > 0).map(h => h.employee)));
   TO_STATE.weekCraftsmenNames = weekCraftsmen.map(c => c.name);
+  TO_STATE.weekMonthlyNames = new Set(weekCraftsmen.filter(c => c.paymentType === 'شهري').map(c => c.name)); // الشهريين مبيظهرلهمش "إجازة"
   const weekCraftsmenNote = toCraftsmenNoteFor_(weekIsos);
   box.innerHTML = `
     <div class="panel">
@@ -12833,7 +12834,10 @@ function toRenderWeekGrid(dates, from, to) {
                   // مشروعها) — تشيب منفصل يبان جنب شيبات المشاريع العادية جوه نفس الخلية
                   const hasEvening = allCellItems.length !== items.length || TO_STATE.weekHoursEntries.some(h => h.employee === emp && h.date === iso && Number(h.eveningHours) > 0);
                   const orphans = toOrphanHours_(allCellItems, TO_STATE.weekHoursEntries.filter(h => h.employee === emp && h.date === iso));
-                  const inner = (items.length ? items.map(it => `<span class="to-cell-chip ${toIsAbsenceNote_(it)?'to-cell-absence':'status-'+(it.status||'working')}">${chipIcon(it)} ${qEsc(it.project)}</span>`).join('') : ((hasEvening || orphans.length) ? '' : `<span class="to-cell-empty">—</span>`))
+                  // ⚠️ إضافة 2026-10-08: يوم فات (أو النهارده) ومفيش فيه شغل عادي على مشروع = "إجازة" (عرض بس — مفيش أي كتابة في الشيتات)
+                  const isOff = !items.length && !orphans.length && iso <= todayIso && !TO_STATE.weekMonthlyNames.has(emp);
+                  const inner = (items.length ? items.map(it => `<span class="to-cell-chip ${toIsAbsenceNote_(it)?'to-cell-absence':'status-'+(it.status||'working')}">${chipIcon(it)} ${qEsc(it.project)}</span>`).join('')
+                      : (isOff ? `<span class="to-cell-chip to-cell-absence">&#128683; إجازة</span>` : ((hasEvening || orphans.length) ? '' : `<span class="to-cell-empty">—</span>`)))
                     + orphans.map(h => `<span class="to-cell-chip status-working">&#128205; ${qEsc(h.project || '')}</span>`).join('')
                     + (toDayRegularHours_(emp, iso) > 9 ? `<span class="to-cell-chip" style="background:#fdeaea;color:var(--red);font-weight:700;" title="متسجل أكتر من 9 ساعات شغل في اليوم ده — احذف المكرر">⚠️ ${fmt(toDayRegularHours_(emp, iso))} ساعة</span>` : '')
                     + (hasEvening ? `<span class="to-cell-chip" style="background:rgba(212,175,55,.18);color:#8a6d1f;font-weight:700;">🌙 سهرة</span>` : '');
@@ -12963,7 +12967,7 @@ function toRenderWeekDetail() {
       ${g.evenings.map(ev => toEveningItemHTML_(ev, true)).join('')}
       ${g.orphans.map(toOrphanHoursHTML_).join('')}
     `).join('')}
-    ${!shown.length ? `<div class="empty">${single ? 'مفيش تسجيل ليه في اليوم ده' : 'مفيش تسجيل في الخلايا المحددة'}</div>` : (emptyCount ? `<div style="font-size:11.5px;color:var(--muted);margin-top:8px;">${emptyCount} خلية محددة مفيهاش تسجيل</div>` : '')}
+    ${!shown.length ? `<div class="empty">${single ? (cells[0].date <= todayStr() && !(TO_STATE.weekMonthlyNames && TO_STATE.weekMonthlyNames.has(cells[0].emp)) ? '🚫 إجازة — مفيش شغل متسجل له في اليوم ده' : 'مفيش تسجيل ليه في اليوم ده') : 'مفيش تسجيل في الخلايا المحددة'}</div>` : (emptyCount ? `<div style="font-size:11.5px;color:var(--muted);margin-top:8px;">${emptyCount} خلية محددة مفيهاش تسجيل</div>` : '')}
   `;
   toWeekSelUpdateBar_();
   const closeBtn = document.getElementById('toDpClose');
