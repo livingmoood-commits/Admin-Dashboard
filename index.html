@@ -321,9 +321,9 @@
   table.to-weekgrid thead th .ddate{ font-size:10.5px; color:var(--gold); margin-top:2px; }
   table.to-weekgrid thead th.today{ background:var(--gold); color:var(--dark); }
   table.to-weekgrid thead th.today .ddate{ color:var(--dark2); }
-  td.to-emp-col{ background:var(--cream); padding:11px 10px; font-weight:800; font-size:12.5px; white-space:nowrap; text-align:center; vertical-align:middle;
+  table.to-weekgrid td.to-emp-col{ background:var(--cream); padding:11px 10px; font-weight:800; font-size:12.5px; white-space:nowrap; text-align:center; vertical-align:middle;
     position:sticky; right:0; z-index:1; border-inline-end:2px solid var(--border); }
-  td.to-day-cell{ vertical-align:middle; text-align:center; min-width:110px; padding:5px; cursor:pointer; transition:.12s; }
+  table.to-weekgrid td.to-day-cell{ vertical-align:middle; text-align:center; min-width:110px; padding:5px; cursor:pointer; transition:.12s; }
   td.to-day-cell:hover{ background:#fdf6e8; }
   td.to-day-cell.selected{ background:#fbeecb; outline:2px solid var(--gold); outline-offset:-2px; }
 
@@ -1044,6 +1044,7 @@
   #cardDetailModal{ display:none; position:fixed; inset:0; background:rgba(30,26,21,.65); z-index:970; justify-content:center; align-items:flex-start; overflow-y:auto; padding:40px 16px; }
   #cardDetailModal.open{ display:flex; }
   .cd-card{ background:#fff; border-radius:14px; padding:24px 22px; width:min(560px,94vw); box-shadow:0 20px 60px rgba(30,26,21,.3); animation:modalPop .35s var(--bounce); }
+  .cd-card.cd-wide{ width:min(1150px,96vw); } /* تقرير اسبوعي (جدول) */
   .cd-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
   .cd-head h3{ font-size:17px; }
   .cd-close{ all:unset; cursor:pointer; font-size:20px; color:var(--muted); padding:2px 8px; border-radius:8px; }
@@ -2950,6 +2951,7 @@ function openPaymentPreviewModal(c){
 
 /* ================= Card detail modal (drill-down) ================= */
 function openCardModal(html){
+  document.getElementById('cardDetailBody').classList.remove('cd-wide');
   document.getElementById('cardDetailBody').innerHTML = html;
   document.getElementById('cardDetailModal').classList.add('open');
 }
@@ -13366,6 +13368,7 @@ async function toRenderWeeklyReportModal_(){
     </div>
     <div id="to-week-report-box"><div class="loading-row">جاري التحميل...</div></div>
   `);
+  document.getElementById('cardDetailBody').classList.add('cd-wide');
   document.getElementById('wrpPrevWeek').addEventListener('click', () => { TO_REPORT_WEEK_ANCHOR.setDate(TO_REPORT_WEEK_ANCHOR.getDate()-7); toRenderWeeklyReportModal_(); });
   document.getElementById('wrpNextWeek').addEventListener('click', () => { TO_REPORT_WEEK_ANCHOR.setDate(TO_REPORT_WEEK_ANCHOR.getDate()+7); toRenderWeeklyReportModal_(); });
   document.getElementById('wrpThisWeek').addEventListener('click', () => { TO_REPORT_WEEK_ANCHOR = new Date(); toRenderWeeklyReportModal_(); });
@@ -13376,42 +13379,65 @@ async function toRenderWeeklyReportModal_(){
   });
   await toLoadWeeklyReportBox_(from, to);
 }
+// ⚠️ تعديل 2026-10-08 ("عاوز التقرير ده يطلع في نفس هيئة الجدول"): التقرير بقى جدول أيام × صنايعية
+// زي تاب "اسبوعي" بالظبط (نفس الألوان والتوسيط والإجازة والسهرة والجمعة اللي بتختفي لو فاضية) —
+// للعرض بس (من غير تحديد/حذف)، وعنوان البند (المطلوب) بيظهر تحت اسم المشروع.
 async function toLoadWeeklyReportBox_(from, to){
   const box = document.getElementById('to-week-report-box'); if (!box) return;
   try {
     const key = from + '_' + to;
-    let entries = TO_STATE.weekCache[key];
-    if (!entries) {
-      const res = await apiGet('getWorkflowWeek', { from, to });
-      entries = res.entries || [];
-      TO_STATE.weekCache[key] = entries;
+    let entries = TO_STATE.weekCache[key], hours = TO_STATE.weekHoursCache[key];
+    if (!entries || !hours) {
+      const [wfRes, hRes] = await Promise.all([
+        entries ? null : apiGet('getWorkflowWeek', { from, to }),
+        hours ? null : apiGet('listHoursEntries', { filters: { from, to } })
+      ]);
+      if (!entries) { entries = (wfRes && wfRes.entries) || []; TO_STATE.weekCache[key] = entries; }
+      if (!hours) { hours = (hRes && hRes.entries) || []; TO_STATE.weekHoursCache[key] = hours; }
     }
     if (!box.isConnected) return;
-    if (!entries.length) { box.innerHTML = `<div class="wf-empty-day">مفيش أي شغل متسجل الأسبوع ده</div>`; return; }
-    const byCraftsman = {};
-    entries.forEach(e => { (byCraftsman[e.craftsman] = byCraftsman[e.craftsman] || []).push(e); });
-    box.innerHTML = Object.keys(byCraftsman).map(name => {
-      const items = byCraftsman[name].slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-      return `
-        <div class="wf-card">
-          <div class="wf-card-head">
-            <span class="wf-craftsman-name">${qEsc(name)}</span>
-            <div style="font-size:12px;color:var(--muted);">${items.length} بند</div>
-          </div>
-          ${items.map(it => `
-            <div class="wf-item">
-              <div class="wf-item-row">
-                <span><b>التاريخ:</b> ${qEsc(it.date)} (${qEsc(toDateQuickLabel(it.date))})</span>
-                <span><b>المشروع:</b> ${qEsc(it.project)}</span>
-                ${it.location ? `<span><b>العنوان:</b> ${qEsc(it.location)}</span>` : ''}
-              </div>
-              ${it.title ? `<div style="font-weight:700;font-size:13.5px;margin-bottom:3px;">${qEsc(it.title)}</div>` : ''}
-              ${it.feedback ? `<div class="wf-feedback">💬 ${qEsc(it.feedback)}</div>` : ''}
-            </div>
-          `).join('')}
-        </div>
-      `;
-    }).join('');
+    const dates = toGetWeekDates(new Date(from + 'T00:00:00'));
+    const isos = dates.map(d => toISO(d));
+    const render = () => {
+      if (!box.isConnected) return;
+      const crafts = toCraftsmenFor_(isos, render, entries.map(e => e.craftsman).concat(hours.filter(h => Number(h.eveningHours) > 0 || Number(h.hours) > 0).map(h => h.employee)));
+      const monthly = new Set(crafts.filter(c => c.paymentType === 'شهري').map(c => c.name));
+      const todayIso = todayStr();
+      const hasAny = iso => entries.some(e => e.date === iso) || hours.some(h => h.date === iso);
+      const days = dates.map((dt, i) => ({ dt, i, iso: toISO(dt) })).filter(d => d.dt.getDay() !== 5 || hasAny(d.iso));
+      if (!entries.length && !hours.length) { box.innerHTML = `<div class="wf-empty-day">مفيش أي شغل متسجل الأسبوع ده</div>`; return; }
+      const cellHtml = (emp, iso) => {
+        const all = entries.filter(e => e.craftsman === emp && e.date === iso);
+        const items = all.filter(it => !toIsEveningWf_(it));
+        const dayHours = hours.filter(h => h.employee === emp && h.date === iso);
+        const orphans = toOrphanHours_(all, dayHours);
+        const hasEve = all.length !== items.length || dayHours.some(h => Number(h.eveningHours) > 0 || (!(Number(h.hours) > 0) && Number(h.eveningAmount) > 0));
+        const regH = dayHours.reduce((t, h) => t + (Number(h.hours) > 0 ? Number(h.hours) : 0), 0);
+        const isOff = !items.length && !orphans.length && iso <= todayIso && !monthly.has(emp);
+        const chip = it => {
+          const abs = toIsAbsenceNote_(it);
+          const ic = abs ? '&#128683;' : (it.status === 'done' ? '&#10003;' : (it.status === 'blocked' ? '&#9940;' : '&#128205;'));
+          return `<span class="to-cell-chip ${abs ? 'to-cell-absence' : 'status-' + (it.status || 'working')}" style="white-space:normal;">${ic} ${qEsc(it.project)}${it.title ? `<span style="display:block;font-weight:400;font-size:10.5px;color:var(--muted);">${qEsc(it.title)}</span>` : ''}</span>`;
+        };
+        return (items.length ? items.map(chip).join('') : (isOff ? `<span class="to-cell-chip to-cell-absence">&#128683; إجازة</span>` : ((hasEve || orphans.length) ? '' : `<span class="to-cell-empty">—</span>`)))
+          + orphans.map(h => `<span class="to-cell-chip status-working">&#128205; ${qEsc(h.project || '')}</span>`).join('')
+          + (regH > 9 ? `<span class="to-cell-chip" style="background:#fdeaea;color:var(--red);">⚠️ ${fmt(regH)} ساعة</span>` : '')
+          + (hasEve ? `<span class="to-cell-chip" style="background:rgba(212,175,55,.18);color:#8a6d1f;">🌙 سهرة</span>` : '');
+      };
+      box.innerHTML = `
+        <div class="to-grid-wrap">
+          <table class="to-weekgrid">
+            <thead><tr>
+              <th style="min-width:110px;">الصنيعي</th>
+              ${days.map(d => `<th class="${d.iso === todayIso ? 'today' : ''}"><div class="dname">${TO_DAY_NAMES[d.i]}</div><div class="ddate">${toFmtDayDate(d.dt)}</div></th>`).join('')}
+            </tr></thead>
+            <tbody>
+              ${crafts.map(c => `<tr><td class="to-emp-col">${qEsc(c.name)}</td>${days.map(d => `<td class="to-day-cell" style="cursor:default;">${cellHtml(c.name, d.iso)}</td>`).join('')}</tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    };
+    render();
   } catch (err) { box.innerHTML = `<div class="msg err" style="display:block;">خطأ: ${err.message || err}</div>`; }
 }
 
