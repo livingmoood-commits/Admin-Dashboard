@@ -11827,23 +11827,24 @@ function toOrphanHours_(wfItems, hoursRows){
   return left;
 }
 function toOrphanHoursHTML_(h){
+  // بيتعرض زي أي بند شغل عادي (هو تسجيل فعلي محسوب في الساعات والتكلفة) — من غير تحذيرات تلخبط
   return `
-    <div class="to-wf-item" style="background:#fdeaea;border:1px dashed var(--red);border-radius:8px;padding:9px 8px;margin-bottom:6px;">
-      <div class="to-wf-item-head" style="display:flex;align-items:flex-start;gap:8px;">
-        <input type="checkbox" class="to-wk-sel" value="h:${qEsc(String(h.id))}" style="width:18px;height:18px;margin-top:3px;cursor:pointer;" ${TO_WEEK_SEL.has('h:' + String(h.id)) ? 'checked' : ''} onchange="toWeekSelToggle_(this.value,this.checked)">
-        <div style="flex:1;min-width:0;">
-          <div class="wf-item-row">
-            <span style="font-weight:700;color:var(--red);">⚠️ ساعات من غير بند — ${fmt(Number(h.hours) || 0)} ساعة</span>
-            ${h.project ? `<span><b>المشروع:</b> ${qEsc(h.project)}</span>` : ''}
+      <div class="to-ticket">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;">
+          <input type="checkbox" class="to-wk-sel" value="h:${qEsc(String(h.id))}" style="width:18px;height:18px;margin-top:3px;cursor:pointer;" ${TO_WEEK_SEL.has('h:' + String(h.id)) ? 'checked' : ''} onchange="toWeekSelToggle_(this.value,this.checked)">
+          <div style="flex:1;min-width:0;">
+            <div class="proj">&#128205; ${qEsc(h.project || '')} <span style="font-weight:400;color:var(--muted);font-size:12px;">— ${fmt(Number(h.hours) || 0)} ساعة${Number(h.cost) > 0 ? ' · ' + fmt(h.cost) + ' ج' : ''}</span></div>
+            ${h.notes ? `<div style="font-size:12px;color:var(--muted);margin-top:2px;">&#128221; ${qEsc(h.notes)}</div>` : ''}
           </div>
-          <div style="font-size:11.5px;color:var(--muted);margin-top:3px;">متسجلة في شيت الساعات${Number(h.cost) > 0 ? ' وتكلفتها ' + fmt(h.cost) + ' ج على المشروع' : ''} — بس مالهاش بند في سجل الشغل (غالبًا البند اتمسح لوحده). لو مش مظبوطة احذفها.</div>
-          ${h.notes ? `<div style="font-size:12px;color:var(--muted);margin-top:3px;">&#128221; ${qEsc(h.notes)}</div>` : ''}
+          <div class="to-status-row" style="margin-top:0;">
+            <button type="button" class="mat-icon-btn" title="حذف (والتكلفة من المشروع)" onclick="toWfItemsDelete_(['h:${qEscJs(String(h.id))}'])">🗑️</button>
+          </div>
         </div>
-        <div class="to-status-row" style="margin-top:0;">
-          <button type="button" class="mat-icon-btn" title="حذف الساعات دي (وتكلفتها من المشروع)" onclick="toWfItemsDelete_(['h:${qEscJs(String(h.id))}'])">🗑️</button>
-        </div>
-      </div>
-    </div>`;
+      </div>`;
+}
+// مجموع ساعات الشغل العادي (من غير سهرات) لصنيعي في يوم — نفس اللي السيرفر بيحسب عليه حد الـ9 ساعات
+function toDayRegularHours_(emp, iso){
+  return (TO_STATE.weekHoursEntries || []).reduce((s, h) => s + ((h.employee === emp && h.date === iso && Number(h.hours) > 0) ? Number(h.hours) : 0), 0);
 }
 function toEveningWfHTML_(x, withSelect){
   const it = x.it, amt = x.h ? Number(x.h.eveningAmount) || 0 : 0;
@@ -11892,11 +11893,8 @@ function toEveningItemHTML_(ev, withSelect) {
 // ⚠️ إضافة: حذف سهرة لوحدها (سطر ساعات_وسهرات بس، مش بند شغل وصفي) — من "مين
 // فين" أو تفاصيل خلية الجدول الأسبوعي، نفس شكل زرار حذف بند الشغل العادي بالظبط.
 async function toEveningDelete_(id){
-  try {
-    await apiPost('deleteHoursEntry', { id });
-    showToast('🗑️ اتحذفت السهرة');
-    await toWfRefreshCurrentView_();
-  } catch(err){ showError(err); }
+  // ⚠️ تعديل 2026-10-08: بقى بيعدي على نفس طابور الحذف — بيمسح سطر السهرة + بندها في سجل الشغل + تكلفتها
+  await toWfItemsDelete_(['h:' + id]);
 }
 
 // شكل بند شغل واحد (مستخدم في تاب "شغل يومي" وتفاصيل خلية تاب "اسبوعي")
@@ -12166,7 +12164,14 @@ async function toWfDeleteWorker_(){
       }
       if (!res) { failed = lastErr; break; }
       const directHours = batch.filter(x => x.indexOf('h:') === 0).length;
-      done += (res.deleted || 0) + directHours;
+      done += (res.deleted || 0) - (res.deletedViaHours || 0) + directHours;
+      // بنود سجل الشغل اللي اتمسحت مع سطر ساعاتها (حذف مباشر لسهرة/ساعات) — تختفي من الشاشة كمان
+      const wSet = new Set((res.deletedIds || []).map(String));
+      if (wSet.size) {
+        toWfStripById_(wSet, [TO_STATE.weekEntries, TO_STATE.wwEntries, TO_STATE.todayEntries]
+          .concat(Object.values(TO_STATE.weekCache), Object.values(TO_STATE.dailyCache)));
+        if (res.deletedViaHours) toWfRenderLocal_();
+      }
       // سطور الساعات اللي اتشالت معاهم — نشيلها من الكاش المحلي كمان (السهرات + "متسجل قبل كده" في فورم تسجيل شغل)
       const hSet = new Set((res.hoursDeletedIds || []).map(String));
       costRemoved += hSet.size;
@@ -12829,7 +12834,8 @@ function toRenderWeekGrid(dates, from, to) {
                   const hasEvening = allCellItems.length !== items.length || TO_STATE.weekHoursEntries.some(h => h.employee === emp && h.date === iso && Number(h.eveningHours) > 0);
                   const orphans = toOrphanHours_(allCellItems, TO_STATE.weekHoursEntries.filter(h => h.employee === emp && h.date === iso));
                   const inner = (items.length ? items.map(it => `<span class="to-cell-chip ${toIsAbsenceNote_(it)?'to-cell-absence':'status-'+(it.status||'working')}">${chipIcon(it)} ${qEsc(it.project)}</span>`).join('') : ((hasEvening || orphans.length) ? '' : `<span class="to-cell-empty">—</span>`))
-                    + orphans.map(h => `<span class="to-cell-chip" style="background:#fdeaea;color:var(--red);font-weight:700;border:1px dashed var(--red);" title="ساعات متسجلة من غير بند في سجل الشغل">⚠️ ${fmt(Number(h.hours) || 0)}س ${qEsc(h.project || '')}</span>`).join('')
+                    + orphans.map(h => `<span class="to-cell-chip status-working">&#128205; ${qEsc(h.project || '')}</span>`).join('')
+                    + (toDayRegularHours_(emp, iso) > 9 ? `<span class="to-cell-chip" style="background:#fdeaea;color:var(--red);font-weight:700;" title="متسجل أكتر من 9 ساعات شغل في اليوم ده — احذف المكرر">⚠️ ${fmt(toDayRegularHours_(emp, iso))} ساعة</span>` : '')
                     + (hasEvening ? `<span class="to-cell-chip" style="background:rgba(212,175,55,.18);color:#8a6d1f;font-weight:700;">🌙 سهرة</span>` : '');
                   return `<td class="to-day-cell ${isSel?'selected':''}" data-emp="${qEsc(emp)}" data-date="${iso}">${inner}</td>`;
                 }).join('')}
@@ -12951,6 +12957,7 @@ function toRenderWeekDetail() {
         <span>${qEsc(g.c.emp)} — ${qEsc(toQfDayLabel_(g.c.date))} <span style="font-weight:400;color:var(--gold);">(${g.items.length} بند${(g.eveWf.length + g.evenings.length) ? ' + 🌙 ' + (g.eveWf.length + g.evenings.length) : ''})</span></span>
         <button type="button" class="mat-icon-btn" style="color:#f0e6d8;" title="شيل الخلية دي من التحديد" onclick="toWeekToggleCells_([window._toWeekShownCells[${g.i}]])">✕</button>
       </div>`}
+      ${toDayRegularHours_(g.c.emp, g.c.date) > 9 ? `<div style="background:#fdeaea;color:var(--red);font-weight:700;font-size:12.5px;border-radius:8px;padding:8px 10px;margin-bottom:6px;">⚠️ متسجل ${fmt(toDayRegularHours_(g.c.emp, g.c.date))} ساعة شغل في اليوم ده (المسموح 9) — غالبًا فيه تسجيل متكرر، احذف الزيادة</div>` : ''}
       ${g.items.map(toWeekTicketHtml_).join('')}
       ${g.eveWf.map(x => toEveningWfHTML_(x, true)).join('')}
       ${g.evenings.map(ev => toEveningItemHTML_(ev, true)).join('')}
