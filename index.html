@@ -32,22 +32,26 @@
      شاشة الدخول (login-wrap) أصلاً تصميمها غامق بخلفية/تدرج داكن، فمحتاجاش تتغير. */
   html[data-theme="dark"] .main,
   html[data-theme="dark"] body > *:not(#appRoot):not(.login-wrap):not(#toast-wrap){
-    filter: invert(.9) hue-rotate(180deg);
+    filter: invert(.92) hue-rotate(180deg) contrast(1.18) saturate(1.35);
   }
   /* ⚠️ إصلاح 2026-10-10: خلفية الصفحة نفسها (برا الكروت) كانت فاضلة فاتحة في الوضع الليلي — لأن الـbody مش
      جوه الفلتر، فالعنوان والكلام اللي اتقلب فاتح كان بيبان فاتح على فاتح. دلوقتي الخلفية غامقة، والقلب بقى 90%
      بدل 100% (الأبيض بيبقى رمادي غامق مريح بدل أسود فاحم، والكلام رمادي فاتح بدل أبيض ناصع). */
   html[data-theme="dark"], html[data-theme="dark"] body{ background:#15120f; }
-  html[data-theme="dark"] .main{ background:var(--cream); min-height:100vh; }
-  /* العناصر اللي تصميمها أصلاً غامق (رؤوس الجداول، صف الإجمالي، شريط عنوان المشروع، زرار الطباعة) — بنقلبها
-     تاني جوه الفلتر فترجع غامقة بلونها الدهبي زي الوضع العادي، بدل ما تطلع رمادي فاتح وسط الصفحة الغامقة */
-  html[data-theme="dark"] .main thead th,
-  html[data-theme="dark"] .main .tbl-totals-row td,
-  html[data-theme="dark"] .main .cost-day-head,
+  html[data-theme="dark"] .main{ background:var(--cream); min-height:100vh; --gold:#7a5c22; --muted:#3f362b; --green:#1d6b3a; --red:#b3261a; }
+  /* زرار الطباعة (غامق في العادي) بيتقلب تاني فيرجع زي ما هو */
   /* خلفيات المودالات الشفافة الغامقة بتتقلب فاتحة — بنديها لون فاتح عشان بعد القلب تبقى غامقة */
   html[data-theme="dark"] #qMailModal, html[data-theme="dark"] #pMailModal, html[data-theme="dark"] #changePassModal,
   html[data-theme="dark"] #genConfirmModal, html[data-theme="dark"] #genPromptModal, html[data-theme="dark"] #cellNoteModal,
   html[data-theme="dark"] #empEditModal, html[data-theme="dark"] #cardDetailModal{ background:rgba(225,218,208,.72); }
+  /* شريط عنوان المشروع (غامق في الوضع العادي): ألوان فاتحة هنا = بعد القلب بيبقى غامق والاسم أبيض والأرقام دهبي واضح */
+  html[data-theme="dark"] .main .cost-day-head{ background:#e9e4dc !important; color:#15120f !important; }
+  html[data-theme="dark"] .main .cost-day-head b{ color:#000 !important; }
+  html[data-theme="dark"] .main .cost-day-head .sub{ color:#4a3a1c !important; }
+  /* رؤوس الجداول وصف الإجمالي (غامقين في العادي): ألوان فاتحة هنا = بعد القلب بيبقوا غامقين وكلامهم دهبي واضح */
+  html[data-theme="dark"] .main thead th{ background:#ded6c7 !important; color:#3e2c0a !important; }
+  html[data-theme="dark"] .main .tbl-totals-row td{ background:#e6dfd2 !important; color:#3e2c0a !important; }
+  html[data-theme="dark"] .main table.to-weekgrid thead th.today{ background:#6b5426 !important; color:#15120f !important; }
   html[data-theme="dark"] .main .btn-print{ filter: invert(.9) hue-rotate(180deg); }
   *{box-sizing:border-box; margin:0; padding:0;}
   body{ font-family:'Cairo',sans-serif; background:var(--cream); color:var(--dark); display:flex; min-height:100vh; overflow-x:hidden; }
