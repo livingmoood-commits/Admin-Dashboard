@@ -6788,6 +6788,50 @@ async function pjSubmitCreate(){
     msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err);
   } finally { btn.disabled = false; }
 }
+// ⚠️ إضافة 2026-10-10 ("لما أدوس تظهرلي التفاصيل"): مودالات تفاصيل كروت التكلفة — العمالة والمصاريف
+async function showProjectLaborModal_(project){
+  openCardModal(`<div class="cd-head"><h3>عمالة ${qEsc(project)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="loading-row">جاري التحميل...</div>`);
+  document.getElementById('cardDetailBody').classList.add('cd-wide');
+  try {
+    const res = await apiGet('listHoursEntries', { filters: { project } });
+    const list = (res.entries || []).slice().sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    const byEmp = {};
+    list.forEach(e => { const m = byEmp[e.employee] = byEmp[e.employee] || { n: 0, h: 0, eh: 0, ea: 0, c: 0 }; m.n++; m.h += Number(e.hours) || 0; m.eh += Number(e.eveningHours) || 0; m.ea += Number(e.eveningAmount) || 0; m.c += Number(e.cost) || 0; });
+    const tot = list.reduce((t, e) => t + (Number(e.cost) || 0), 0);
+    openCardModal(`
+      <div class="cd-head"><h3>عمالة ${qEsc(project)} — ${fmt(tot)} ج</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+      <h4 style="margin:6px 0;">لكل موظف</h4>
+      <div class="tbl-wrap"><table><thead><tr><th>الموظف</th><th>سجلات</th><th>ساعات</th><th>ساعات سهر</th><th>مبالغ سهرات/مساعد</th><th>التكلفة</th></tr></thead>
+      <tbody>${Object.keys(byEmp).sort((a, b) => byEmp[b].c - byEmp[a].c).map(n => `<tr><td><b>${qEsc(n)}</b></td><td>${byEmp[n].n}</td><td>${fmt(byEmp[n].h)}</td><td>${fmt(byEmp[n].eh)}</td><td>${fmt(byEmp[n].ea)} ج</td><td><b>${fmt(byEmp[n].c)} ج</b></td></tr>`).join('')}</tbody></table></div>
+      <h4 style="margin:12px 0 6px;">يوم بيوم (${list.length} سجل)</h4>
+      <div class="tbl-wrap" style="max-height:380px;overflow-y:auto;"><table><thead><tr><th>التاريخ</th><th>الموظف</th><th>ساعات</th><th>سهر</th><th>مبلغ سهرة</th><th>التكلفة</th><th>ملاحظات</th></tr></thead>
+      <tbody>${list.map(e => `<tr><td>${qEsc(e.date)}</td><td>${qEsc(e.employee)}</td><td>${e.hours ? fmt(e.hours) : '—'}</td><td>${e.eveningHours ? fmt(e.eveningHours) : '—'}</td><td>${e.eveningAmount ? fmt(e.eveningAmount) + ' ج' : '—'}</td><td><b>${fmt(e.cost)} ج</b></td><td style="font-size:11px;color:var(--muted);">${qEsc(e.notes || '')}</td></tr>`).join('')}</tbody></table></div>`);
+    document.getElementById('cardDetailBody').classList.add('cd-wide');
+  } catch (err) { openCardModal(`<div class="cd-head"><h3>عمالة ${qEsc(project)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="msg err" style="display:block;">خطأ: ${qEsc(err.message || err)}</div>`); }
+}
+async function showProjectExpensesModal_(project){
+  openCardModal(`<div class="cd-head"><h3>مصاريف ${qEsc(project)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="loading-row">جاري التحميل...</div>`);
+  document.getElementById('cardDetailBody').classList.add('cd-wide');
+  try {
+    const d = await apiGet('getProjectExpensesDetail', { name: project });
+    const weeks = d.weeks || [];
+    const itemsSum = weeks.reduce((t, w) => t + w.items.reduce((a, it) => a + (Number(it.amount) || 0), 0), 0);
+    const total = Number(d.expense) || itemsSum;
+    openCardModal(`
+      <div class="cd-head"><h3>إجمالي مصاريف ${qEsc(project)} — ${fmt(total)} ج</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">من شيت المشروع في "متابعة صرف المشاريع" — كل أسبوع وبنوده.</div>
+      <div style="max-height:460px;overflow-y:auto;">
+      ${weeks.length ? weeks.slice().reverse().map(w => `
+        <div style="margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;gap:8px;padding:7px 10px;background:var(--dark);color:#f0e6d8;border-radius:8px;font-size:12.5px;font-weight:800;">
+            <span>${qEsc(w.label)}</span><span>${fmt(w.items.reduce((a, it) => a + (Number(it.amount) || 0), 0))} ج</span>
+          </div>
+          ${w.items.length ? `<div class="tbl-wrap"><table><tbody>${w.items.map(it => `<tr><td style="width:110px;">${qEsc(it.date || '')}</td><td>${qEsc(it.desc)}</td><td style="width:120px;"><b>${fmt(it.amount)} ج</b></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty" style="padding:8px;">مفيش بنود</div>'}
+        </div>`).join('') : '<div class="empty">مفيش مصاريف متسجلة للمشروع ده</div>'}
+      </div>`);
+    document.getElementById('cardDetailBody').classList.add('cd-wide');
+  } catch (err) { openCardModal(`<div class="cd-head"><h3>مصاريف ${qEsc(project)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="msg err" style="display:block;">خطأ: ${qEsc(err.message || err)}</div>`); }
+}
 // ⚠️ إضافة 2026-10-10: تفاصيل "تكاليف تانية مسجلة" — بنود صفحة التكاليف اليدوية + التركيب + عمالة المنتجات القديمة
 function showProjectOtherCostsModal_(d){
   if (!d) return;
@@ -6815,10 +6859,10 @@ async function showProjectDetail(name){
       <div class="panel">
         <h3>تفاصيل مشروع: ${d.project}</h3>
         <div class="cards">
-          <div class="card"><div class="label">تكلفة العمالة</div><div class="value gold">${fmt(d.laborCost)} ج</div></div>
-          <div class="card"><div class="label">ساعات العمالة</div><div class="value">${fmt(d.laborHours)} س</div></div>
+          <div class="card clickable" onclick="showProjectLaborModal_('${qEscJs(d.project)}')"><div class="label">تكلفة العمالة — دوس للتفاصيل</div><div class="value gold">${fmt(d.laborCost)} ج</div></div>
+          <div class="card clickable" onclick="showProjectLaborModal_('${qEscJs(d.project)}')"><div class="label">ساعات العمالة</div><div class="value">${fmt(d.laborHours)} س</div></div>
           <div class="card clickable" onclick="showProjectMaterialsModal(_projectDetailCache)"><div class="label">تكلفة الخامات</div><div class="value gold">${fmt(d.materialsCost)} ج</div></div>
-          <div class="card clickable" title="تفاصيل المصاريف في صفحة مصاريف المشاريع" onclick="try{sessionStorage.setItem('lm_pspProject','${qEscJs(d.project)}');PSP.sel='${qEscJs(d.project)}';}catch(e){};goTo('projectSpend')"><div class="label">إجمالي المصاريف (متابعة صرف المشاريع)</div><div class="value gold">${fmt(d.projectExpenses || 0)} ج</div></div>
+          <div class="card clickable" title="اعرض البنود" onclick="showProjectExpensesModal_('${qEscJs(d.project)}')"><div class="label">إجمالي المصاريف (متابعة صرف المشاريع) — دوس للتفاصيل</div><div class="value gold">${fmt(d.projectExpenses || 0)} ج</div></div>
           ${(d.costsTotal || 0) + (d.installCost || 0) + (d.productsLaborCost || 0) > 0 ? `<div class="card clickable" title="اعرض البنود" onclick="showProjectOtherCostsModal_(_projectDetailCache)"><div class="label">تكاليف تانية مسجلة (التكاليف/تركيب) — دوس للتفاصيل</div><div class="value gold">${fmt((d.costsTotal || 0) + (d.installCost || 0) + (d.productsLaborCost || 0))} ج</div></div>` : ''}
           <div class="card"><div class="label">إجمالي التكلفة (عمالة + خامات + مصاريف + تكاليف)</div><div class="value green">${fmt(d.totalCost)} ج</div></div>
           ${d.financials ? `<div class="card"><div class="label">الإيرادات المسجلة</div><div class="value green">${fmt(d.financials.revenue)} ج</div></div>` : ''}
@@ -6882,33 +6926,47 @@ function pjRenderTabBody(){
     ` : `<div class="empty">مفيش مشاريع مؤرشفة</div>`;
     return;
   }
+  // ⚠️ تعديل 2026-10-10 ("عاوزين كل ده يظهر في المشاريع"): تفصيل التكلفة لكل مشروع — عمالة + خامات + إجمالي المصاريف
+  // (متابعة صرف المشاريع) + تكاليف تانية (بنود التكاليف اليدوية/تركيب) = إجمالي التكلفة، والإيرادات وصافي الربح، وصف إجمالي تحت.
+  const rowsData = PJSTATE.active.map(p => {
+    const labor = Number(p.laborCost) || 0, mat = Number(p.materialsCost) || 0, exp = Number(p.projectExpenses) || 0, total = Number(p.totalCost) || 0;
+    const other = Math.max(0, total - labor - mat - exp);
+    const rev = p.financials ? (Number(p.financials.revenue) || 0) : null;
+    return { p, labor, hours: Number(p.laborHours) || 0, mat, exp, other, total, rev, net: rev === null ? null : rev - total };
+  });
+  const sumOf = k => rowsData.reduce((t, r) => t + (Number(r[k]) || 0), 0);
+  const netCell = v => v === null || v === undefined ? '—' : `<b style="color:${v >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(v)} ج</b>`;
   body.innerHTML = PJSTATE.active.length ? `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">إجمالي التكلفة = العمالة + الخامات + إجمالي المصاريف (متابعة صرف المشاريع) + تكاليف تانية مسجلة. دوس على اسم المشروع للتفاصيل.</div>
     <div class="tbl-wrap"><table><thead><tr>
-      <th>المشروع</th><th>إجمالي التكلفة</th><th>إجمالي المصاريف</th>
-      <th>الإيرادات</th><th>المصدر</th>
-      <th>صافي الربح (تكاليف)</th><th>صافي الربح (مصاريف)</th><th></th>
+      <th>المشروع</th><th>العمالة</th><th>الخامات</th><th>إجمالي المصاريف</th><th>تكاليف تانية</th><th>إجمالي التكلفة</th>
+      <th>الإيرادات</th><th>صافي الربح</th><th></th>
     </tr></thead>
-    <tbody>${PJSTATE.active.map(p => {
-      const cashExpenses = p.financials ? p.financials.cashExpenses : null;
-      const netCosts = p.netProfitCosts;
-      const netCash = p.financials ? p.financials.netProfitCash : null;
-      const netCell = v => v===null || v===undefined ? '—' : `<b style="color:${v>=0?'var(--green)':'var(--red)'}">${fmt(v)} ج</b>`;
+    <tbody>${rowsData.map(r => {
+      const p = r.p;
       return `
       <tr>
-        <td class="row-clickable" onclick="showProjectDetail('${qEscJs(p.project)}')">${qEsc(p.project)}</td>
-        <td><b>${fmt(p.totalCost)} ج</b></td>
-        <td>${cashExpenses===null ? '—' : fmt(cashExpenses)+' ج'}</td>
-        <td>${p.financials ? fmt(p.financials.revenue)+' ج' : '—'}</td>
-        <td style="font-size:11.5px;color:var(--muted);">${p.financials && p.financials.revenueSource ? qEsc(p.financials.revenueSource) : '—'}</td>
-        <td>${netCell(netCosts)}</td>
-        <td>${netCell(netCash)}</td>
+        <td class="row-clickable" onclick="showProjectDetail('${qEscJs(p.project)}')"><b>${qEsc(p.project)}</b></td>
+        <td class="row-clickable" title="تفاصيل العمالة" onclick="showProjectLaborModal_('${qEscJs(p.project)}')">${fmt(r.labor)} ج<div style="font-size:11px;color:var(--muted);">${fmt(r.hours)} س</div></td>
+        <td>${fmt(r.mat)} ج</td>
+        <td class="row-clickable" title="تفاصيل المصاريف" onclick="showProjectExpensesModal_('${qEscJs(p.project)}')">${fmt(r.exp)} ج</td>
+        <td>${fmt(r.other)} ج</td>
+        <td><b>${fmt(r.total)} ج</b></td>
+        <td>${r.rev === null ? '—' : fmt(r.rev) + ' ج'}</td>
+        <td>${netCell(r.net)}</td>
         <td style="text-align:left;white-space:nowrap;">
           <button class="btn btn-sm btn-outline" title="إعادة تسمية" onclick="pjOpenRenameModal_('${qEscJs(p.project)}')">✏️</button>
           <button class="btn btn-sm btn-outline" title="أرشفة" onclick="pjArchive('${qEscJs(p.project)}')">🗄</button>
           <button class="btn btn-sm btn-danger" title="حذف نهائي" onclick="pjConfirmDelete('${qEscJs(p.project)}')">🗑</button>
         </td>
       </tr>`;
-    }).join('')}</tbody></table></div>
+    }).join('')}
+    <tr style="background:var(--dark);color:#f0e6d8;">
+      <td><b>الإجمالي</b></td><td><b>${fmt(sumOf('labor'))} ج</b></td><td><b>${fmt(sumOf('mat'))} ج</b></td><td><b>${fmt(sumOf('exp'))} ج</b></td>
+      <td><b>${fmt(sumOf('other'))} ج</b></td><td><b>${fmt(sumOf('total'))} ج</b></td>
+      <td><b>${fmt(rowsData.reduce((t, r) => t + (r.rev || 0), 0))} ج</b></td>
+      <td><b>${fmt(rowsData.reduce((t, r) => t + (r.net === null ? 0 : r.net), 0))} ج</b></td><td></td>
+    </tr></tbody></table></div>
   ` : `<div class="empty">مفيش مشاريع نشطة — دوس "+ مشروع جديد"</div>`;
 }
 function pjOpenCreateModal2(){
@@ -7742,7 +7800,7 @@ async function renderCostsEntriesTab() {
         </div>
         <div class="panel">
           <h3>التكاليف المسجلة <span class="sub">مجمّعة بالمشروع — كل مشروع لوحده بتكلفته وإيراده وصافي ربحه، وكل عملية جواه بتاريخها</span></h3>
-          <div class="filters"><select id="costFilterProject"><option value="">كل المشاريع</option>${projects.map(pr=>`<option value="${pr}">${pr}</option>`).join('')}</select></div>
+          <div class="filters"><select id="costFilterProject" disabled title="استنى التحميل يخلص"><option value="">كل المشاريع</option>${projects.map(pr=>`<option value="${pr}">${pr}</option>`).join('')}</select></div>
           <!-- ⚠️ إضافة 2026-08-11: لما تفلتر على مشروع معيّن، بيظهر هنا ملخص سريع
                (تكلفة/إيرادات/صافي ربح) لنفس المشروع — نفس البيانات اللي في شيته
                وفي صفحة "المشاريع"، عشان تشوف الصورة كاملة من غير ما تسيب صفحة
@@ -7766,6 +7824,8 @@ async function renderCostsEntriesTab() {
   (summaryProjects || []).forEach(p => { window._costsSummaryMap[p.project] = p; });
   window._costsAllList = initialCosts || [];
   renderCostsList(initialCosts);
+  // ⚠️ إصلاح 2026-10-10: الفلتر مقفول لحد ما التحميل الأول يخلص (كان بيعلق لو اخترت مشروع والبيانات لسه بتحمل)
+  { const f = document.getElementById('costFilterProject'); if (f) { f.disabled = false; f.title = ''; } }
   document.getElementById('addCostItemBtn').addEventListener('click', () => { costItemRows.push({name:'',qty:'',unit:'',unitPrice:''}); renderCostDynRows(); });
   document.getElementById('addCostLaborBtn').addEventListener('click', () => { costLaborRows.push({employee:'',hours:'9',eveningHours:'',eveningAmount:'',showEvening:false}); renderCostDynRows(); });
   // ⚡ إصلاح بطء الفلتر: القايمة بتتفلتر فورًا من البيانات المحمّلة أصلًا (initialCosts = كل التكاليف)
@@ -7773,6 +7833,9 @@ async function renderCostsEntriesTab() {
   // لو الفلترة المحلية رجّعت صفر (مثلًا اسم الشيت مختلف عن اسم المشروع) بنرجع للطلب القديم كاحتياطي.
   document.getElementById('costFilterProject').addEventListener('change', async (e) => {
     const proj = e.target.value;
+    const sel = e.target;
+    sel.disabled = true; // مقفول لحد ما المشروع ده يحمل — مفيش طلبات فوق بعض
+    window._costsExpanded = {};
     const all = window._costsAllList || [];
     const local = proj ? all.filter(c => c.project === proj) : all;
     if (local.length || !proj) {
@@ -7785,7 +7848,7 @@ async function renderCostsEntriesTab() {
         renderCostsList(list.costs);
       } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
     }
-    renderCostProjectSummary(proj);
+    try { await renderCostProjectSummary(proj); } finally { sel.disabled = false; }
   });
   document.getElementById('costForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -7893,7 +7956,8 @@ async function renderCostProjectSummary(project){
       apiGet('listHoursEntries', { filters: { project } })
     ]);
     const filterEl = document.getElementById('costFilterProject');
-    if (!filterEl || filterEl.value !== project) return; // المستخدم غيّر المشروع أثناء التحميل — متكتبش ملخص قديم فوق الجديد
+    if (!filterEl || filterEl.value !== project) return;
+    window._costSumD = d; // المستخدم غيّر المشروع أثناء التحميل — متكتبش ملخص قديم فوق الجديد
     const entries = rev.entries || [];
     const hoursEntries = hoursRes.entries || [];
     const revenueTotal = d.financials ? d.financials.revenue : (rev.total || 0);
@@ -7912,9 +7976,10 @@ async function renderCostProjectSummary(project){
       <div class="panel" style="background:var(--cream);border:1.5px dashed var(--border);margin-bottom:16px;">
         <h3 style="margin-bottom:10px;">تفصيل التكلفة حسب المصدر</h3>
         <div class="cost-src-cards">
-          <div class="card"><div class="label">عمالة (ساعات وسهرات — من المرتبات)</div><div class="value gold">${fmt(d.laborCost)} ج</div></div>
-          <div class="card"><div class="label">التكاليف الموحّدة (بنود + عمالة مسجلة هنا)</div><div class="value gold">${fmt(d.costsTotal)} ج</div></div>
-          ${archiveCost > 0.01 ? `<div class="card"><div class="label">أرشيف قديم (خامات/تركيب)</div><div class="value gold">${fmt(archiveCost)} ج</div></div>` : ''}
+          <div class="card clickable" onclick="showProjectLaborModal_('${qEscJs(project)}')"><div class="label">عمالة (ساعات وسهرات — من المرتبات)</div><div class="value gold">${fmt(d.laborCost)} ج</div></div>
+          <div class="card clickable" onclick="showProjectExpensesModal_('${qEscJs(project)}')"><div class="label">إجمالي المصاريف (متابعة صرف المشاريع)</div><div class="value gold">${fmt(d.projectExpenses || 0)} ج</div></div>
+          <div class="card clickable" onclick="showProjectOtherCostsModal_(window._costSumD)"><div class="label">التكاليف الموحّدة (بنود + عمالة مسجلة هنا)</div><div class="value gold">${fmt(d.costsTotal)} ج</div></div>
+          ${archiveCost > 0.01 ? `<div class="card clickable" onclick="showProjectOtherCostsModal_(window._costSumD)"><div class="label">أرشيف قديم (خامات/تركيب)</div><div class="value gold">${fmt(archiveCost)} ج</div></div>` : ''}
         </div>
       </div>
 
@@ -8233,6 +8298,7 @@ async function renderCostSummaryBody_(){
       apiGet('listHoursEntries', { filters: { project } })
     ]);
     const empRateMap = window._costEmpRateMap || {};
+    window._costSumD = d;
     const hoursEntries = hoursRes.entries || [];
     const employeeMap = {};
     hoursEntries.forEach(e => {
@@ -8257,10 +8323,11 @@ async function renderCostSummaryBody_(){
       <div class="panel" style="background:var(--cream);border:1.5px dashed var(--border);margin-bottom:16px;">
         <h3 style="margin-bottom:10px;">تفصيل التكلفة حسب المصدر</h3>
         <div class="cost-src-cards">
-          <div class="card"><div class="label">عمالة (ساعات وسهرات)</div><div class="value gold">${fmt(d.laborCost)} ج</div></div>
-          <div class="card"><div class="label">خامات (المنتجات)</div><div class="value gold">${fmt(d.materialsCost)} ج</div></div>
-          <div class="card"><div class="label">التكاليف الموحّدة (بنود + عمالة يدوية)</div><div class="value gold">${fmt(d.costsTotal)} ج</div></div>
-          ${archiveCost > 0.01 ? `<div class="card"><div class="label">أرشيف قديم</div><div class="value gold">${fmt(archiveCost)} ج</div></div>` : ''}
+          <div class="card clickable" onclick="showProjectLaborModal_('${qEscJs(project)}')"><div class="label">عمالة (ساعات وسهرات)</div><div class="value gold">${fmt(d.laborCost)} ج</div></div>
+          <div class="card clickable" onclick="showProjectMaterialsModal(window._costSumD)"><div class="label">خامات (المنتجات)</div><div class="value gold">${fmt(d.materialsCost)} ج</div></div>
+          <div class="card clickable" onclick="showProjectExpensesModal_('${qEscJs(project)}')"><div class="label">إجمالي المصاريف (متابعة صرف المشاريع)</div><div class="value gold">${fmt(d.projectExpenses || 0)} ج</div></div>
+          <div class="card clickable" onclick="showProjectOtherCostsModal_(window._costSumD)"><div class="label">التكاليف الموحّدة (بنود + عمالة يدوية)</div><div class="value gold">${fmt(d.costsTotal)} ج</div></div>
+          ${archiveCost > 0.01 ? `<div class="card clickable" onclick="showProjectOtherCostsModal_(window._costSumD)"><div class="label">أرشيف قديم</div><div class="value gold">${fmt(archiveCost)} ج</div></div>` : ''}
         </div>
       </div>
 
@@ -8334,7 +8401,11 @@ function renderCostsList(costs){
   costs.forEach(c => { const k = c.project || 'بدون مشروع'; (byProject[k] = byProject[k] || []).push(c); });
   const projects = Object.keys(byProject).sort((a,b) => a.localeCompare(b, 'ar'));
   box.innerHTML = projects.map(proj => {
-    const rows = byProject[proj].slice().sort((a,b) => (b.date||'') < (a.date||'') ? -1 : ((b.date||'') > (a.date||'') ? 1 : 0));
+    const allRows = byProject[proj].slice().sort((a,b) => (b.date||'') < (a.date||'') ? -1 : ((b.date||'') > (a.date||'') ? 1 : 0));
+    // ⚡ 2026-10-10: أول 40 عملية بس لكل مشروع (الأحدث) — رسم آلاف الصفوف مرة واحدة كان بيعلّق الصفحة
+    const expanded = !!(window._costsExpanded || {})[proj];
+    const rows = allRows;
+    const shownRows = expanded ? allRows : allRows.slice(0, 40);
     const projTotal = rows.reduce((s,r)=>s+r.totalCost,0);
     const projItems = rows.reduce((s,r)=>s+(Number(r.itemsCost)||0),0);   // إجمالي الخامات/البنود
     const projLabor = rows.reduce((s,r)=>s+(Number(r.laborCost)||0),0);   // إجمالي العمالة
@@ -8348,7 +8419,7 @@ function renderCostsList(costs){
     <div class="cost-day-group">
       <div class="cost-day-head"><b>${qEsc(proj)}</b><span class="sub">${rows.length} عملية — إجمالي المشروع: ${fmt(projTotal)} ج${summaryTxt}</span></div>
       <div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>العملية</th><th>البنود</th><th>العمالة (مين وكام ساعة)</th><th>الإجمالي</th><th></th></tr></thead>
-        <tbody>${rows.map(p=>{
+        <tbody>${shownRows.map(p=>{
           const laborTxt = (p.labor||[]).filter(l=>l.employee).map(l=>`${qEsc(l.employee)} (${fmtHoursDays(l.hours)}${l.eveningAmount?' + سهرة '+fmt(l.eveningAmount)+'ج':''})`).join('، ') || '—';
           // ⚠️ إصلاح: كان بيعرض البنود كلها مجمّعة في سطر واحد "اسم × كمية" من غير أي
           // سعر، فمكنش واضح تكلفة كل خامة لوحدها. البيانات نفسها (qty/unitPrice) كانت
@@ -8365,10 +8436,17 @@ function renderCostsList(costs){
           return `<tr><td>${qEsc(p.date||'—')}</td><td>${qEsc(p.name)}</td><td>${itemsTxt}</td><td>${laborTxt}</td><td><b>${fmt(p.totalCost)} ج</b></td>
           <td><button class="btn btn-sm btn-danger" onclick="deleteCostConfirm('${qEscJs(p.project)}','${qEscJs(p.id)}')">حذف</button></td></tr>`;
         }).join('')}</tbody>
+        ${shownRows.length < rows.length ? `<tbody><tr><td colspan="6" style="text-align:center;"><button type="button" class="btn btn-outline btn-sm" onclick="(window._costsExpanded=window._costsExpanded||{})['${qEscJs(proj)}']=true;costsRerenderList_()">عرض كل الـ ${rows.length} عملية (ظاهر ${shownRows.length})</button></td></tr></tbody>` : ''}
         <tfoot><tr class="tbl-totals-row"><td colspan="2">الإجمالي (${rows.length} عملية)</td><td>خامات/بنود: ${fmt(projItems)} ج</td><td>عمالة: ${fmt(projLabor)} ج</td><td>${fmt(projTotal)} ج</td><td></td></tr></tfoot>
       </table></div>
     </div>`;
   }).join('');
+}
+function costsRerenderList_(){
+  const f = document.getElementById('costFilterProject');
+  const proj = f ? f.value : '';
+  const all = window._costsAllList || [];
+  renderCostsList(proj ? all.filter(c => c.project === proj) : all);
 }
 async function deleteCostConfirm(project, id){
   if (!(await openGenConfirm('متأكد إنك عاوز تمسح التكلفة دي؟', 'حذف تكلفة'))) return;
