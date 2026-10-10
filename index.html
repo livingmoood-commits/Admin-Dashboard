@@ -6740,8 +6740,8 @@ async function renderProjectsTab(token) {
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
           <h3 style="margin:0;">ملخص تكلفة المشاريع (${projects.length})</h3>
         </div>
-        ${projects.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>ساعات العمالة</th><th>تكلفة العمالة</th><th>تكلفة الخامات</th><th>إجمالي التكلفة</th><th>الإيرادات</th><th>صافي الربح</th></tr></thead>
-        <tbody>${projects.map(p => `<tr class="row-clickable" onclick="showProjectDetail('${p.project.replace(/'/g,"\\'")}')"><td>${p.project}</td><td>${fmt(p.laborHours)}</td><td>${fmt(p.laborCost)} ج</td><td>${fmt(p.materialsCost)} ج</td><td><b>${fmt(p.totalCost)} ج</b></td>
+        ${projects.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>ساعات العمالة</th><th>تكلفة العمالة</th><th>تكلفة الخامات</th><th>مصاريف المشروع</th><th>إجمالي التكلفة</th><th>الإيرادات</th><th>صافي الربح</th></tr></thead>
+        <tbody>${projects.map(p => `<tr class="row-clickable" onclick="showProjectDetail('${p.project.replace(/'/g,"\\'")}')"><td>${p.project}</td><td>${fmt(p.laborHours)}</td><td>${fmt(p.laborCost)} ج</td><td>${fmt(p.materialsCost)} ج</td><td>${fmt(p.projectExpenses || 0)} ج</td><td><b>${fmt(p.totalCost)} ج</b></td>
           <td>${p.financials ? fmt(p.financials.revenue)+' ج' : '—'}</td>
           <td>${p.netProfit===null ? '—' : `<b style="color:${p.netProfit>=0?'var(--green)':'var(--red)'}">${fmt(p.netProfit)} ج</b>`}</td></tr>`).join('')}</tbody></table></div>`
         : `<div class="empty">مفيش مشاريع لسه — من صفحة "متابعة صرف المشاريع" دوس "+ مشروع جديد" عشان تضيف أول مشروع</div>`}
@@ -6801,7 +6801,9 @@ async function showProjectDetail(name){
           <div class="card"><div class="label">تكلفة العمالة</div><div class="value gold">${fmt(d.laborCost)} ج</div></div>
           <div class="card"><div class="label">ساعات العمالة</div><div class="value">${fmt(d.laborHours)} س</div></div>
           <div class="card clickable" onclick="showProjectMaterialsModal(_projectDetailCache)"><div class="label">تكلفة الخامات</div><div class="value gold">${fmt(d.materialsCost)} ج</div></div>
-          <div class="card"><div class="label">إجمالي التكلفة</div><div class="value green">${fmt(d.totalCost)} ج</div></div>
+          <div class="card clickable" title="تفاصيل المصاريف في صفحة مصاريف المشاريع" onclick="try{sessionStorage.setItem('lm_pspProject','${qEscJs(d.project)}');PSP.sel='${qEscJs(d.project)}';}catch(e){};goTo('projectSpend')"><div class="label">مصاريف المشروع (شيت المصاريف)</div><div class="value gold">${fmt(d.projectExpenses || 0)} ج</div></div>
+          ${(d.costsTotal || 0) + (d.installCost || 0) + (d.productsLaborCost || 0) > 0 ? `<div class="card"><div class="label">تكاليف تانية مسجلة (التكاليف/تركيب)</div><div class="value gold">${fmt((d.costsTotal || 0) + (d.installCost || 0) + (d.productsLaborCost || 0))} ج</div></div>` : ''}
+          <div class="card"><div class="label">إجمالي التكلفة (عمالة + خامات + مصاريف + تكاليف)</div><div class="value green">${fmt(d.totalCost)} ج</div></div>
           ${d.financials ? `<div class="card"><div class="label">الإيرادات المسجلة</div><div class="value green">${fmt(d.financials.revenue)} ج</div></div>` : ''}
           ${d.netProfit!==null ? `<div class="card"><div class="label">صافي الربح</div><div class="value ${d.netProfit>=0?'green':'red'}">${fmt(d.netProfit)} ج</div></div>` : `<div class="card"><div class="label">صافي الربح</div><div class="value" style="color:var(--muted);font-size:13px;">لسه مفيش إيرادات مسجلة</div></div>`}
         </div>
@@ -7980,7 +7982,7 @@ async function toCheckBackfillOpportunity_(){
     const { items } = await apiGet('previewBackfillHours');
     if (!document.getElementById('backfillBanner')) return; // المستخدم غيّر الصفحة قبل ما الفحص يخلص
     if (!items || !items.length) return;
-    const totalHours = items.reduce((s, it) => s + (Number(it.hours) || 9), 0);
+    const totalHours = items.reduce((s, it) => s + (it.kind === 'eve' || it.kind === 'help' ? 0 : (Number(it.hours) || 9)), 0);
     banner.innerHTML = `
       <div class="panel" style="background:#fff8e6;border:1.5px solid var(--gold);margin-bottom:16px;">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
@@ -8005,7 +8007,7 @@ function toRenderBackfillModal_(){
   const dates = Object.keys(byDate).sort((a, b) => b.localeCompare(a)); // الأحدث فوق
   const allChecked = _backfillItems.every(it => it.checked);
   const checkedCount = _backfillItems.filter(it => it.checked).length;
-  const checkedHours = _backfillItems.filter(it => it.checked).reduce((s, it) => s + (Number(it.hours) || 9), 0);
+  const checkedHours = _backfillItems.filter(it => it.checked).reduce((s, it) => s + (it.kind === 'eve' || it.kind === 'help' ? 0 : (Number(it.hours) || 9)), 0);
   openCardModal(`
     <div class="cd-head"><h3>سحب البنود الناقصة للتكلفة</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
     <div style="margin-bottom:10px;font-size:12.5px;color:var(--muted);">هيتم إنشاء سطر ساعات لكل بند مختار، وهيتحمّل على المشروع بتاريخه الأصلي مباشرة. العملية آمنة (بتضيف بس، مبتعدلش ولا بتمسح حاجة موجودة).</div>
@@ -8025,8 +8027,8 @@ function toRenderBackfillModal_(){
           ${byDate[date].map(it => `
             <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--cream);border-radius:8px;margin-bottom:4px;">
               <input type="checkbox" id="backfillItemCb-${it._idx}" ${it.checked?'checked':''} onchange="toBackfillToggleOne_(${it._idx}, this.checked)">
-              <div style="flex:1;font-size:12.5px;"><b>${qEsc(it.craftsman)}</b> — ${qEsc(it.project)}</div>
-              <input type="text" inputmode="decimal" class="d-input ltr-num" style="width:70px;padding:6px;" value="${qEsc(it.hours)}" onkeypress="return /[0-9.]/.test(event.key)" oninput="toBackfillUpdateHours_(${it._idx}, this.value)">
+              <div style="flex:1;font-size:12.5px;"><b>${qEsc(it.craftsman)}</b> — ${qEsc(it.project)}${it.kind === 'eve' ? ' — 🌙 سهرة' : (it.kind === 'help' ? ' — 👷 مساعد' : '')}</div>
+              <input type="text" inputmode="decimal" class="d-input ltr-num" style="width:70px;padding:6px;" value="${qEsc(it.kind === 'eve' || it.kind === 'help' ? it.eveningHours : it.hours)}" onkeypress="return /[0-9.]/.test(event.key)" oninput="toBackfillUpdateHours_(${it._idx}, this.value)">
               <span style="font-size:11px;color:var(--muted);">ساعة</span>
             </div>
           `).join('')}
@@ -8044,7 +8046,7 @@ function toRenderBackfillModal_(){
 // المودال من الصفر، فالسكرول بيفضل مكانه.
 function toBackfillUpdateFooter_(){
   const checkedCount = _backfillItems.filter(it => it.checked).length;
-  const checkedHours = _backfillItems.filter(it => it.checked).reduce((s, it) => s + (Number(it.hours) || 9), 0);
+  const checkedHours = _backfillItems.filter(it => it.checked).reduce((s, it) => s + (it.kind === 'eve' || it.kind === 'help' ? 0 : (Number(it.hours) || 9)), 0);
   const footerEl = document.getElementById('backfillFooterText');
   if (footerEl) footerEl.innerHTML = `مختار: <b>${checkedCount}</b> بند — إجمالي تقريبي: <b>${fmt(checkedHours)}</b> ساعة`;
   const btn = document.getElementById('backfillConfirmBtn');
@@ -8079,13 +8081,13 @@ function toBackfillToggleDate_(date, checked){
   toBackfillUpdateFooter_();
 }
 function toBackfillUpdateHours_(idx, val){
-  const it = _backfillItems.find(x => x._idx === idx); if (it) it.hours = val;
+  const it = _backfillItems.find(x => x._idx === idx); if (it) { if (it.kind === 'eve' || it.kind === 'help') it.eveningHours = val; else it.hours = val; }
   toBackfillUpdateFooter_();
 }
 async function toConfirmBackfill_(){
   const btn = document.getElementById('backfillConfirmBtn');
   const msg = document.getElementById('backfillMsg');
-  const selected = _backfillItems.filter(it => it.checked).map(({ craftsman, project, date, hours }) => ({ craftsman, project, date, hours }));
+  const selected = _backfillItems.filter(it => it.checked).map(({ craftsman, project, date, hours, kind, eveningHours, wfId }) => ({ craftsman, project, date, hours, kind, eveningHours, wfId }));
   if (!selected.length) return;
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري السحب...';
   try {
@@ -8095,6 +8097,12 @@ async function toConfirmBackfill_(){
     // بصمت تمامًا من غير ما يوضح السبب. دلوقتي لو فيه أي فشل، المودال يفضل
     // مفتوح ويوري رسالة حمرا واضحة بالأسباب، بدل ما يقفل ويوهمك إنه نجح.
     if (res.failed && res.failed > 0) {
+      // ⚠️ تعديل 2026-10-10: بدل رسالة الفشل بس — بيطلب منك الناقص (يومية/مبلغ سهرة) ويخيّرك في تعارض الـ9 ساعات، وتعيد السحب
+      if (res.count > 0) { try { renderCostSummaryBody_(); } catch (e) {} }
+      toBackfillOpenFix_(selected, res);
+      return;
+    }
+    if (false) {
       const reasons = (res.failures || []).map(f => `• ${qEsc(f.craftsman)} — ${qEsc(f.project)} (${qEsc(f.date)}): ${qEsc(f.error)}`).join('<br>');
       msg.className = 'msg err'; msg.style.display = 'block';
       msg.innerHTML = `⚠️ اتسحب ${res.count} سطر بنجاح، لكن فشل ${res.failed} سطر:<br>${reasons}<br><br>غالبًا السبب: اسم الموظف في سجل الشغل مش متطابق حرفيًا مع اسمه في شيت المرتبات — راجع الاسمين.`;
@@ -8107,6 +8115,89 @@ async function toConfirmBackfill_(){
     const banner = document.getElementById('backfillBanner'); if (banner) banner.innerHTML = '';
     renderCostSummaryBody_();
   } catch(err){ msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); btn.disabled = false; btn.textContent = 'تأكيد سحب المختار (' + selected.length + ')'; }
+}
+// ═══ إكمال البنود اللي فشلت في السحب (إضافة 2026-10-10) ═══
+// needRate  = الموظف مش في شيت المرتبات → بيطلب يوميته (الساعة = اليومية ÷ 9) مرة واحدة لكل موظف
+// needAmount = سهرة/مساعد مالقيناش مبلغها في المرتبات → بيطلب المبلغ
+// overCap   = اليوم هيعدّي 9 ساعات → بيوريك المتسجل في اليوم ده وتختار: سجّل الجديد مكان القديم / امسح الجديد من سجل الشغل / تخطي
+// أي بند تقدر تعمله "تخطي" — مش هيتعمل حاجة فيه.
+let _bfFix = { items: [], rates: {}, done: 0, cost: 0 };
+function toBackfillOpenFix_(sent, res){
+  const prev = _bfFix;
+  _bfFix = { items: [], rates: prev.rates || {}, done: (prev.items.length ? prev.done : 0) + (res.count || 0), cost: (prev.items.length ? prev.cost : 0) + (Number(res.totalCost) || 0) };
+  (res.failures || []).forEach(f => {
+    const src = sent[f.idx] || {};
+    _bfFix.items.push(Object.assign({}, src, { code: f.code || '', error: f.error, existing: f.existing || [], choice: f.code === 'overCap' ? 'skip' : 'do', amount: '' }));
+  });
+  toBackfillRenderFix_();
+}
+function toBackfillRenderFix_(){
+  const F = _bfFix;
+  const rateEmps = Array.from(new Set(F.items.filter(it => it.code === 'needRate').map(it => it.craftsman)));
+  const itemHtml = (it, i) => {
+    const head = `<b>${qEsc(it.craftsman)}</b> — ${qEsc(it.project)} — ${qEsc(toDateQuickLabel(it.date))} <span style="color:var(--muted);">(${qEsc(it.date)})</span> — ${it.kind === 'work' ? fmt(it.hours) + ' ساعة' : (it.kind === 'help' ? '👷 مساعد' : '🌙 سهرة')}`;
+    let body = '';
+    if (it.code === 'overCap') {
+      body = `<div style="font-size:12px;color:var(--red);margin:4px 0;">اليوم ده متسجل له قبل كده: ${it.existing.map(x => qEsc(x.project) + ' ' + fmt(x.hours) + 'س').join(' + ') || '—'} — الجديد هيعدّي 9 ساعات. اختار الصح:</div>
+        ${it.existing.map(x => `<label class="print-opt-row" style="font-size:12.5px;"><input type="radio" name="bfc${i}" ${it.choice === 'rep:' + x.id ? 'checked' : ''} onchange="_bfFix.items[${i}].choice='rep:${qEscJs(x.id)}'"> <span>سجّل الجديد (${qEsc(it.project)}) وامسح القديم (${qEsc(x.project)} ${fmt(x.hours)}س)</span></label>`).join('')}
+        <label class="print-opt-row" style="font-size:12.5px;"><input type="radio" name="bfc${i}" ${it.choice === 'dropNew' ? 'checked' : ''} onchange="_bfFix.items[${i}].choice='dropNew'"> <span>سيب القديم، وامسح الجديد (${qEsc(it.project)}) من سجل الشغل</span></label>
+        <label class="print-opt-row" style="font-size:12.5px;"><input type="radio" name="bfc${i}" ${it.choice === 'skip' ? 'checked' : ''} onchange="_bfFix.items[${i}].choice='skip'"> <span>تخطي — متعملش حاجة</span></label>`;
+    } else if (it.code === 'needAmount') {
+      body = `<div style="display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap;"><span style="font-size:12px;">${it.kind === 'help' ? 'قيمة المساعد' : 'مبلغ السهرة'}</span>
+        <input type="text" inputmode="decimal" class="d-input ltr-num" style="width:110px;" value="${qEsc(it.amount)}" onkeypress="return /[0-9.]/.test(event.key)" oninput="_bfFix.items[${i}].amount=this.value">
+        <label style="font-size:12px;display:flex;gap:4px;align-items:center;"><input type="checkbox" ${it.choice === 'skip' ? 'checked' : ''} onchange="_bfFix.items[${i}].choice=this.checked?'skip':'do'"> تخطي</label></div>`;
+    } else if (it.code === 'needRate') {
+      body = `<div style="font-size:12px;color:var(--muted);margin-top:3px;">مش في شيت المرتبات — بياخد اليومية المكتوبة فوق لـ${qEsc(it.craftsman)} <label style="display:inline-flex;gap:4px;align-items:center;margin-inline-start:8px;"><input type="checkbox" ${it.choice === 'skip' ? 'checked' : ''} onchange="_bfFix.items[${i}].choice=this.checked?'skip':'do'"> تخطي</label></div>`;
+    } else {
+      body = `<div style="font-size:12px;color:var(--red);margin-top:3px;">${qEsc(it.error)} — هيتخطى</div>`;
+    }
+    return `<div style="padding:9px 10px;background:var(--cream);border-radius:8px;margin-bottom:6px;font-size:12.5px;">${head}${body}</div>`;
+  };
+  openCardModal(`
+    <div class="cd-head"><h3>كمّل البنود الناقصة</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div class="msg" style="display:block;font-size:12.5px;margin-bottom:10px;">${F.done ? '✅ اتسحب ' + F.done + ' بند (' + fmt(F.cost) + ' ج). ' : ''}فاضل ${F.items.length} بند محتاجين منك رقم أو اختيار — أي حاجة مش عاوزها اعملها "تخطي".</div>
+    ${rateEmps.length ? `<div style="padding:10px;border:1px dashed var(--gold);border-radius:9px;margin-bottom:10px;">
+      <div style="font-size:12.5px;font-weight:700;margin-bottom:6px;">يومية الموظفين اللي مش في المرتبات (الساعة = اليومية ÷ 9):</div>
+      ${rateEmps.map(n => `<div style="display:flex;gap:8px;align-items:center;margin-bottom:5px;"><span style="min-width:130px;font-weight:700;">${qEsc(n)}</span><input type="text" inputmode="decimal" class="d-input ltr-num" style="width:110px;" placeholder="اليومية" value="${qEsc(String(F.rates[n] || ''))}" onkeypress="return /[0-9.]/.test(event.key)" oninput="_bfFix.rates['${qEscJs(n)}']=this.value"></div>`).join('')}
+    </div>` : ''}
+    <div style="max-height:360px;overflow-y:auto;">${F.items.map(itemHtml).join('')}</div>
+    <div class="msg" id="bfFixMsg"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
+      <button type="button" class="btn btn-outline btn-sm" onclick="closeCardModal()">قفل</button>
+      <button type="button" class="btn btn-primary btn-sm" id="bfFixBtn" onclick="toBackfillSubmitFix_()">اسحب بالأرقام دي</button>
+    </div>`);
+}
+async function toBackfillSubmitFix_(){
+  const F = _bfFix, msg = document.getElementById('bfFixMsg'), btn = document.getElementById('bfFixBtn');
+  const send = [], dropWf = [], errs = [];
+  F.items.forEach(it => {
+    if (it.choice === 'skip' || (!it.code)) return;
+    const base = { craftsman: it.craftsman, project: it.project, date: it.date, hours: it.hours, kind: it.kind, eveningHours: it.eveningHours, wfId: it.wfId };
+    const rate = Number(F.rates[it.craftsman]) || 0;
+    if (rate > 0) base.dailyRate = rate;
+    if (it.code === 'needRate' && !(rate > 0)) { errs.push('اكتب يومية ' + it.craftsman + ' (أو اعمل تخطي)'); return; }
+    if (it.code === 'needAmount') { const a = Number(it.amount) || 0; if (!(a > 0)) { errs.push('اكتب المبلغ لـ' + it.craftsman + ' ' + it.date + ' (أو اعمل تخطي)'); return; } base.eveningAmount = a; }
+    if (it.code === 'overCap') {
+      if (it.choice === 'dropNew') { if (it.wfId) dropWf.push(String(it.wfId)); return; }
+      if (String(it.choice).indexOf('rep:') === 0) base.replaceHoursIds = [it.choice.slice(4)];
+      else return;
+    }
+    send.push(base);
+  });
+  if (errs.length) { msg.className = 'msg err'; msg.style.display = 'block'; msg.textContent = Array.from(new Set(errs)).slice(0, 4).join(' • '); return; }
+  if (!send.length && !dropWf.length) { closeCardModal(); showToast('مفيش حاجة اتعملت — كله تخطي'); return; }
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري السحب...';
+  try {
+    if (dropWf.length) await apiPost('deleteWorkflowEntries', { ids: dropWf, hoursIds: [] });
+    const res = send.length ? await apiPost('backfillMissingHours', { items: send }) : { count: 0, failed: 0, failures: [], totalCost: 0 };
+    try { renderCostSummaryBody_(); } catch (e) {}
+    if (res.failed > 0) { toBackfillOpenFix_(send, res); return; }
+    const total = F.done + (res.count || 0), cost = F.cost + (Number(res.totalCost) || 0);
+    _bfFix = { items: [], rates: F.rates, done: 0, cost: 0 };
+    closeCardModal();
+    showToast('✅ خلصت — اتسحب ' + total + ' بند (' + fmt(cost) + ' ج)' + (dropWf.length ? ' واتمسح ' + dropWf.length + ' بند مكرر من سجل الشغل' : ''));
+    const banner = document.getElementById('backfillBanner'); if (banner) banner.innerHTML = '';
+  } catch (err) { msg.className = 'msg err'; msg.style.display = 'block'; msg.textContent = 'خطأ: ' + (err.message || err); btn.disabled = false; btn.textContent = 'اسحب بالأرقام دي'; }
 }
 async function renderCostSummaryBody_(){
   const box = document.getElementById('costSummaryBody'); if (!box) return;
