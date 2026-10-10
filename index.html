@@ -11336,7 +11336,7 @@ function toQfRestore_(){
       if (typeof name !== 'string' || !st || !Array.isArray(st.dates) || !st.rows || typeof st.rows !== 'object') return;
       const dates = st.dates.filter(iso => /^\d{4}-\d{2}-\d{2}$/.test(iso) && Array.isArray(st.rows[iso]));
       const rows = {};
-      dates.forEach(iso => { rows[iso] = st.rows[iso].map(r => ({ kind: r.kind === 'eve' ? 'eve' : 'work', project: String(r.project || ''), hours: String(r.hours == null ? '' : r.hours), title: String(r.title || ''), notes: String(r.notes || ''), amount: String(r.amount == null ? '' : r.amount) })); });
+      dates.forEach(iso => { rows[iso] = st.rows[iso].map(r => ({ kind: (r.kind === 'eve' || r.kind === 'help') ? r.kind : 'work', project: String(r.project || ''), hours: String(r.hours == null ? '' : r.hours), title: String(r.title || ''), notes: String(r.notes || ''), amount: String(r.amount == null ? '' : r.amount) })); });
       emps.push(name);
       perEmp[name] = { dates, rows, lastIso: dates.indexOf(st.lastIso) !== -1 ? st.lastIso : (dates[dates.length - 1] || null), collapsed: !!st.collapsed };
     });
@@ -11830,6 +11830,15 @@ function toRenderWhoWhereBlock() {
  * المقابل)، وسطر الساعات المقابل له مبيتعرضش تاني. سطور الساعات اللي مالهاش سطر
  * في سجل الشغل (زي سهرة اتسجلت من مرتبات) بتفضل تتعرض ككارت 🌙 زي الأول. */
 function toIsEveningWf_(it){ return !!it && !(Number(it.hours) > 0) && (Number(it.eveningHours) > 0 || /^\s*سهرة/.test(String(it.notes || ''))) && !toIsAbsenceNote_(it); }
+// "مساعد" (إضافة 2026-10-10): بند/سطر ساعات ملاحظاته فيها "مساعد" — بيتعرض 👷 مش 🌙
+function toIsHelperRow_(x){ return /(^|—\s*)مساعد/.test(String((x && x.notes) || '')); }
+// سهرة/مساعد في خلية: بترجع { eve: فيه سهرة حقيقية؟, help: فيه مساعد؟ }
+function toCellEveKinds_(wfItems, dayHours){
+  const eveWf = (wfItems || []).filter(toIsEveningWf_);
+  const eveH = (dayHours || []).filter(h => !(Number(h.hours) > 0) && (Number(h.eveningHours) > 0 || Number(h.eveningAmount) > 0));
+  return { eve: eveWf.some(x => !toIsHelperRow_(x)) || eveH.some(h => !toIsHelperRow_(h)), help: eveWf.some(toIsHelperRow_) || eveH.some(toIsHelperRow_) };
+}
+const TO_HELP_CHIP = `<span class="to-cell-chip" style="background:rgba(70,120,160,.15);color:#2d5876;font-weight:700;">👷 مساعد</span>`;
 function toFindEveningHoursFor_(it, hoursEvenings, used){
   return (hoursEvenings || []).find(h => !(Number(h.hours) > 0) && (!used || !used.has(h)) &&
     String(h.project || '').trim() === String(it.project || '').trim() && Number(h.eveningHours) === Number(it.eveningHours)) || null;
@@ -11885,19 +11894,20 @@ function toDayRegularHours_(emp, iso){
 }
 function toEveningWfHTML_(x, withSelect){
   const it = x.it, amt = x.h ? Number(x.h.eveningAmount) || 0 : 0;
-  const notes = String(it.notes || '').replace(/^\s*سهرة\s*(—\s*)?/, '').trim();
+  const isHelp = toIsHelperRow_(it);
+  const notes = String(it.notes || '').replace(/^\s*(سهرة|مساعد)\s*(—\s*)?/, '').trim();
   return `
-    <div class="to-wf-item" style="border-top:1px dashed var(--border);background:rgba(212,175,55,.08);border-radius:8px;padding:9px 8px;margin-bottom:6px;">
+    <div class="to-wf-item" style="border-top:1px dashed var(--border);background:${isHelp ? 'rgba(70,120,160,.08)' : 'rgba(212,175,55,.08)'};border-radius:8px;padding:9px 8px;margin-bottom:6px;">
       <div class="to-wf-item-head" style="display:flex;align-items:flex-start;gap:8px;">
         ${withSelect ? `<input type="checkbox" class="to-wk-sel" value="${qEsc(String(it.id))}" style="width:18px;height:18px;margin-top:3px;cursor:pointer;" ${TO_WEEK_SEL.has(String(it.id)) ? 'checked' : ''} onchange="toWeekSelToggle_(this.value,this.checked)">` : ''}
         <div style="flex:1;min-width:0;">
           <div class="wf-item-row">
-            <span style="font-weight:700;color:#8a6d1f;">🌙 سهرة${Number(it.eveningHours) > 0 ? ' — ' + qEsc(String(it.eveningHours)) + ' ساعة' : ''}</span>
+            <span style="font-weight:700;color:${isHelp ? '#2d5876' : '#8a6d1f'};">${isHelp ? '👷 مساعد' : '🌙 سهرة'}${Number(it.eveningHours) > 0 ? ' — ' + qEsc(String(it.eveningHours)) + ' ساعة' : ''}</span>
             ${it.project ? `<span><b>المشروع:</b> ${qEsc(it.project)}</span>` : ''}
           </div>
           ${it.title ? `<div style="font-weight:700;font-size:13px;margin-top:2px;">${qEsc(it.title)}</div>` : ''}
           ${notes ? `<div style="font-size:12.5px;color:var(--muted);margin-top:4px;">&#128221; ${qEsc(notes)}</div>` : ''}
-          <div style="font-size:11px;color:var(--muted);margin-top:2px;">${amt > 0 ? `<b style="color:#8a6d1f;">تكلفة السهرة على المشروع: ${fmt(amt)} ج</b>` : 'للعلم بس — مفيش مبلغ متسجل لها'}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;">${amt > 0 ? `<b style="color:${isHelp ? '#2d5876' : '#8a6d1f'};">تكلفة ${isHelp ? 'المساعد' : 'السهرة'} على المشروع: ${fmt(amt)} ج</b>` : 'للعلم بس — مفيش مبلغ متسجل لها'}</div>
         </div>
         <div class="to-status-row" style="margin-top:0;">
           <button type="button" class="mat-icon-btn" title="حذف السهرة (وتكلفتها من المشروع)" onclick="toWfItemDelete_('${qEscJs(it.id)}')">🗑️</button>
@@ -12548,6 +12558,7 @@ function toQfDayHtml_(ei, iso, st){
       <div class="toqf-chips" style="margin-top:4px;">
         <button type="button" class="btn btn-outline btn-sm" onclick="toQfAddRow_(${ei},'${iso}','work')">+ مشروع تاني</button>
         <button type="button" class="btn btn-outline btn-sm" onclick="toQfAddRow_(${ei},'${iso}','eve')">🌙 سهرة</button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="toQfAddRow_(${ei},'${iso}','help')">👷 مساعد</button>
         ${st.dates.length > 1 ? `<button type="button" class="btn btn-outline btn-sm" onclick="toQfCopyDayToOthers_(${ei},'${iso}')">📋 كرر اليوم ده على باقي أيامه</button>` : ''}
       </div>
     </div>`;
@@ -12556,16 +12567,19 @@ let TO_QF_ERR = new Set(); // خانات فيها غلط من آخر "حفظ ا�
 function toQfErrHas_(k){ return TO_QF_ERR.has(k) ? ' toqf-err' : ''; }
 function toQfRowHtml_(ei, iso, ri, r){
   const ek = TO_QF.emps[ei] + '|' + iso + '|' + ri + '|';
-  const isEve = r.kind === 'eve';
+  // ⚠️ إضافة 2026-10-10: "مساعد" = زي السهرة (سطر لوحده، مش بيتحسب في الـ9 ساعات) بس مبلغه مكتوب يدوي بس — مالوش علاقة بشيت المرتبات
+  const isHelp = r.kind === 'help';
+  const isEve = r.kind === 'eve' || isHelp;
   const isAbs = !isEve && r.project === 'إجازة';
   const args = `${ei},'${iso}',${ri}`;
   return `
-    <div class="toqf-row ${isEve ? 'eve' : ''}">
-      ${isEve ? `<div style="grid-column:1/-1;order:-1;font-size:11.5px;font-weight:700;">🌙 سهرة <span style="font-weight:400;color:var(--muted);">${toQfRate_(TO_QF.emps[ei]) ? (Number(toQfRate_(TO_QF.emps[ei]).eveningRate) > 0 ? '— سعر السهرة المكتوب (' + fmt(toQfRate_(TO_QF.emps[ei]).eveningRate) + ' ج) بيتحمّل على المشروع' : '— اكتب سعر السهرة فوق جنب اليومية') : '— لو كتبت "قيمة السهرة" بتتحسب هي. لو سبتها فاضية بتتاخد من شيت المرتبات: نوت الخانة (سهرة مشروع … — المبلغ) لنفس المشروع، وإلا الإضافة (ج) في خانة اليوم. ولو مفيش حاجة هناك بتتسجل للعلم بس'}</span></div>` : ''}
+    <div class="toqf-row ${isEve ? 'eve' : ''}" ${isHelp ? 'style="background:rgba(70,120,160,.12);"' : ''}>
+      ${isHelp ? `<div style="grid-column:1/-1;order:-1;font-size:11.5px;font-weight:700;">👷 مساعد <span style="font-weight:400;color:var(--muted);">— مبلغه = "قيمة المساعد" اللي تكتبها، بيتحمّل على المشروع ده. مالوش علاقة بشيت المرتبات ومش بيتحسب في الـ9 ساعات</span></div>` : ''}
+      ${isEve && !isHelp ? `<div style="grid-column:1/-1;order:-1;font-size:11.5px;font-weight:700;">🌙 سهرة <span style="font-weight:400;color:var(--muted);">${toQfRate_(TO_QF.emps[ei]) ? (Number(toQfRate_(TO_QF.emps[ei]).eveningRate) > 0 ? '— سعر السهرة المكتوب (' + fmt(toQfRate_(TO_QF.emps[ei]).eveningRate) + ' ج) بيتحمّل على المشروع' : '— اكتب سعر السهرة فوق جنب اليومية') : '— لو كتبت "قيمة السهرة" بتتحسب هي. لو سبتها فاضية بتتاخد من شيت المرتبات: نوت الخانة (سهرة مشروع … — المبلغ) لنفس المشروع، وإلا الإضافة (ج) في خانة اليوم. ولو مفيش حاجة هناك بتتسجل للعلم بس'}</span></div>` : ''}
       <div class="${toQfErrHas_(ek + 'project')}">${toProjDropdownHtml_(`toqfP-${ei}-${iso}-${ri}`, r.project, `toQfSetRow_(${args},'project',v);toQfRenderBox_();`)}</div>
-      <input type="text" inputmode="decimal" class="d-input ltr-num${toQfErrHas_(ek + 'hours')}" placeholder="${isEve ? '🌙 ساعات' : 'ساعات'}" value="${isAbs ? '' : qEsc(r.hours)}" ${isAbs ? 'disabled' : ''} onkeypress="return /[0-9.]/.test(event.key)" oninput="this.classList.remove('toqf-err');toQfSetRow_(${args},'hours',this.value);toQfUpdateTotal_(${ei},'${iso}')">
-      <input type="text" inputmode="decimal" class="d-input ltr-num" placeholder="${isEve ? 'قيمة السهرة' : 'قيمة اليوم'}" title="${isEve ? 'اختياري — لو كتبتها بتتحسب هي، لو سبتها فاضية بتتاخد من شيت المرتبات' : 'اختياري — قيمة اليوم (9 ساعات). لو كتبتها بتتحسب بيها، لو سبتها فاضية بياخد يوميته العادية من المرتبات'}" value="${isAbs ? '' : qEsc(r.amount || '')}" ${isAbs ? 'disabled' : ''} onkeypress="return /[0-9.]/.test(event.key)" oninput="toQfSetRow_(${args},'amount',this.value)">
-      <input class="d-input toqf-wide" placeholder="${isEve ? 'المطلوب في السهرة (اختياري)' : 'المطلوب (اختياري)'}" value="${qEsc(r.title)}" oninput="toQfSetRow_(${args},'title',this.value)">
+      <input type="text" inputmode="decimal" class="d-input ltr-num${toQfErrHas_(ek + 'hours')}" placeholder="${isHelp ? 'ساعات' : (isEve ? '🌙 ساعات' : 'ساعات')}" value="${isAbs ? '' : qEsc(r.hours)}" ${isAbs ? 'disabled' : ''} onkeypress="return /[0-9.]/.test(event.key)" oninput="this.classList.remove('toqf-err');toQfSetRow_(${args},'hours',this.value);toQfUpdateTotal_(${ei},'${iso}')">
+      <input type="text" inputmode="decimal" class="d-input ltr-num${toQfErrHas_(ek + 'amount')}" placeholder="${isHelp ? 'قيمة المساعد' : (isEve ? 'قيمة السهرة' : 'قيمة اليوم')}" title="${isHelp ? 'المبلغ اللي هيتحمّل على المشروع' : ''}${isHelp ? '' : isEve ? 'اختياري — لو كتبتها بتتحسب هي، لو سبتها فاضية بتتاخد من شيت المرتبات' : 'اختياري — قيمة اليوم (9 ساعات). لو كتبتها بتتحسب بيها، لو سبتها فاضية بياخد يوميته العادية من المرتبات'}" value="${isAbs ? '' : qEsc(r.amount || '')}" ${isAbs ? 'disabled' : ''} onkeypress="return /[0-9.]/.test(event.key)" oninput="toQfSetRow_(${args},'amount',this.value)">
+      <input class="d-input toqf-wide" placeholder="${isHelp ? 'المساعد عمل ايه / اسمه (اختياري)' : (isEve ? 'المطلوب في السهرة (اختياري)' : 'المطلوب (اختياري)')}" value="${qEsc(r.title)}" oninput="toQfSetRow_(${args},'title',this.value)">
       <input class="d-input toqf-wide" placeholder="ملاحظات" value="${qEsc(r.notes)}" oninput="toQfSetRow_(${args},'notes',this.value)">
       <button type="button" class="mat-icon-btn toqf-x" title="شيل السطر" onclick="toQfRemoveRow_(${args})">✕</button>
     </div>`;
@@ -12659,10 +12673,10 @@ function toQfAddRow_(ei, iso, kind){
   const st = toQfState_(ei); if (!st || !st.rows[iso]) return;
   const row = toQfNewRow_(kind);
   // ⚠️ إضافة 2026-10-10: السهرة الجديدة بتاخد افتراضي نفس مشروع شغل اليوم (آخر مشروع متختار) و5 ساعات — وتقدر تغيّرهم
-  if (kind === 'eve') {
+  if (kind === 'eve' || kind === 'help') {
     const src = st.rows[iso].slice().reverse().find(r => r.kind === 'work' && r.project && r.project !== 'إجازة') || st.rows[iso].slice().reverse().find(r => r.project && r.project !== 'إجازة');
     row.project = src ? src.project : '';
-    row.hours = '5';
+    row.hours = kind === 'help' ? '9' : '5';
   }
   st.rows[iso].push(row);
   toQfRenderBox_();
@@ -12720,7 +12734,14 @@ async function toQuickformSave_() {
         const project = (r.project || '').trim();
         const hrs = Number(r.hours) || 0;
         const title = (r.title || '').trim(), notes = (r.notes || '').trim();
-        if (!project) { errs.push(where + ': اختار المشروع' + (r.kind === 'eve' ? ' بتاع السهرة' : '') + ' (أو شيل السطر)'); TO_QF_ERR.add(ek + 'project'); return; }
+        if (!project) { errs.push(where + ': اختار المشروع' + (r.kind === 'eve' ? ' بتاع السهرة' : (r.kind === 'help' ? ' بتاع المساعد' : '')) + ' (أو شيل السطر)'); TO_QF_ERR.add(ek + 'project'); return; }
+        if (r.kind === 'help') {
+          const helpAmt = Number(r.amount) || 0;
+          if (hrs <= 0) { errs.push(where + ': اكتب ساعات المساعد'); TO_QF_ERR.add(ek + 'hours'); return; }
+          if (helpAmt <= 0) { errs.push(where + ': اكتب قيمة المساعد'); TO_QF_ERR.add(ek + 'amount'); return; }
+          entries.push({ employee: emp, project, hours: 0, date: iso, title, notes: ['مساعد', notes].filter(Boolean).join(' — '), eveningHours: r.hours, helper: true, helperAmount: helpAmt });
+          return;
+        }
         if (r.kind === 'eve') {
           if (hrs <= 0) { errs.push(where + ': اكتب ساعات السهرة'); TO_QF_ERR.add(ek + 'hours'); return; }
           const manualAmt = Number(r.amount) || 0; // قيمة السهرة المكتوبة يدوي — بتتغلب على شيت المرتبات/سعر المؤقت
@@ -12924,15 +12945,17 @@ function toRenderWeekGrid(dates, from, to) {
                   const chipIcon = it2 => toIsAbsenceNote_(it2) ? '&#128683;' : (it2.status==='done' ? '&#10003;' : (it2.status==='blocked' ? '&#9940;' : '&#128205;'));
                   // ⚠️ إضافة: 🌙 لو فيه سهرة متسجلة لنفس الصنيعي واليوم ده (بغض النظر عن
                   // مشروعها) — تشيب منفصل يبان جنب شيبات المشاريع العادية جوه نفس الخلية
-                  const hasEvening = allCellItems.length !== items.length || TO_STATE.weekHoursEntries.some(h => h.employee === emp && h.date === iso && Number(h.eveningHours) > 0);
+                  const _ek = toCellEveKinds_(allCellItems, TO_STATE.weekHoursEntries.filter(h => h.employee === emp && h.date === iso));
+                  const hasEvening = _ek.eve, hasHelper = _ek.help;
                   const orphans = toOrphanHours_(allCellItems, TO_STATE.weekHoursEntries.filter(h => h.employee === emp && h.date === iso));
                   // ⚠️ إضافة 2026-10-08: يوم فات (أو النهارده) ومفيش فيه شغل عادي على مشروع = "إجازة" (عرض بس — مفيش أي كتابة في الشيتات)
                   const isOff = !items.length && !orphans.length && iso <= todayIso && !TO_STATE.weekMonthlyNames.has(emp);
                   const inner = (items.length ? items.map(it => `<span class="to-cell-chip ${toIsAbsenceNote_(it)?'to-cell-absence':'status-'+(it.status||'working')}">${chipIcon(it)} ${qEsc(it.project)}</span>`).join('')
-                      : (isOff ? `<span class="to-cell-chip to-cell-absence">&#128683; إجازة</span>` : ((hasEvening || orphans.length) ? '' : `<span class="to-cell-empty">—</span>`)))
+                      : (isOff ? `<span class="to-cell-chip to-cell-absence">&#128683; إجازة</span>` : ((hasEvening || hasHelper || orphans.length) ? '' : `<span class="to-cell-empty">—</span>`)))
                     + orphans.map(h => `<span class="to-cell-chip status-working">&#128205; ${qEsc(h.project || '')}</span>`).join('')
                     + (toDayRegularHours_(emp, iso) > 9 ? `<span class="to-cell-chip" style="background:#fdeaea;color:var(--red);font-weight:700;" title="متسجل أكتر من 9 ساعات شغل في اليوم ده — احذف المكرر">⚠️ ${fmt(toDayRegularHours_(emp, iso))} ساعة</span>` : '')
-                    + (hasEvening ? `<span class="to-cell-chip" style="background:rgba(212,175,55,.18);color:#8a6d1f;font-weight:700;">🌙 سهرة</span>` : '');
+                    + (hasEvening ? `<span class="to-cell-chip" style="background:rgba(212,175,55,.18);color:#8a6d1f;font-weight:700;">🌙 سهرة</span>` : '')
+                    + (hasHelper ? TO_HELP_CHIP : '');
                   return `<td class="to-day-cell ${isSel?'selected':''}" data-emp="${qEsc(emp)}" data-date="${iso}">${inner}</td>`;
                 }).join('')}
               </tr>
@@ -13528,7 +13551,8 @@ async function toLoadWeeklyReportBox_(from, to){
         const items = all.filter(it => !toIsEveningWf_(it));
         const dayHours = hours.filter(h => h.employee === emp && h.date === iso);
         const orphans = toOrphanHours_(all, dayHours);
-        const hasEve = all.length !== items.length || dayHours.some(h => Number(h.eveningHours) > 0 || (!(Number(h.hours) > 0) && Number(h.eveningAmount) > 0));
+        const _ek = toCellEveKinds_(all, dayHours);
+        const hasEve = _ek.eve, hasHelp = _ek.help;
         const regH = dayHours.reduce((t, h) => t + (Number(h.hours) > 0 ? Number(h.hours) : 0), 0);
         const isOff = !items.length && !orphans.length && iso <= todayIso && !monthly.has(emp);
         const chip = it => {
@@ -13536,10 +13560,11 @@ async function toLoadWeeklyReportBox_(from, to){
           const ic = abs ? '&#128683;' : (it.status === 'done' ? '&#10003;' : (it.status === 'blocked' ? '&#9940;' : '&#128205;'));
           return `<span class="to-cell-chip ${abs ? 'to-cell-absence' : 'status-' + (it.status || 'working')}" style="white-space:normal;">${ic} ${qEsc(it.project)}${it.title ? `<span style="display:block;font-weight:400;font-size:10.5px;color:var(--muted);">${qEsc(it.title)}</span>` : ''}</span>`;
         };
-        return (items.length ? items.map(chip).join('') : (isOff ? `<span class="to-cell-chip to-cell-absence">&#128683; إجازة</span>` : ((hasEve || orphans.length) ? '' : `<span class="to-cell-empty">—</span>`)))
+        return (items.length ? items.map(chip).join('') : (isOff ? `<span class="to-cell-chip to-cell-absence">&#128683; إجازة</span>` : ((hasEve || hasHelp || orphans.length) ? '' : `<span class="to-cell-empty">—</span>`)))
           + orphans.map(h => `<span class="to-cell-chip status-working">&#128205; ${qEsc(h.project || '')}</span>`).join('')
           + (regH > 9 ? `<span class="to-cell-chip" style="background:#fdeaea;color:var(--red);">⚠️ ${fmt(regH)} ساعة</span>` : '')
-          + (hasEve ? `<span class="to-cell-chip" style="background:rgba(212,175,55,.18);color:#8a6d1f;">🌙 سهرة</span>` : '');
+          + (hasEve ? `<span class="to-cell-chip" style="background:rgba(212,175,55,.18);color:#8a6d1f;">🌙 سهرة</span>` : '')
+          + (hasHelp ? TO_HELP_CHIP : '');
       };
       TO_WEEK_REPORT_LAST = { title: 'تقرير اسبوعي — أسبوع ' + toFmtDayDate(dates[0]) + ' — ' + toFmtDayDate(dates[6]), days, crafts, cellHtml, todayIso };
       box.innerHTML = `
