@@ -12559,7 +12559,7 @@ function toQfDayHtml_(ei, iso, st){
         <button type="button" class="btn btn-outline btn-sm" onclick="toQfAddRow_(${ei},'${iso}','work')">+ مشروع تاني</button>
         <button type="button" class="btn btn-outline btn-sm" onclick="toQfAddRow_(${ei},'${iso}','eve')">🌙 سهرة</button>
         <button type="button" class="btn btn-outline btn-sm" onclick="toQfAddRow_(${ei},'${iso}','help')">👷 مساعد</button>
-        ${st.dates.length > 1 ? `<button type="button" class="btn btn-outline btn-sm" onclick="toQfCopyDayToOthers_(${ei},'${iso}')">📋 كرر اليوم ده على باقي أيامه</button>` : ''}
+        <button type="button" class="btn btn-outline btn-sm" onclick="toQfCopyDayToOthers_(${ei},'${iso}')">📋 كرر اليوم ده على باقي أيامه</button>
       </div>
     </div>`;
 }
@@ -12690,6 +12690,7 @@ function toQfRemoveRow_(ei, iso, ri){
 }
 function toQfCopyDayToOthers_(ei, iso){
   const st = toQfState_(ei); if (!st || !st.rows[iso]) return;
+  if (st.dates.length < 2) { showToast('اختار الأيام التانية من أزرار الأيام فوق الأول، وبعدين دوس "كرر"', 'error'); return; }
   st.dates.forEach(o => { if (o !== iso) st.rows[o] = JSON.parse(JSON.stringify(st.rows[iso])); });
   toQfRenderBox_();
   showToast('اتكرر على باقي أيام ' + TO_QF.emps[ei]);
