@@ -10898,7 +10898,7 @@ setTimeout(function _bootApp(){
  *  صفحتي "تقرير يومي بالصنايعية" و"بنود المشاريع" بيقروا منه.
  * ═══════════════════════════════════════════════════════════════════════ */
 let TO_STATE = {
-  activeTab: sessionStorage.getItem('lm_toActiveTab') || 'daily',
+  activeTab: (function(){ try { return localStorage.getItem('lm_toActiveTab') || sessionStorage.getItem('lm_toActiveTab') || 'daily'; } catch(e){ return 'daily'; } })(),
   projects: [],
   craftsmen: [],
   todayEntries: [],      // شغل يوم formDate بس (تاب شغل يومي)
@@ -10946,6 +10946,7 @@ function toGetWeekDates(anchor){
 }
 
 async function renderTaskOrganize(token) {
+  toViewRestore_(); // أول مرة بس في القعدة: نرجّع الأسبوع/اليوم والخلايا المحددة من آخر مرة
   try {
     document.getElementById('content').innerHTML = `
       <div id="to-stat-strip"></div>
@@ -10975,7 +10976,7 @@ async function renderTaskOrganize(token) {
       const btn = e.target.closest('button'); if (!btn) return;
       if (btn.dataset.t === TO_STATE.activeTab) return; // نفس التاب المفتوح أصلاً — مفيش داعي لأي حاجة
       TO_STATE.activeTab = btn.dataset.t;
-      try { sessionStorage.setItem('lm_toActiveTab', TO_STATE.activeTab); } catch(e){}
+      try { sessionStorage.setItem('lm_toActiveTab', TO_STATE.activeTab); localStorage.setItem('lm_toActiveTab', TO_STATE.activeTab); } catch(e){}
       document.querySelectorAll('#toTabs button').forEach(b => b.classList.toggle('active', b===btn));
       toRenderActiveTab();
     });
@@ -11091,6 +11092,28 @@ async function toWarmupBackground(token) {
  * وأي تحكم تاريخ جوه التابات (أسهم الأسبوع، تاريخ "مين فين"، تاريخ الروستر، أسهم
  * الفورم) بيغيّر نفس التاريخ ده — فالتنقل بين "شغل يومي" و"اسبوعي" بيفضل على نفس الأيام. */
 function toPageDate_(){ return TO_STATE.pageDate || toISO(TO_STATE.weekAnchor); }
+// ⚠️ إضافة 2026-10-10 ("لوكل استوردج للباقي"): تاريخ الصفحة (الأسبوع/اليوم المفتوح) وتحديد خلايا الجدول الأسبوعي
+// بيتحفظوا على الجهاز — بعد Refresh/قفل المتصفح الصفحة بتفتح على نفس الأسبوع ونفس الخلايا المحددة.
+// (التاب المفتوح ونوع عرض "شغل يومي" ومسودة فورم تسجيل الشغل محفوظين برضه.)
+const TO_VIEW_LS_KEY = 'lm_toView_v1';
+function toViewPersist_(){
+  try { localStorage.setItem(TO_VIEW_LS_KEY, JSON.stringify({ pageDate: TO_STATE.pageDate || null, cells: TO_STATE.selectedCells || [] })); } catch (e) {}
+}
+let TO_VIEW_RESTORED = false;
+function toViewRestore_(){
+  if (TO_VIEW_RESTORED) return; TO_VIEW_RESTORED = true;
+  try {
+    const d = JSON.parse(localStorage.getItem(TO_VIEW_LS_KEY) || 'null'); if (!d) return;
+    if (d.pageDate && /^\d{4}-\d{2}-\d{2}$/.test(d.pageDate)) {
+      const dt = new Date(d.pageDate + 'T00:00:00');
+      if (!isNaN(dt.getTime())) {
+        TO_STATE.pageDate = d.pageDate; TO_STATE.weekAnchor = dt; TO_STATE.wwDate = d.pageDate;
+        TO_ROSTER.date = d.pageDate; TO_QF.weekAnchor = new Date(dt);
+      }
+    }
+    if (Array.isArray(d.cells)) TO_STATE.selectedCells = d.cells.filter(c => c && typeof c.emp === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(c.date));
+  } catch (e) {}
+}
 function toRenderPageDateBar_(){
   const bar = document.getElementById('to-page-date-bar'); if (!bar) return;
   const iso = toPageDate_();
@@ -11119,6 +11142,7 @@ function toSetPageDate_(iso){
   TO_ROSTER.date = iso;
   TO_QF.weekAnchor = new Date(d);
   if (weekChanged) TO_STATE.selectedCells = [];
+  toViewPersist_();
   if (weekChanged && TO_QF.emps.some(e => (TO_QF.perEmp[e] && TO_QF.perEmp[e].dates || []).some(toQfOutOfWeek_)))
     showToast('⚠️ في فورم "تسجيل شغل" أيام متختارة من أسبوع تاني — هتلاقيها متعلّمة ⚠️ تحت', 'error');
   toRenderPageDateBar_();
@@ -11264,7 +11288,7 @@ function toRenderCraftsmenOptionsHtml_(craftsmen, selected){
   html += monthly.map(optHtml).join('');
   return html;
 }
-let TO_DAILY_VIEW = sessionStorage.getItem('lm_toDailyView') || 'quickform'; // 'roster' | 'quickform'
+let TO_DAILY_VIEW = (function(){ try { return localStorage.getItem('lm_toDailyView') || sessionStorage.getItem('lm_toDailyView') || 'quickform'; } catch(e){ return 'quickform'; } })(); // 'roster' | 'quickform'
 // ⚠️ تعديل 2026-10-07: فورم "تسجيل شغل" بقى بنفس فكرة "إضافة سريعة" في مرتبات —
 // تختار الموظف (واحد أو أكتر)، كل موظف بياخد بلوك مستقل تختار فيه أيامه هو، وكل
 // يوم ليه سطور مشاريع (مشروع + ساعات + المطلوب + ملاحظات) وسهرة اختيارية. كله
@@ -11387,7 +11411,7 @@ function toProjDropdownHtmlForModal_(id, hiddenInputId, selected, includeEmpty){
 }
 function toSetDailyView(view){
   TO_DAILY_VIEW = view;
-  try { sessionStorage.setItem('lm_toDailyView', view); } catch(e){}
+  try { sessionStorage.setItem('lm_toDailyView', view); try { localStorage.setItem('lm_toDailyView', view); } catch(e){}; } catch(e){}
   toRenderDailyTabContent();
 }
 // بيقرر يعرض إيه في تاب "شغل يومي": الروستر (الافتراضي — كل الصنايعية
@@ -12956,11 +12980,12 @@ function toWeekToggleCells_(cells){
   }
   toWeekApplyCellClasses_();
   toRenderWeekDetail();
+  toViewPersist_();
   // سكرول للتفاصيل مع أول خلية بس — بعد كده المستخدم بيكمّل تحديد في الجدول من غير ما الصفحة تتحرك
   if (wasEmpty && TO_STATE.selectedCells.length) { const d = document.getElementById('toWeekDetail'); if (d) d.scrollIntoView({behavior:'smooth', block:'nearest'}); }
 }
 function toWeekClearCells_(){
-  TO_STATE.selectedCells = [];
+  TO_STATE.selectedCells = []; toViewPersist_();
   toWeekApplyCellClasses_();
   toRenderWeekDetail();
 }
