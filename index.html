@@ -6740,7 +6740,7 @@ async function renderProjectsTab(token) {
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
           <h3 style="margin:0;">ملخص تكلفة المشاريع (${projects.length})</h3>
         </div>
-        ${projects.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>ساعات العمالة</th><th>تكلفة العمالة</th><th>تكلفة الخامات</th><th>مصاريف المشروع</th><th>إجمالي التكلفة</th><th>الإيرادات</th><th>صافي الربح</th></tr></thead>
+        ${projects.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>ساعات العمالة</th><th>تكلفة العمالة</th><th>تكلفة الخامات</th><th>إجمالي المصاريف</th><th>إجمالي التكلفة</th><th>الإيرادات</th><th>صافي الربح</th></tr></thead>
         <tbody>${projects.map(p => `<tr class="row-clickable" onclick="showProjectDetail('${p.project.replace(/'/g,"\\'")}')"><td>${p.project}</td><td>${fmt(p.laborHours)}</td><td>${fmt(p.laborCost)} ج</td><td>${fmt(p.materialsCost)} ج</td><td>${fmt(p.projectExpenses || 0)} ج</td><td><b>${fmt(p.totalCost)} ج</b></td>
           <td>${p.financials ? fmt(p.financials.revenue)+' ج' : '—'}</td>
           <td>${p.netProfit===null ? '—' : `<b style="color:${p.netProfit>=0?'var(--green)':'var(--red)'}">${fmt(p.netProfit)} ج</b>`}</td></tr>`).join('')}</tbody></table></div>`
@@ -6801,7 +6801,7 @@ async function showProjectDetail(name){
           <div class="card"><div class="label">تكلفة العمالة</div><div class="value gold">${fmt(d.laborCost)} ج</div></div>
           <div class="card"><div class="label">ساعات العمالة</div><div class="value">${fmt(d.laborHours)} س</div></div>
           <div class="card clickable" onclick="showProjectMaterialsModal(_projectDetailCache)"><div class="label">تكلفة الخامات</div><div class="value gold">${fmt(d.materialsCost)} ج</div></div>
-          <div class="card clickable" title="تفاصيل المصاريف في صفحة مصاريف المشاريع" onclick="try{sessionStorage.setItem('lm_pspProject','${qEscJs(d.project)}');PSP.sel='${qEscJs(d.project)}';}catch(e){};goTo('projectSpend')"><div class="label">مصاريف المشروع (شيت المصاريف)</div><div class="value gold">${fmt(d.projectExpenses || 0)} ج</div></div>
+          <div class="card clickable" title="تفاصيل المصاريف في صفحة مصاريف المشاريع" onclick="try{sessionStorage.setItem('lm_pspProject','${qEscJs(d.project)}');PSP.sel='${qEscJs(d.project)}';}catch(e){};goTo('projectSpend')"><div class="label">إجمالي المصاريف (متابعة صرف المشاريع)</div><div class="value gold">${fmt(d.projectExpenses || 0)} ج</div></div>
           ${(d.costsTotal || 0) + (d.installCost || 0) + (d.productsLaborCost || 0) > 0 ? `<div class="card"><div class="label">تكاليف تانية مسجلة (التكاليف/تركيب)</div><div class="value gold">${fmt((d.costsTotal || 0) + (d.installCost || 0) + (d.productsLaborCost || 0))} ج</div></div>` : ''}
           <div class="card"><div class="label">إجمالي التكلفة (عمالة + خامات + مصاريف + تكاليف)</div><div class="value green">${fmt(d.totalCost)} ج</div></div>
           ${d.financials ? `<div class="card"><div class="label">الإيرادات المسجلة</div><div class="value green">${fmt(d.financials.revenue)} ج</div></div>` : ''}
