@@ -12560,7 +12560,9 @@ function toQfDayHtml_(ei, iso, st){
         <button type="button" class="btn btn-outline btn-sm" onclick="toQfAddRow_(${ei},'${iso}','eve')">🌙 سهرة</button>
         <button type="button" class="btn btn-outline btn-sm" onclick="toQfAddRow_(${ei},'${iso}','help')">👷 مساعد</button>
         <button type="button" class="btn btn-outline btn-sm" onclick="toQfCopyDayToOthers_(${ei},'${iso}')">📋 كرر اليوم ده على باقي أيامه</button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="toQfDayCopyOpen_(${ei},'${iso}')">📋 كرر على يوم معين</button>
       </div>
+      ${TO_QF_DAYCOPY && TO_QF_DAYCOPY.emp === TO_QF.emps[ei] && TO_QF_DAYCOPY.iso === iso ? toQfDayCopyHtml_(ei, iso) : ''}
     </div>`;
 }
 let TO_QF_ERR = new Set(); // خانات فيها غلط من آخر "حفظ الكل": "موظف|يوم|سطر|project/hours" أو "موظف|rate"
@@ -12687,6 +12689,49 @@ function toQfRemoveRow_(ei, iso, ri){
   st.rows[iso].splice(ri, 1);
   if (!st.rows[iso].length) st.rows[iso].push(toQfNewRow_('work', '9'));
   toQfRenderBox_();
+}
+// ⚠️ إضافة 2026-10-10 ("كرر على يوم معين"): بتختار يوم أو أكتر من أيام الأسبوع المعروض — سطور اليوم ده
+// (مشاريع/ساعات/سهرات/مساعد/قيم) بتتنسخ عليهم. اليوم اللي مش متختار بيتضاف، واللي فيه سطور بتتبدل.
+let TO_QF_DAYCOPY = null; // { emp, iso, targets: [iso] }
+function toQfDayCopyOpen_(ei, iso){
+  const emp = TO_QF.emps[ei];
+  TO_QF_DAYCOPY = (TO_QF_DAYCOPY && TO_QF_DAYCOPY.emp === emp && TO_QF_DAYCOPY.iso === iso) ? null : { emp, iso, targets: [] };
+  toQfRenderBox_();
+}
+function toQfDayCopyToggle_(t){
+  if (!TO_QF_DAYCOPY) return;
+  const i = TO_QF_DAYCOPY.targets.indexOf(t);
+  if (i === -1) TO_QF_DAYCOPY.targets.push(t); else TO_QF_DAYCOPY.targets.splice(i, 1);
+  toQfRenderBox_();
+}
+function toQfDayCopyHtml_(ei, iso){
+  const st = toQfState_(ei);
+  const days = toGetWeekDates(TO_QF.weekAnchor).map(d => toISO(d)).filter(d => d !== iso);
+  return `
+    <div style="margin-top:8px;padding:10px;border:1px dashed var(--gold);border-radius:9px;background:#fff;">
+      <div style="font-size:12.5px;font-weight:700;margin-bottom:6px;">انسخ ${qEsc(toQfDayLabel_(iso))} على:</div>
+      <div class="toqf-chips">${days.map(d => {
+        const picked = TO_QF_DAYCOPY.targets.includes(d);
+        const has = st.dates.includes(d);
+        return `<button type="button" class="btn btn-sm ${picked ? 'btn-primary' : 'btn-outline'}" onclick="toQfDayCopyToggle_('${d}')">${qEsc(toQfDayLabel_(d))}${has ? ' <span style="font-weight:400;color:var(--red);">— هيتبدل</span>' : ''}</button>`;
+      }).join('')}</div>
+      <div class="toqf-chips" style="margin-top:8px;">
+        <button type="button" class="btn btn-primary btn-sm" ${TO_QF_DAYCOPY.targets.length ? '' : 'disabled'} onclick="toQfDayCopyConfirm_(${ei})">📋 انسخ${TO_QF_DAYCOPY.targets.length ? ' (' + TO_QF_DAYCOPY.targets.length + ')' : ''}</button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="TO_QF_DAYCOPY=null;toQfRenderBox_();">إلغاء</button>
+      </div>
+    </div>`;
+}
+function toQfDayCopyConfirm_(ei){
+  const st = toQfState_(ei); const c = TO_QF_DAYCOPY;
+  if (!st || !c || !st.rows[c.iso] || !c.targets.length) return;
+  c.targets.forEach(t => {
+    if (!st.dates.includes(t)) st.dates.push(t);
+    st.rows[t] = JSON.parse(JSON.stringify(st.rows[c.iso]));
+  });
+  const n = c.targets.length;
+  TO_QF_DAYCOPY = null;
+  toQfRenderBox_();
+  showToast('اتنسخ على ' + n + ' يوم');
 }
 function toQfCopyDayToOthers_(ei, iso){
   const st = toQfState_(ei); if (!st || !st.rows[iso]) return;
