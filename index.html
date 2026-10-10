@@ -11278,6 +11278,10 @@ let TO_QF = { emps: [], perEmp: {}, weekAnchor: new Date() };
 // القعدة)، وشغله بيتسجل عادي بتسعيرته دي وتكلفته بتتحمّل على المشروع.
 let TO_QF_TEMPS = {}; // { اسم: { dailyRate, eveningRate } }
 let TO_QF_TEMP_OPEN = false;
+// ⚠️ إضافة 2026-10-10: موظف اسمه في كشف الحضور بس مش في "تفاصيل المرتبات" (⚠️ — مفيش تسعيرة) — لما تختاره
+// الفورم بيطلب يوميته وسعر سهرته (زي الموظف المؤقت) عشان تكلفته تتحسب على المشروع
+let TO_QF_RATES = {}; // { اسم: { dailyRate, eveningRate } }
+function toQfRate_(emp){ return TO_QF_TEMPS[emp] || TO_QF_RATES[emp] || null; }
 /* ⚠️ إضافة 2026-10-07 (حماية من قطع النت): كل اللي بتكتبه في فورم "تسجيل شغل" (الموظفين
  * المختارين، أيامهم، مشاريعهم، ساعاتهم، الموظفين المؤقتين) بيتحفظ أول بأول في
  * localStorage على الجهاز. لو النت قطع، الحفظ فشل، الصفحة اتحدّثت أو المتصفح اتقفل —
@@ -11292,7 +11296,7 @@ function toQfPersist_(now){
     try {
       const hasData = TO_QF.emps.length || Object.keys(TO_QF_TEMPS).length;
       if (!hasData) { localStorage.removeItem(TO_QF_LS_KEY); return; }
-      localStorage.setItem(TO_QF_LS_KEY, JSON.stringify({ v: 1, savedAt: Date.now(), emps: TO_QF.emps, perEmp: TO_QF.perEmp, temps: TO_QF_TEMPS }));
+      localStorage.setItem(TO_QF_LS_KEY, JSON.stringify({ v: 1, savedAt: Date.now(), emps: TO_QF.emps, perEmp: TO_QF.perEmp, temps: TO_QF_TEMPS, rates: TO_QF_RATES }));
     } catch (e) { /* المساحة مليانة/وضع خاص — الفورم يكمل عادي من غير حفظ محلي */ }
   };
   if (now) run(); else _toQfPersistTimer = setTimeout(run, 300);
@@ -11316,6 +11320,7 @@ function toQfRestore_(){
     if (d.temps && typeof d.temps === 'object') Object.keys(d.temps).forEach(n => { const t = d.temps[n] || {}; temps[n] = { dailyRate: Number(t.dailyRate) || 0, eveningRate: Number(t.eveningRate) || 0 }; });
     if (!emps.length && !Object.keys(temps).length) { localStorage.removeItem(TO_QF_LS_KEY); return; }
     TO_QF.emps = emps; TO_QF.perEmp = perEmp; TO_QF_TEMPS = temps;
+    if (d.rates && typeof d.rates === 'object') Object.keys(d.rates).forEach(n => { if (emps.indexOf(n) !== -1) { const t = d.rates[n] || {}; TO_QF_RATES[n] = { dailyRate: Number(t.dailyRate) || 0, eveningRate: Number(t.eveningRate) || 0 }; } });
     TO_QF_RESTORED_AT = Number(d.savedAt) || Date.now();
   } catch (e) { try { localStorage.removeItem(TO_QF_LS_KEY); } catch (e2) {} }
 }
@@ -12416,7 +12421,7 @@ function toQfEmpCardHtml_(emp, ei, weekDates){
       <div class="toqf-emp-head" ${collapsed ? 'style="margin-bottom:0;"' : ''}>
         <span class="toqf-emp-name" style="cursor:pointer;display:flex;align-items:center;gap:8px;flex-wrap:wrap;" title="${collapsed ? 'افتح' : 'اقفل'} خانة ${qEsc(emp)}" onclick="toQfToggleCollapse_(${ei})">
           <span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;background:var(--gold);color:var(--dark);font-size:13px;">${collapsed ? '&#9666;' : '&#9662;'}</span>
-          ${qEsc(emp)}${TO_QF_TEMPS[emp] ? ` <span style="font-size:11.5px;font-weight:700;color:var(--gold-dim);">مؤقت</span>` : ''}
+          ${qEsc(emp)}${TO_QF_TEMPS[emp] ? ` <span style="font-size:11.5px;font-weight:700;color:var(--gold-dim);">مؤقت</span>` : (TO_QF_RATES[emp] ? ` <span style="font-size:11.5px;font-weight:700;color:var(--red);">⚠️ مش في تفاصيل المرتبات — اكتب يوميته وسعر سهرته</span>` : '')}
           ${collapsed ? `<span style="font-size:12px;font-weight:600;color:var(--muted);">${sumText}</span>` : ''}
         </span>
         <span class="toqf-chips">
@@ -12427,10 +12432,10 @@ function toQfEmpCardHtml_(emp, ei, weekDates){
       </div>
       ${TO_QF_COPY && TO_QF_COPY.from === emp ? toQfCopyPickerHtml_(emp) : ''}
       ${collapsed ? '' : `
-      ${TO_QF_TEMPS[emp] ? `
+      ${toQfRate_(emp) ? `
         <div class="toqf-chips" style="margin-bottom:8px;font-size:12px;">
-          <span>اليومية</span><input type="text" inputmode="decimal" class="d-input ltr-num${toQfErrHas_(emp + '|rate')}" style="width:96px;" value="${qEsc(String(TO_QF_TEMPS[emp].dailyRate || ''))}" onkeypress="return /[0-9.]/.test(event.key)" oninput="toQfSetTempRate_(${ei},'dailyRate',this.value)">
-          <span>سعر السهرة</span><input type="text" inputmode="decimal" class="d-input ltr-num" style="width:96px;" value="${qEsc(String(TO_QF_TEMPS[emp].eveningRate || ''))}" onkeypress="return /[0-9.]/.test(event.key)" oninput="toQfSetTempRate_(${ei},'eveningRate',this.value)">
+          <span>اليومية</span><input type="text" inputmode="decimal" class="d-input ltr-num${toQfErrHas_(emp + '|rate')}" style="width:96px;" value="${qEsc(String(toQfRate_(emp).dailyRate || ''))}" onkeypress="return /[0-9.]/.test(event.key)" oninput="toQfSetTempRate_(${ei},'dailyRate',this.value)">
+          <span>سعر السهرة</span><input type="text" inputmode="decimal" class="d-input ltr-num${toQfErrHas_(emp + '|eveRate')}" style="width:96px;" value="${qEsc(String(toQfRate_(emp).eveningRate || ''))}" onkeypress="return /[0-9.]/.test(event.key)" oninput="toQfSetTempRate_(${ei},'eveningRate',this.value)">
         </div>` : ''}
       <div class="toqf-chips">${weekDates.map(dayChip).join('')}</div>
       ${st.dates.slice().sort().map(iso => toQfDayHtml_(ei, iso, st)).join('')}
@@ -12532,7 +12537,7 @@ function toQfRowHtml_(ei, iso, ri, r){
   const args = `${ei},'${iso}',${ri}`;
   return `
     <div class="toqf-row ${isEve ? 'eve' : ''}">
-      ${isEve ? `<div style="grid-column:1/-1;order:-1;font-size:11.5px;font-weight:700;">🌙 سهرة <span style="font-weight:400;color:var(--muted);">${TO_QF_TEMPS[TO_QF.emps[ei]] ? (Number(TO_QF_TEMPS[TO_QF.emps[ei]].eveningRate) > 0 ? '— موظف مؤقت: سعر السهرة (' + fmt(TO_QF_TEMPS[TO_QF.emps[ei]].eveningRate) + ' ج) بيتحمّل على المشروع' : '— موظف مؤقت من غير سعر سهرة: مش هتتحسب تكلفة') : '— تكلفتها = الإضافة (ج) المكتوبة في خانة اليوم ده في شيت المرتبات، بتتحمّل على المشروع ده تلقائي. لو مفيش إضافة هناك بتتسجل للعلم بس'}</span></div>` : ''}
+      ${isEve ? `<div style="grid-column:1/-1;order:-1;font-size:11.5px;font-weight:700;">🌙 سهرة <span style="font-weight:400;color:var(--muted);">${toQfRate_(TO_QF.emps[ei]) ? (Number(toQfRate_(TO_QF.emps[ei]).eveningRate) > 0 ? '— سعر السهرة المكتوب (' + fmt(toQfRate_(TO_QF.emps[ei]).eveningRate) + ' ج) بيتحمّل على المشروع' : '— اكتب سعر السهرة فوق جنب اليومية') : '— تكلفتها = الإضافة (ج) المكتوبة في خانة اليوم ده في شيت المرتبات، بتتحمّل على المشروع ده تلقائي. لو مفيش إضافة هناك بتتسجل للعلم بس'}</span></div>` : ''}
       <div class="${toQfErrHas_(ek + 'project')}">${toProjDropdownHtml_(`toqfP-${ei}-${iso}-${ri}`, r.project, `toQfSetRow_(${args},'project',v);toQfRenderBox_();`)}</div>
       <input type="text" inputmode="decimal" class="d-input ltr-num${toQfErrHas_(ek + 'hours')}" placeholder="${isEve ? '🌙 ساعات' : 'ساعات'}" value="${isAbs ? '' : qEsc(r.hours)}" ${isAbs ? 'disabled' : ''} onkeypress="return /[0-9.]/.test(event.key)" oninput="this.classList.remove('toqf-err');toQfSetRow_(${args},'hours',this.value);toQfUpdateTotal_(${ei},'${iso}')">
       <input class="d-input toqf-wide" placeholder="${isEve ? 'المطلوب في السهرة (اختياري)' : 'المطلوب (اختياري)'}" value="${qEsc(r.title)}" oninput="toQfSetRow_(${args},'title',this.value)">
@@ -12573,7 +12578,7 @@ function toQfForgetTemp_(i){
   toQfRenderBox_();
 }
 function toQfSetTempRate_(ei, field, value){
-  const t = TO_QF_TEMPS[TO_QF.emps[ei]]; if (t) { t[field] = Number(value) || 0; toQfPersist_(); }
+  const t = toQfRate_(TO_QF.emps[ei]); if (t) { t[field] = Number(value) || 0; TO_QF_ERR.delete(TO_QF.emps[ei] + (field === 'dailyRate' ? '|rate' : '|eveRate')); toQfPersist_(); }
 }
 function toQfRemoveEmp_(ei){
   const name = TO_QF.emps[ei]; if (name === undefined) return;
@@ -12583,7 +12588,10 @@ function toQfRemoveEmp_(ei){
 function toQfToggleEmp_(craftsmanIdx){
   const c = (TO_QF._chipList || TO_STATE.craftsmen)[craftsmanIdx]; if (!c) return;
   const idx = TO_QF.emps.indexOf(c.name);
-  if (idx === -1) { TO_QF.emps.push(c.name); TO_QF.perEmp[c.name] = { dates: [], rows: {}, lastIso: null }; }
+  if (idx === -1) {
+    TO_QF.emps.push(c.name); TO_QF.perEmp[c.name] = { dates: [], rows: {}, lastIso: null };
+    if (c.noRate && !TO_QF_TEMPS[c.name] && !TO_QF_RATES[c.name]) TO_QF_RATES[c.name] = { dailyRate: 0, eveningRate: 0 };
+  }
   else { TO_QF.emps.splice(idx, 1); delete TO_QF.perEmp[c.name]; }
   toQfRenderBox_();
 }
@@ -12673,8 +12681,9 @@ async function toQuickformSave_() {
   TO_QF.emps.forEach(emp => {
     const st = TO_QF.perEmp[emp]; if (!st) return;
     // موظف مؤقت (مش في المرتبات): تسعيرته بتتبعت مع كل سطر — الساعة = اليومية ÷ 9
-    const temp = TO_QF_TEMPS[emp] || null;
-    if (temp && st.dates.length && !(Number(temp.dailyRate) > 0)) { errs.push(emp + ': اكتب اليومية بتاعة الموظف المؤقت'); TO_QF_ERR.add(emp + '|rate'); return; }
+    const temp = toQfRate_(emp);
+    if (temp && st.dates.length && !(Number(temp.dailyRate) > 0)) { errs.push(emp + ': اكتب اليومية'); TO_QF_ERR.add(emp + '|rate'); return; }
+    if (temp && TO_QF_RATES[emp] && !(Number(temp.eveningRate) > 0) && st.dates.some(iso => (st.rows[iso] || []).some(r => r.kind === 'eve'))) { errs.push(emp + ': اكتب سعر السهرة'); TO_QF_ERR.add(emp + '|eveRate'); return; }
     const tempExtra = temp ? { customHourlyRate: Number(temp.dailyRate) / 9 } : {};
     st.dates.slice().sort().forEach(iso => {
       const rows = st.rows[iso] || [];
