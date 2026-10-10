@@ -6788,6 +6788,23 @@ async function pjSubmitCreate(){
     msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err);
   } finally { btn.disabled = false; }
 }
+// ⚠️ إضافة 2026-10-10: تفاصيل "تكاليف تانية مسجلة" — بنود صفحة التكاليف اليدوية + التركيب + عمالة المنتجات القديمة
+function showProjectOtherCostsModal_(d){
+  if (!d) return;
+  const rows = [];
+  (d.costs || []).forEach(c => rows.push({ src: 'التكاليف', date: c.date, name: c.name, items: c.itemsCost, labor: c.laborCost, total: (Number(c.itemsCost) || 0) + (Number(c.laborCost) || 0), notes: c.notes }));
+  (d.installItems || []).forEach(c => rows.push({ src: 'تركيب', date: c.date || '', name: c.name || c.item || '', items: c.itemsCost, labor: c.laborCost, total: (Number(c.itemsCost) || 0) + (Number(c.laborCost) || 0), notes: c.notes || '' }));
+  if (Number(d.productsLaborCost) > 0) rows.push({ src: 'منتجات (قديم)', date: '', name: 'عمالة المنتجات', items: 0, labor: d.productsLaborCost, total: d.productsLaborCost, notes: '' });
+  const sum = rows.reduce((t, r) => t + (Number(r.total) || 0), 0);
+  openCardModal(`
+    <div class="cd-head"><h3>تكاليف تانية مسجلة — ${qEsc(d.project)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">دي بنود متسجلة يدوي في صفحة "التكاليف" (أو تركيب/منتجات قديمة) — مش العمالة ومش متابعة صرف المشاريع. لو أي بند منهم نفس مصروف متسجل في متابعة الصرف، يبقى متحسب مرتين — امسحه من التكاليف.</div>
+    ${rows.length ? `<div class="tbl-wrap"><table><thead><tr><th>المصدر</th><th>التاريخ</th><th>البند</th><th>خامات/بنود</th><th>عمالة</th><th>الإجمالي</th><th>ملاحظات</th></tr></thead>
+    <tbody>${rows.map(r => `<tr><td>${qEsc(r.src)}</td><td>${qEsc(r.date)}</td><td>${qEsc(r.name)}</td><td>${fmt(r.items || 0)} ج</td><td>${fmt(r.labor || 0)} ج</td><td><b>${fmt(r.total)} ج</b></td><td style="font-size:11.5px;color:var(--muted);">${qEsc(r.notes || '')}</td></tr>`).join('')}
+    <tr><td colspan="5"><b>المجموع</b></td><td><b>${fmt(sum)} ج</b></td><td></td></tr></tbody></table></div>` : '<div class="empty">مفيش بنود</div>'}
+  `);
+  document.getElementById('cardDetailBody').classList.add('cd-wide');
+}
 async function showProjectDetail(name){
   const box = document.getElementById('projectDetailBox');
   box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
@@ -6802,7 +6819,7 @@ async function showProjectDetail(name){
           <div class="card"><div class="label">ساعات العمالة</div><div class="value">${fmt(d.laborHours)} س</div></div>
           <div class="card clickable" onclick="showProjectMaterialsModal(_projectDetailCache)"><div class="label">تكلفة الخامات</div><div class="value gold">${fmt(d.materialsCost)} ج</div></div>
           <div class="card clickable" title="تفاصيل المصاريف في صفحة مصاريف المشاريع" onclick="try{sessionStorage.setItem('lm_pspProject','${qEscJs(d.project)}');PSP.sel='${qEscJs(d.project)}';}catch(e){};goTo('projectSpend')"><div class="label">إجمالي المصاريف (متابعة صرف المشاريع)</div><div class="value gold">${fmt(d.projectExpenses || 0)} ج</div></div>
-          ${(d.costsTotal || 0) + (d.installCost || 0) + (d.productsLaborCost || 0) > 0 ? `<div class="card"><div class="label">تكاليف تانية مسجلة (التكاليف/تركيب)</div><div class="value gold">${fmt((d.costsTotal || 0) + (d.installCost || 0) + (d.productsLaborCost || 0))} ج</div></div>` : ''}
+          ${(d.costsTotal || 0) + (d.installCost || 0) + (d.productsLaborCost || 0) > 0 ? `<div class="card clickable" title="اعرض البنود" onclick="showProjectOtherCostsModal_(_projectDetailCache)"><div class="label">تكاليف تانية مسجلة (التكاليف/تركيب) — دوس للتفاصيل</div><div class="value gold">${fmt((d.costsTotal || 0) + (d.installCost || 0) + (d.productsLaborCost || 0))} ج</div></div>` : ''}
           <div class="card"><div class="label">إجمالي التكلفة (عمالة + خامات + مصاريف + تكاليف)</div><div class="value green">${fmt(d.totalCost)} ج</div></div>
           ${d.financials ? `<div class="card"><div class="label">الإيرادات المسجلة</div><div class="value green">${fmt(d.financials.revenue)} ج</div></div>` : ''}
           ${d.netProfit!==null ? `<div class="card"><div class="label">صافي الربح</div><div class="value ${d.netProfit>=0?'green':'red'}">${fmt(d.netProfit)} ج</div></div>` : `<div class="card"><div class="label">صافي الربح</div><div class="value" style="color:var(--muted);font-size:13px;">لسه مفيش إيرادات مسجلة</div></div>`}
