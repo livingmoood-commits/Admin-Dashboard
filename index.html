@@ -1045,6 +1045,10 @@
   #cardDetailModal.open{ display:flex; }
   .cd-card{ background:#fff; border-radius:14px; padding:24px 22px; width:min(560px,94vw); box-shadow:0 20px 60px rgba(30,26,21,.3); animation:modalPop .35s var(--bounce); }
   .cd-card.cd-wide{ width:min(1150px,96vw); } /* تقرير اسبوعي (جدول) */
+  /* ⚠️ إضافة 2026-10-10: الخانة اللي فيها غلط في فورم "تسجيل شغل" بتنوّر أحمر */
+  .toqf-err, .toqf-err .proj-dd-btn, .toqf-err input, .toqf-err button{ border-color:var(--red) !important; background:#fdeaea !important; }
+  .toqf-err{ border:2px solid var(--red) !important; border-radius:9px; box-shadow:0 0 0 3px rgba(178,59,59,.18); animation:toqfErrPulse 1.2s ease 2; }
+  @keyframes toqfErrPulse{ 50%{ box-shadow:0 0 0 6px rgba(178,59,59,.28); } }
   .cd-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
   .cd-head h3{ font-size:17px; }
   .cd-close{ all:unset; cursor:pointer; font-size:20px; color:var(--muted); padding:2px 8px; border-radius:8px; }
@@ -1349,7 +1353,7 @@
 <div id="genConfirmModal">
   <div class="q-confirm-card">
     <h3 id="genConfirmTitle">تأكيد</h3>
-    <p id="genConfirmMsg"></p>
+    <p id="genConfirmMsg" style="white-space:pre-line;"></p>
     <div class="q-confirm-btns">
       <button class="btn btn-primary" onclick="closeGenConfirm(true)">تأكيد</button>
       <button class="btn btn-outline" onclick="closeGenConfirm(false)">إلغاء</button>
@@ -11115,6 +11119,8 @@ function toSetPageDate_(iso){
   TO_ROSTER.date = iso;
   TO_QF.weekAnchor = new Date(d);
   if (weekChanged) TO_STATE.selectedCells = [];
+  if (weekChanged && TO_QF.emps.some(e => (TO_QF.perEmp[e] && TO_QF.perEmp[e].dates || []).some(toQfOutOfWeek_)))
+    showToast('⚠️ في فورم "تسجيل شغل" أيام متختارة من أسبوع تاني — هتلاقيها متعلّمة ⚠️ تحت', 'error');
   toRenderPageDateBar_();
   if (TO_STATE.activeTab === 'week') toLoadWeekTab();
   else if (TO_STATE.activeTab === 'daily') {
@@ -12394,7 +12400,8 @@ function toQfEmpCardHtml_(emp, ei, weekDates){
   const dayChip = d => {
     const iso = toISO(d);
     const reg = toQfRegistered_(emp, iso);
-    return `<button type="button" class="btn btn-sm ${st.dates.includes(iso) ? 'btn-primary' : 'btn-outline'}" ${reg ? `title="متسجل قبل كده ${fmt(reg)} ساعة"` : ''} onclick="toQfToggleDay_(${ei},'${iso}')">${qEsc(toQfDayLabel_(iso))}${iso === today ? ' •' : ''}${reg ? ` <span style="font-weight:800;color:${reg >= 9 ? 'var(--red)' : 'var(--green)'};">✓${fmt(reg)}س</span>` : ''}</button>`;
+    const dayErr = Array.from(TO_QF_ERR).some(k => k.indexOf(emp + '|' + iso + '|') === 0);
+    return `<button type="button" class="btn btn-sm ${st.dates.includes(iso) ? 'btn-primary' : 'btn-outline'}" ${dayErr ? 'style="outline:2px solid var(--red);outline-offset:1px;"' : ''} ${reg ? `title="متسجل قبل كده ${fmt(reg)} ساعة"` : ''} onclick="toQfToggleDay_(${ei},'${iso}')">${qEsc(toQfDayLabel_(iso))}${iso === today ? ' •' : ''}${reg ? ` <span style="font-weight:800;color:${reg >= 9 ? 'var(--red)' : 'var(--green)'};">✓${fmt(reg)}س</span>` : ''}</button>`;
   };
   // ⚠️ إضافة 2026-10-07: سهم بيقفل/يفتح خانة الموظف — المقفولة بتبان سطر واحد فيه ملخص (كام يوم وكام ساعة)
   // عشان الفورم ميطولش وانت بتسجل كذا موظف. اللي جواها بيفضل زي ما هو وبيتحفظ عادي.
@@ -12422,7 +12429,7 @@ function toQfEmpCardHtml_(emp, ei, weekDates){
       ${collapsed ? '' : `
       ${TO_QF_TEMPS[emp] ? `
         <div class="toqf-chips" style="margin-bottom:8px;font-size:12px;">
-          <span>اليومية</span><input type="text" inputmode="decimal" class="d-input ltr-num" style="width:96px;" value="${qEsc(String(TO_QF_TEMPS[emp].dailyRate || ''))}" onkeypress="return /[0-9.]/.test(event.key)" oninput="toQfSetTempRate_(${ei},'dailyRate',this.value)">
+          <span>اليومية</span><input type="text" inputmode="decimal" class="d-input ltr-num${toQfErrHas_(emp + '|rate')}" style="width:96px;" value="${qEsc(String(TO_QF_TEMPS[emp].dailyRate || ''))}" onkeypress="return /[0-9.]/.test(event.key)" oninput="toQfSetTempRate_(${ei},'dailyRate',this.value)">
           <span>سعر السهرة</span><input type="text" inputmode="decimal" class="d-input ltr-num" style="width:96px;" value="${qEsc(String(TO_QF_TEMPS[emp].eveningRate || ''))}" onkeypress="return /[0-9.]/.test(event.key)" oninput="toQfSetTempRate_(${ei},'eveningRate',this.value)">
         </div>` : ''}
       <div class="toqf-chips">${weekDates.map(dayChip).join('')}</div>
@@ -12502,7 +12509,7 @@ function toQfDayHtml_(ei, iso, st){
   return `
     <div class="toqf-day">
       <div class="toqf-day-head">
-        <span>${qEsc(toQfDayLabel_(iso))} <span style="color:var(--muted);font-weight:400;font-size:11.5px;">(${iso})</span></span>
+        <span>${qEsc(toQfDayLabel_(iso))} <span style="color:var(--muted);font-weight:400;font-size:11.5px;">(${iso})</span>${toQfOutOfWeek_(iso) ? ` <span style="color:var(--red);font-weight:800;font-size:12px;">⚠️ مش من الأسبوع المعروض فوق</span>` : ''}</span>
         <span class="toqf-chips">
           <span id="toqfTot-${ei}-${iso}">${toQfTotalHtml_(toQfDayTotal_(rows), toQfRegistered_(TO_QF.emps[ei], iso))}</span>
           <button type="button" class="mat-icon-btn" title="شيل اليوم" onclick="toQfToggleDay_(${ei},'${iso}')">✕</button>
@@ -12516,15 +12523,18 @@ function toQfDayHtml_(ei, iso, st){
       </div>
     </div>`;
 }
+let TO_QF_ERR = new Set(); // خانات فيها غلط من آخر "حفظ الكل": "موظف|يوم|سطر|project/hours" أو "موظف|rate"
+function toQfErrHas_(k){ return TO_QF_ERR.has(k) ? ' toqf-err' : ''; }
 function toQfRowHtml_(ei, iso, ri, r){
+  const ek = TO_QF.emps[ei] + '|' + iso + '|' + ri + '|';
   const isEve = r.kind === 'eve';
   const isAbs = !isEve && r.project === 'إجازة';
   const args = `${ei},'${iso}',${ri}`;
   return `
     <div class="toqf-row ${isEve ? 'eve' : ''}">
       ${isEve ? `<div style="grid-column:1/-1;order:-1;font-size:11.5px;font-weight:700;">🌙 سهرة <span style="font-weight:400;color:var(--muted);">${TO_QF_TEMPS[TO_QF.emps[ei]] ? (Number(TO_QF_TEMPS[TO_QF.emps[ei]].eveningRate) > 0 ? '— موظف مؤقت: سعر السهرة (' + fmt(TO_QF_TEMPS[TO_QF.emps[ei]].eveningRate) + ' ج) بيتحمّل على المشروع' : '— موظف مؤقت من غير سعر سهرة: مش هتتحسب تكلفة') : '— تكلفتها = الإضافة (ج) المكتوبة في خانة اليوم ده في شيت المرتبات، بتتحمّل على المشروع ده تلقائي. لو مفيش إضافة هناك بتتسجل للعلم بس'}</span></div>` : ''}
-      <div>${toProjDropdownHtml_(`toqfP-${ei}-${iso}-${ri}`, r.project, `toQfSetRow_(${args},'project',v);toQfRenderBox_();`)}</div>
-      <input type="text" inputmode="decimal" class="d-input ltr-num" placeholder="${isEve ? '🌙 ساعات' : 'ساعات'}" value="${isAbs ? '' : qEsc(r.hours)}" ${isAbs ? 'disabled' : ''} onkeypress="return /[0-9.]/.test(event.key)" oninput="toQfSetRow_(${args},'hours',this.value);toQfUpdateTotal_(${ei},'${iso}')">
+      <div class="${toQfErrHas_(ek + 'project')}">${toProjDropdownHtml_(`toqfP-${ei}-${iso}-${ri}`, r.project, `toQfSetRow_(${args},'project',v);toQfRenderBox_();`)}</div>
+      <input type="text" inputmode="decimal" class="d-input ltr-num${toQfErrHas_(ek + 'hours')}" placeholder="${isEve ? '🌙 ساعات' : 'ساعات'}" value="${isAbs ? '' : qEsc(r.hours)}" ${isAbs ? 'disabled' : ''} onkeypress="return /[0-9.]/.test(event.key)" oninput="this.classList.remove('toqf-err');toQfSetRow_(${args},'hours',this.value);toQfUpdateTotal_(${ei},'${iso}')">
       <input class="d-input toqf-wide" placeholder="${isEve ? 'المطلوب في السهرة (اختياري)' : 'المطلوب (اختياري)'}" value="${qEsc(r.title)}" oninput="toQfSetRow_(${args},'title',this.value)">
       <input class="d-input toqf-wide" placeholder="ملاحظات" value="${qEsc(r.notes)}" oninput="toQfSetRow_(${args},'notes',this.value)">
       <button type="button" class="mat-icon-btn toqf-x" title="شيل السطر" onclick="toQfRemoveRow_(${args})">✕</button>
@@ -12603,6 +12613,8 @@ function toQfToggleDay_(ei, iso){
   toQfRenderBox_();
 }
 function toQfSetRow_(ei, iso, ri, field, value){
+  TO_QF_ERR.delete(TO_QF.emps[ei] + '|' + iso + '|' + ri + '|' + field);
+  if (field === 'hours') TO_QF.perEmp[TO_QF.emps[ei]] && (TO_QF.perEmp[TO_QF.emps[ei]].rows[iso] || []).forEach((r, i) => TO_QF_ERR.delete(TO_QF.emps[ei] + '|' + iso + '|' + i + '|hours'));
   const st = toQfState_(ei);
   if (st && st.rows[iso] && st.rows[iso][ri]) { st.rows[iso][ri][field] = value; st.lastIso = iso; toQfPersist_(); }
 }
@@ -12612,11 +12624,19 @@ function toQfUpdateTotal_(ei, iso){
 }
 function toQfAddRow_(ei, iso, kind){
   const st = toQfState_(ei); if (!st || !st.rows[iso]) return;
-  st.rows[iso].push(toQfNewRow_(kind));
+  const row = toQfNewRow_(kind);
+  // ⚠️ إضافة 2026-10-10: السهرة الجديدة بتاخد افتراضي نفس مشروع شغل اليوم (آخر مشروع متختار) و5 ساعات — وتقدر تغيّرهم
+  if (kind === 'eve') {
+    const src = st.rows[iso].slice().reverse().find(r => r.kind === 'work' && r.project && r.project !== 'إجازة') || st.rows[iso].slice().reverse().find(r => r.project && r.project !== 'إجازة');
+    row.project = src ? src.project : '';
+    row.hours = '5';
+  }
+  st.rows[iso].push(row);
   toQfRenderBox_();
 }
 function toQfRemoveRow_(ei, iso, ri){
   const st = toQfState_(ei); if (!st || !st.rows[iso]) return;
+  Array.from(TO_QF_ERR).forEach(k => { if (k.indexOf(TO_QF.emps[ei] + '|' + iso + '|') === 0) TO_QF_ERR.delete(k); }); // أرقام السطور هتتغير
   st.rows[iso].splice(ri, 1);
   if (!st.rows[iso].length) st.rows[iso].push(toQfNewRow_('work', '9'));
   toQfRenderBox_();
@@ -12633,51 +12653,78 @@ function toQfCopyEmpToOthers_(ei){
   toQfRenderBox_();
   showToast('اتنسخ لباقي الصنايعية المختارين');
 }
+// ⚠️ إضافة 2026-10-10: يوم متختار في الفورم بس مش جوه الأسبوع المعروض (مثلاً اتختار قبل ما تغيّر الأسبوع، أو من مسودة قديمة اترجعت)
+function toQfOutOfWeek_(iso){
+  const ds = toGetWeekDates(TO_QF.weekAnchor);
+  return iso < toISO(ds[0]) || iso > toISO(ds[6]);
+}
+function toQfFocusFirstErr_(){
+  const el = document.querySelector('#toqf-box .toqf-err');
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const inp = el.matches('input') ? el : null;
+  if (inp) setTimeout(() => { try { inp.focus({ preventScroll: true }); } catch (e) {} }, 350);
+}
 async function toQuickformSave_() {
   let msg = document.getElementById('toSaveEntryMsg');
   const btn = document.getElementById('toSaveEntryBtn');
   const entries = [], errs = [], over = [];
+  TO_QF_ERR = new Set();
   TO_QF.emps.forEach(emp => {
     const st = TO_QF.perEmp[emp]; if (!st) return;
     // موظف مؤقت (مش في المرتبات): تسعيرته بتتبعت مع كل سطر — الساعة = اليومية ÷ 9
     const temp = TO_QF_TEMPS[emp] || null;
-    if (temp && st.dates.length && !(Number(temp.dailyRate) > 0)) { errs.push(emp + ': اكتب اليومية بتاعة الموظف المؤقت'); return; }
+    if (temp && st.dates.length && !(Number(temp.dailyRate) > 0)) { errs.push(emp + ': اكتب اليومية بتاعة الموظف المؤقت'); TO_QF_ERR.add(emp + '|rate'); return; }
     const tempExtra = temp ? { customHourlyRate: Number(temp.dailyRate) / 9 } : {};
     st.dates.slice().sort().forEach(iso => {
       const rows = st.rows[iso] || [];
       const where = emp + ' — ' + toQfDayLabel_(iso);
       // "المطلوب" بتاع السهرة لو اتساب فاضي بياخد "المطلوب" بتاع أول مشروع في نفس اليوم (زي الفورم القديم)
       const baseTitle = ((rows.find(r => r.kind === 'work' && (r.title || '').trim()) || {}).title || '').trim();
-      rows.forEach(r => {
+      rows.forEach((r, ri) => {
+        const ek = emp + '|' + iso + '|' + ri + '|';
         const project = (r.project || '').trim();
         const hrs = Number(r.hours) || 0;
         const title = (r.title || '').trim(), notes = (r.notes || '').trim();
-        if (!project) { errs.push(where + ': اختار المشروع' + (r.kind === 'eve' ? ' بتاع السهرة' : '') + ' (أو شيل السطر)'); return; }
+        if (!project) { errs.push(where + ': اختار المشروع' + (r.kind === 'eve' ? ' بتاع السهرة' : '') + ' (أو شيل السطر)'); TO_QF_ERR.add(ek + 'project'); return; }
         if (r.kind === 'eve') {
-          if (hrs <= 0) { errs.push(where + ': اكتب ساعات السهرة'); return; }
+          if (hrs <= 0) { errs.push(where + ': اكتب ساعات السهرة'); TO_QF_ERR.add(ek + 'hours'); return; }
           entries.push(Object.assign({ employee: emp, project, hours: 0, date: iso, title: title || baseTitle, notes: ['سهرة', notes].filter(Boolean).join(' — '), eveningHours: r.hours },
             temp ? Object.assign({ eveningAmount: Number(temp.eveningRate) || 0 }, tempExtra) : {}));
           return;
         }
         // غياب/إجازة — الساعات صفر يعني مفيش تكلفة، بتتسجل كملاحظة بس
         const isAbsence = project === 'إجازة' || toIsAbsenceNote_(notes);
-        if (!isAbsence && hrs <= 0) { errs.push(where + ' (' + project + '): اكتب الساعات'); return; }
+        if (!isAbsence && hrs <= 0) { errs.push(where + ' (' + project + '): اكتب الساعات'); TO_QF_ERR.add(ek + 'hours'); return; }
         entries.push(Object.assign({ employee: emp, project, hours: isAbsence ? 0 : r.hours, date: iso, title, notes }, tempExtra));
       });
       const total = toQfDayTotal_(rows);
       const reg = toQfRegistered_(emp, iso) || 0;
-      if (total > 0 && total + reg > 9) over.push(where + ': ' + (reg ? 'متسجله ' + fmt(reg) + ' ساعة قبل كده + ' + fmt(total) + ' جديدة' : fmt(total) + ' ساعة'));
+      if (total > 0 && total + reg > 9) {
+        over.push(where + ': ' + (reg ? 'متسجله ' + fmt(reg) + ' ساعة قبل كده + ' + fmt(total) + ' جديدة' : fmt(total) + ' ساعة'));
+        rows.forEach((r, ri) => { if (r.kind === 'work' && r.project !== 'إجازة' && Number(r.hours) > 0) TO_QF_ERR.add(emp + '|' + iso + '|' + ri + '|hours'); });
+      }
     });
   });
   if (errs.length) {
     // لو فيه خانة مقفولة فيها غلط، نفتحها عشان تتشاف
     let reopened = false;
     TO_QF.emps.forEach(e => { const s = TO_QF.perEmp[e]; if (s && s.collapsed && errs.some(x => x.indexOf(e + ' — ') === 0 || x.indexOf(e + ':') === 0)) { s.collapsed = false; reopened = true; } });
-    if (reopened) { toQfRenderBox_(); msg = document.getElementById('toSaveEntryMsg'); }
+    toQfRenderBox_(); msg = document.getElementById('toSaveEntryMsg'); // عشان الخانات الغلط تنوّر أحمر
     if (msg) { msg.className = 'msg err'; msg.textContent = errs.slice(0, 5).join(' • ') + (errs.length > 5 ? ` • و${errs.length - 5} تاني` : ''); }
+    toQfFocusFirstErr_();
     return;
   }
   if (!entries.length) { showToast('اختار صنيعي ويوم واحد على الأقل', 'error'); return; }
+  // ⚠️ إضافة 2026-10-10 (اتسجلت أيام بتاريخ الأسبوع الحالي وهو كان بيسجل أسبوع 18/7): أي يوم برّه الأسبوع
+  // المعروض فوق — لازم تأكيد صريح قبل ما يتبعت، بأسامي وتواريخ الأيام دي
+  const outside = [];
+  TO_QF.emps.forEach(emp => { const st2 = TO_QF.perEmp[emp]; (st2 && st2.dates || []).forEach(iso => { if (toQfOutOfWeek_(iso)) outside.push(emp + ' ' + toQfDayLabel_(iso)); }); });
+  if (outside.length) {
+    const dsW = toGetWeekDates(TO_QF.weekAnchor);
+    const ok = await openGenConfirm('⚠️ فيه ' + outside.length + ' يوم مش من الأسبوع المعروض (' + toFmtDayDate(dsW[0]) + ' – ' + toFmtDayDate(dsW[6]) + '):\n' + outside.slice(0, 12).join('\n') + (outside.length > 12 ? '\nو' + (outside.length - 12) + ' تاني' : '') + '\n\nهيتسجلوا بالتواريخ دي. لو مش قاصدهم دوس إلغاء وشيلهم (✕ جنب اليوم).', 'أيام من أسبوع تاني');
+    if (!ok) return;
+  }
   toQfPersist_(true); // نثبّت آخر نسخة على الجهاز قبل ما نبعت — لو الطلب وقع في النص، مفيش حاجة تضيع
   if (navigator.onLine === false) {
     if (msg) { msg.className = 'msg err'; msg.textContent = 'مفيش نت دلوقتي — اللي كتبته محفوظ على الجهاز. دوس "حفظ الكل" تاني لما النت يرجع.'; }
@@ -12686,7 +12733,10 @@ async function toQuickformSave_() {
   // ⚠️ تعديل 2026-10-07: بقى منع مش سؤال — أكتر من 9 ساعات شغل عادي في اليوم (الجديد +
   // المتسجل قبل كده) مبيتحفظش. الزيادة تتسجل سهرة. السيرفر بيعمل نفس الفحص برضه.
   if (over.length) {
+    TO_QF.emps.forEach(e => { const s2 = TO_QF.perEmp[e]; if (s2 && s2.collapsed && Array.from(TO_QF_ERR).some(k => k.indexOf(e + '|') === 0)) s2.collapsed = false; });
+    toQfRenderBox_(); msg = document.getElementById('toSaveEntryMsg');
     if (msg) { msg.className = 'msg err'; msg.textContent = 'أكتر من 9 ساعات شغل عادي في اليوم (الزيادة تتسجل سهرة): ' + over.slice(0, 6).join(' • ') + (over.length > 6 ? ` • و${over.length - 6} تاني` : ''); }
+    toQfFocusFirstErr_();
     return;
   }
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...'; }
