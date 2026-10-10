@@ -6832,6 +6832,79 @@ async function showProjectExpensesModal_(project){
     document.getElementById('cardDetailBody').classList.add('cd-wide');
   } catch (err) { openCardModal(`<div class="cd-head"><h3>مصاريف ${qEsc(project)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="msg err" style="display:block;">خطأ: ${qEsc(err.message || err)}</div>`); }
 }
+// ⚠️ إضافة 2026-10-10 ("لما أدوس على الإيرادات تتفتح وأعدل فيها"): الإيرادات من مصدرين —
+// (1) متابعة صرف المشاريع (للعرض بس، بتتعدل من هناك) (2) إيرادات التكاليف (سطور بتتضاف/تتعدل/تتمسح هنا)
+// الرقم اللي بيتحسب: متابعة الصرف لو فيها إيراد، وإلا إيرادات التكاليف.
+let REVM = { project: '', entries: [], editId: null, cashWeeks: [], cashTotal: 0 };
+async function showProjectRevenueModal_(project){
+  REVM = { project, entries: [], editId: null, cashWeeks: [], cashTotal: 0 };
+  openCardModal(`<div class="cd-head"><h3>إيرادات ${qEsc(project)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="loading-row">جاري التحميل...</div>`);
+  document.getElementById('cardDetailBody').classList.add('cd-wide');
+  await revmLoad_();
+}
+async function revmLoad_(){
+  try {
+    const [rev, cash] = await Promise.all([
+      apiGet('listProjectRevenueEntries', { name: REVM.project }),
+      apiGet('getProjectExpensesDetail', { name: REVM.project }).catch(() => ({ weeks: [], revenue: 0 }))
+    ]);
+    REVM.entries = rev.entries || [];
+    REVM.cashWeeks = (cash.weeks || []).filter(w => Number(w.weekRevenue) > 0);
+    REVM.cashTotal = Number(cash.revenue) || 0;
+    revmRender_();
+  } catch (err) { openCardModal(`<div class="cd-head"><h3>إيرادات ${qEsc(REVM.project)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div><div class="msg err" style="display:block;">خطأ: ${qEsc(err.message || err)}</div>`); }
+}
+function revmRender_(){
+  const R = REVM;
+  const costsTotal = R.entries.reduce((t, e) => t + (Number(e.amount) || 0), 0);
+  const used = R.cashTotal > 0 ? 'cash' : 'costs';
+  const ed = R.editId ? R.entries.find(e => String(e.id) === String(R.editId)) : null;
+  openCardModal(`
+    <div class="cd-head"><h3>إيرادات ${qEsc(R.project)} — ${fmt(used === 'cash' ? R.cashTotal : costsTotal)} ج</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div class="msg" style="display:block;font-size:12.5px;margin-bottom:10px;">${used === 'cash' ? 'الرقم المحسوب = إيرادات متابعة صرف المشاريع (' + fmt(R.cashTotal) + ' ج). إيرادات التكاليف تحت للعلم — مش بتتجمع عليها.' : 'مفيش إيرادات في متابعة صرف المشاريع — الرقم المحسوب = إيرادات التكاليف تحت.'}</div>
+    <div class="grid2" style="gap:14px;">
+      <div>
+        <h4 style="margin:0 0 6px;">إيرادات التكاليف (${fmt(costsTotal)} ج) — تقدر تعدّل</h4>
+        <form onsubmit="event.preventDefault();revmSave_()" style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px;padding:8px;border:1px dashed var(--gold);border-radius:9px;">
+          <div class="field" style="margin:0;"><label>التاريخ</label><input type="date" id="revmDate" value="${qEsc(ed ? ed.date : todayStr())}"></div>
+          <div class="field" style="margin:0;flex:1;min-width:140px;"><label>الوصف</label><input id="revmDesc" autocomplete="off" value="${qEsc(ed ? ed.desc : '')}" placeholder="مثال: دفعة من العميل"></div>
+          <div class="field" style="margin:0;width:110px;"><label>المبلغ</label><input id="revmAmt" type="number" value="${ed ? qEsc(String(ed.amount)) : ''}"></div>
+          <button type="submit" class="btn btn-primary btn-sm" id="revmBtn">${ed ? 'حفظ التعديل' : '+ إضافة'}</button>
+          ${ed ? `<button type="button" class="btn btn-outline btn-sm" onclick="REVM.editId=null;revmRender_()">إلغاء</button>` : ''}
+        </form>
+        <div class="msg" id="revmMsg"></div>
+        ${R.entries.length ? `<div class="tbl-wrap" style="max-height:340px;overflow-y:auto;"><table><thead><tr><th>التاريخ</th><th>الوصف</th><th>المبلغ</th><th></th></tr></thead><tbody>
+          ${R.entries.map(e => `<tr style="${String(e.id) === String(R.editId) ? 'background:#fbeecb;' : ''}"><td>${qEsc(e.date)}</td><td>${qEsc(e.desc)}</td><td><b>${fmt(e.amount)} ج</b></td>
+            <td style="white-space:nowrap;"><button type="button" class="btn btn-sm btn-outline" onclick="REVM.editId='${qEscJs(String(e.id))}';revmRender_()">✏️ تعديل</button>
+            <button type="button" class="btn btn-sm btn-danger" onclick="revmDelete_('${qEscJs(String(e.id))}')">حذف</button></td></tr>`).join('')}
+        </tbody></table></div>` : '<div class="empty">مفيش إيرادات مسجلة في التكاليف</div>'}
+      </div>
+      <div>
+        <h4 style="margin:0 0 6px;">إيرادات متابعة صرف المشاريع (${fmt(R.cashTotal)} ج) — للعرض</h4>
+        <div style="font-size:11.5px;color:var(--muted);margin-bottom:6px;">بتتسجل وتتعدل من شيت المشروع في متابعة صرف المشاريع / الخزنة.</div>
+        ${R.cashWeeks.length ? `<div class="tbl-wrap" style="max-height:340px;overflow-y:auto;"><table><thead><tr><th>الأسبوع</th><th>الإيراد</th></tr></thead><tbody>${R.cashWeeks.map(w => `<tr><td>${qEsc(w.label)}</td><td><b>${fmt(w.weekRevenue)} ج</b></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">مفيش تفصيل أسبوعي للإيرادات</div>'}
+      </div>
+    </div>`);
+  document.getElementById('cardDetailBody').classList.add('cd-wide');
+}
+async function revmSave_(){
+  const msg = document.getElementById('revmMsg'), btn = document.getElementById('revmBtn');
+  const payload = { project: REVM.project, date: document.getElementById('revmDate').value || todayStr(), desc: document.getElementById('revmDesc').value.trim(), amount: Number(document.getElementById('revmAmt').value) || 0 };
+  if (!(payload.amount > 0)) { msg.className = 'msg err'; msg.style.display = 'block'; msg.textContent = 'اكتب المبلغ'; return; }
+  btn.disabled = true;
+  try {
+    if (REVM.editId) await apiPost('updateProjectRevenueEntry', Object.assign({ id: REVM.editId }, payload));
+    else await apiPost('addProjectRevenueEntry', payload);
+    REVM.editId = null;
+    showToast('✅ اتحفظ الإيراد');
+    await revmLoad_();
+  } catch (err) { msg.className = 'msg err'; msg.style.display = 'block'; msg.textContent = 'خطأ: ' + (err.message || err); btn.disabled = false; }
+}
+async function revmDelete_(id){
+  if (!(await openGenConfirm('متأكد إنك عاوز تمسح الإيراد ده؟', 'حذف إيراد'))) { revmRender_(); return; }
+  try { await apiPost('deleteProjectRevenueEntry', { project: REVM.project, id }); showToast('🗑️ اتمسح'); await revmLoad_(); }
+  catch (err) { showToast('خطأ: ' + (err.message || err), 'error'); revmRender_(); }
+}
 // ⚠️ إضافة 2026-10-10: تفاصيل "تكاليف تانية مسجلة" — بنود صفحة التكاليف اليدوية + التركيب + عمالة المنتجات القديمة
 function showProjectOtherCostsModal_(d){
   if (!d) return;
@@ -6865,7 +6938,7 @@ async function showProjectDetail(name){
           <div class="card clickable" title="اعرض البنود" onclick="showProjectExpensesModal_('${qEscJs(d.project)}')"><div class="label">إجمالي المصاريف (متابعة صرف المشاريع) — دوس للتفاصيل</div><div class="value gold">${fmt(d.projectExpenses || 0)} ج</div></div>
           ${(d.costsTotal || 0) + (d.installCost || 0) + (d.productsLaborCost || 0) > 0 ? `<div class="card clickable" title="اعرض البنود" onclick="showProjectOtherCostsModal_(_projectDetailCache)"><div class="label">تكاليف تانية مسجلة (التكاليف/تركيب) — دوس للتفاصيل</div><div class="value gold">${fmt((d.costsTotal || 0) + (d.installCost || 0) + (d.productsLaborCost || 0))} ج</div></div>` : ''}
           <div class="card"><div class="label">إجمالي التكلفة (عمالة + خامات + مصاريف + تكاليف)</div><div class="value green">${fmt(d.totalCost)} ج</div></div>
-          ${d.financials ? `<div class="card"><div class="label">الإيرادات المسجلة</div><div class="value green">${fmt(d.financials.revenue)} ج</div></div>` : ''}
+          ${d.financials ? `<div class="card clickable" onclick="showProjectRevenueModal_('${qEscJs(d.project)}')"><div class="label">الإيرادات المسجلة — دوس للتفاصيل والتعديل</div><div class="value green">${fmt(d.financials.revenue)} ج</div></div>` : ''}
           ${d.netProfit!==null ? `<div class="card"><div class="label">صافي الربح</div><div class="value ${d.netProfit>=0?'green':'red'}">${fmt(d.netProfit)} ج</div></div>` : `<div class="card"><div class="label">صافي الربح</div><div class="value" style="color:var(--muted);font-size:13px;">لسه مفيش إيرادات مسجلة</div></div>`}
         </div>
         <h3 style="margin-top:6px;">آخر سجلات الساعات على المشروع</h3>
@@ -6952,21 +7025,21 @@ function pjRenderTabBody(){
         <td class="row-clickable" title="تفاصيل المصاريف" onclick="showProjectExpensesModal_('${qEscJs(p.project)}')">${fmt(r.exp)} ج</td>
         <td>${fmt(r.other)} ج</td>
         <td><b>${fmt(r.total)} ج</b></td>
-        <td>${r.rev === null ? '—' : fmt(r.rev) + ' ج'}</td>
+        <td class="row-clickable" title="تفاصيل وتعديل الإيرادات" onclick="showProjectRevenueModal_('${qEscJs(p.project)}')">${r.rev === null ? '—' : fmt(r.rev) + ' ج'}</td>
         <td>${netCell(r.net)}</td>
         <td style="text-align:left;white-space:nowrap;">
-          <button class="btn btn-sm btn-outline" title="إعادة تسمية" onclick="pjOpenRenameModal_('${qEscJs(p.project)}')">✏️</button>
-          <button class="btn btn-sm btn-outline" title="أرشفة" onclick="pjArchive('${qEscJs(p.project)}')">🗄</button>
-          <button class="btn btn-sm btn-danger" title="حذف نهائي" onclick="pjConfirmDelete('${qEscJs(p.project)}')">🗑</button>
+          <button class="btn btn-sm btn-outline" title="إعادة تسمية" onclick="pjOpenRenameModal_('${qEscJs(p.project)}')">✏️ تعديل</button>
+          <button class="btn btn-sm btn-outline" title="أرشفة" onclick="pjArchive('${qEscJs(p.project)}')">📦 أرشيف</button>
+          <button class="btn btn-sm btn-danger" title="حذف نهائي" onclick="pjConfirmDelete('${qEscJs(p.project)}')">🗑 حذف</button>
         </td>
       </tr>`;
-    }).join('')}
-    <tr style="background:var(--dark);color:#f0e6d8;">
+    }).join('')}</tbody>
+    <tfoot><tr class="tbl-totals-row">
       <td><b>الإجمالي</b></td><td><b>${fmt(sumOf('labor'))} ج</b></td><td><b>${fmt(sumOf('mat'))} ج</b></td><td><b>${fmt(sumOf('exp'))} ج</b></td>
       <td><b>${fmt(sumOf('other'))} ج</b></td><td><b>${fmt(sumOf('total'))} ج</b></td>
       <td><b>${fmt(rowsData.reduce((t, r) => t + (r.rev || 0), 0))} ج</b></td>
       <td><b>${fmt(rowsData.reduce((t, r) => t + (r.net === null ? 0 : r.net), 0))} ج</b></td><td></td>
-    </tr></tbody></table></div>
+    </tr></tfoot></table></div>
   ` : `<div class="empty">مفيش مشاريع نشطة — دوس "+ مشروع جديد"</div>`;
 }
 function pjOpenCreateModal2(){
@@ -7035,16 +7108,21 @@ async function pjConfirmRename_(oldName){
   } catch(err){ msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); btn.disabled = false; }
 }
 async function pjArchive(name){
+  if (!(await openGenConfirm('أرشفة "' + name + '": كل بياناته (شيت المصاريف، شيت التكاليف، سطور الساعات وسجل الشغل) هتتنسخ لملف الأرشيف وتتشال/تتخفي من مكانها، وهيختفي من كل القوايم والحسابات. تقدر ترجّعه كله في أي وقت من تبويب الأرشيف (♻️ إلغاء الأرشفة).', 'أرشفة المشروع'))) return;
+  showToast('📦 جاري الأرشفة... (ممكن تاخد دقيقة)');
   try {
-    await apiPost('archiveProject', { name });
-    showToast('🗄 اتعمل أرشفة للمشروع');
+    const r = await apiPost('archiveProject', { name });
+    const m = r && r.moved;
+    showToast('📦 اتأرشف' + (m ? ' — اتنقل ' + (m.hours || 0) + ' سطر ساعات و' + (m.workflow || 0) + ' سطر شغل' : ''));
     await renderProjectsPage(_navToken);
   } catch(err){ showError(err); }
 }
 async function pjUnarchive(name){
   try {
-    await apiPost('unarchiveProject', { name });
-    showToast('♻️ رجع المشروع للنشطة');
+    showToast('♻️ جاري الرجوع...');
+    const r = await apiPost('unarchiveProject', { name });
+    const m = r && r.restored;
+    showToast('♻️ رجع المشروع للنشطة' + (m ? ' — رجع ' + (m.hours || 0) + ' سطر ساعات و' + (m.workflow || 0) + ' سطر شغل' : ''));
     await renderProjectsPage(_navToken);
   } catch(err){ showError(err); }
 }
@@ -7949,7 +8027,7 @@ async function renderCostProjectSummary(project){
     box.innerHTML = `
       <div class="cards" style="margin-bottom:16px;">
         <div class="card"><div class="label">إجمالي تكلفة ${qEsc(project)}</div><div class="value gold">${fmt(d.totalCost)} ج</div></div>
-        <div class="card"><div class="label">إجمالي الإيرادات</div><div class="value green">${fmt(revenueTotal)} ج</div></div>
+        <div class="card clickable" onclick="showProjectRevenueModal_('${qEscJs(project)}')"><div class="label">إجمالي الإيرادات — دوس للتفاصيل والتعديل</div><div class="value green">${fmt(revenueTotal)} ج</div></div>
         ${d.netProfit!==null ? `<div class="card"><div class="label">صافي الربح</div><div class="value ${d.netProfit>=0?'green':'red'}">${fmt(d.netProfit)} ج</div></div>` : `<div class="card"><div class="label">صافي الربح</div><div class="value" style="color:var(--muted);font-size:13px;">—</div></div>`}
         <div class="card clickable" onclick="switchCostTab('summary')"><div class="label">تفاصيل ويوم بيوم وخامات</div><div class="value" style="font-size:13px;color:var(--gold);">شوف تبويبة "تفاصيل المشاريع" ←</div></div>
       </div>
@@ -8299,7 +8377,7 @@ async function renderCostSummaryBody_(){
         <h3 style="margin-bottom:12px;">${qEsc(project)}</h3>
         <div class="cards">
           <div class="card"><div class="label">إجمالي التكلفة</div><div class="value gold">${fmt(d.totalCost)} ج</div></div>
-          <div class="card"><div class="label">إجمالي الإيرادات</div><div class="value green">${fmt(revenueTotal)} ج</div></div>
+          <div class="card clickable" onclick="showProjectRevenueModal_('${qEscJs(project)}')"><div class="label">إجمالي الإيرادات — دوس للتفاصيل والتعديل</div><div class="value green">${fmt(revenueTotal)} ج</div></div>
           ${d.netProfit!==null ? `<div class="card"><div class="label">صافي الربح</div><div class="value ${d.netProfit>=0?'green':'red'}">${fmt(d.netProfit)} ج</div></div>` : `<div class="card"><div class="label">صافي الربح</div><div class="value" style="color:var(--muted);font-size:13px;">—</div></div>`}
         </div>
       </div>
@@ -8472,7 +8550,7 @@ async function renderRevenueTab() {
     <div class="cost-day-group" style="margin-bottom:16px;">
       <div class="cost-day-head" id="revTabHead"><b>${qEsc(REV_STATE.project || '—')}</b><span class="sub">الإيرادات — جاري التحميل...</span></div>
       <div class="panel" style="border-radius:0 0 10px 10px;margin:0;">
-        <div class="filters"><select id="rev_project">${projects.map(pr=>`<option value="${qEsc(pr)}" ${pr===REV_STATE.project?'selected':''}>${qEsc(pr)}</option>`).join('')}</select></div>
+        <div class="toqf-chips" id="revProjChips">${revProjChipsHtml_()}</div>
       </div>
     </div>
     <div class="grid2">
@@ -8496,10 +8574,22 @@ async function renderRevenueTab() {
       </div>
     </div>
   `;
-  document.getElementById('rev_project').addEventListener('change', e => { REV_STATE.project = e.target.value; revLoadEntries(); });
+  // ⚠️ تعديل 2026-10-10: اختيار المشروع بقى أزرار (زي فلتر التكاليف) بدل القايمة المنسدلة
   document.getElementById('revForm').addEventListener('submit', revSubmit);
   document.getElementById('revCancelEdit').addEventListener('click', () => { REV_STATE.editingId = null; revResetForm(); });
   await revLoadEntries();
+}
+function revProjChipsHtml_(){
+  const projects = window._costsProjects || [];
+  return projects.map(pr => `<button type="button" class="btn btn-sm ${pr === REV_STATE.project ? 'btn-primary' : 'btn-outline'}" onclick="revPickProject_('${qEscJs(pr)}')">${qEsc(pr)}</button>`).join('');
+}
+let REV_LOADING = false;
+async function revPickProject_(pr){
+  if (pr === REV_STATE.project || REV_LOADING) return;
+  REV_STATE.project = pr; REV_STATE.editingId = null;
+  const box = document.getElementById('revProjChips'); if (box) box.innerHTML = revProjChipsHtml_();
+  REV_LOADING = true;
+  try { await revLoadEntries(); } finally { REV_LOADING = false; }
 }
 function revUpdateHead(){
   const head = document.getElementById('revTabHead'); if (!head) return;
