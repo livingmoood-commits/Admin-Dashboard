@@ -247,11 +247,11 @@
   .toqf-emp-name{ font-weight:800; font-size:15px; }
   .toqf-day{ background:var(--cream); border-radius:10px; padding:10px; margin-top:8px; }
   .toqf-day-head{ display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; font-weight:700; font-size:13px; }
-  .toqf-row{ display:grid; grid-template-columns:minmax(150px,1.3fr) 92px minmax(120px,1.4fr) minmax(100px,1fr) 30px; gap:6px; align-items:center; margin-bottom:6px; }
+  .toqf-row{ display:grid; grid-template-columns:minmax(150px,1.3fr) 80px 125px minmax(120px,1.4fr) minmax(100px,1fr) 30px; gap:6px; align-items:center; margin-bottom:6px; }
   .toqf-row.eve{ background:rgba(212,175,55,.16); border-radius:8px; padding:4px; }
   .toqf-row .toqf-x{ text-align:center; color:var(--red); }
   @media(max-width:720px){
-    .toqf-row{ grid-template-columns:1fr 92px 30px; }
+    .toqf-row{ grid-template-columns:1fr 70px 92px 30px; }
     .toqf-row .toqf-x{ order:3; }
     .toqf-row .toqf-wide{ order:4; grid-column:1/-1; }
   }
@@ -11336,7 +11336,7 @@ function toQfRestore_(){
       if (typeof name !== 'string' || !st || !Array.isArray(st.dates) || !st.rows || typeof st.rows !== 'object') return;
       const dates = st.dates.filter(iso => /^\d{4}-\d{2}-\d{2}$/.test(iso) && Array.isArray(st.rows[iso]));
       const rows = {};
-      dates.forEach(iso => { rows[iso] = st.rows[iso].map(r => ({ kind: r.kind === 'eve' ? 'eve' : 'work', project: String(r.project || ''), hours: String(r.hours == null ? '' : r.hours), title: String(r.title || ''), notes: String(r.notes || '') })); });
+      dates.forEach(iso => { rows[iso] = st.rows[iso].map(r => ({ kind: r.kind === 'eve' ? 'eve' : 'work', project: String(r.project || ''), hours: String(r.hours == null ? '' : r.hours), title: String(r.title || ''), notes: String(r.notes || ''), amount: String(r.amount == null ? '' : r.amount) })); });
       emps.push(name);
       perEmp[name] = { dates, rows, lastIso: dates.indexOf(st.lastIso) !== -1 ? st.lastIso : (dates[dates.length - 1] || null), collapsed: !!st.collapsed };
     });
@@ -12322,7 +12322,7 @@ function toBuildSizesString_(){
  *  كل التفاعل محلي (من غير أي نداء سيرفر) وبيعيد رسم صندوق الفورم بس
  *  (#toqf-box) مش الصفحة كلها، والحفظ نداء واحد لكل الموظفين/الأيام/المشاريع.
  * ═══════════════════════════════════════════════════════════════════════ */
-function toQfNewRow_(kind, hours){ return { kind: kind || 'work', project: '', hours: hours || '', title: '', notes: '' }; }
+function toQfNewRow_(kind, hours){ return { kind: kind || 'work', project: '', hours: hours || '', title: '', notes: '', amount: '' }; }
 function toQfDayLabel_(iso){
   const d = new Date(iso + 'T00:00:00');
   return TO_DAY_NAMES[(d.getDay() + 2) % 7] + ' ' + toFmtDayDate(d); // TO_DAY_NAMES[0] = الجمعة
@@ -12561,9 +12561,10 @@ function toQfRowHtml_(ei, iso, ri, r){
   const args = `${ei},'${iso}',${ri}`;
   return `
     <div class="toqf-row ${isEve ? 'eve' : ''}">
-      ${isEve ? `<div style="grid-column:1/-1;order:-1;font-size:11.5px;font-weight:700;">🌙 سهرة <span style="font-weight:400;color:var(--muted);">${toQfRate_(TO_QF.emps[ei]) ? (Number(toQfRate_(TO_QF.emps[ei]).eveningRate) > 0 ? '— سعر السهرة المكتوب (' + fmt(toQfRate_(TO_QF.emps[ei]).eveningRate) + ' ج) بيتحمّل على المشروع' : '— اكتب سعر السهرة فوق جنب اليومية') : '— تكلفتها = الإضافة (ج) المكتوبة في خانة اليوم ده في شيت المرتبات، بتتحمّل على المشروع ده تلقائي. لو مفيش إضافة هناك بتتسجل للعلم بس'}</span></div>` : ''}
+      ${isEve ? `<div style="grid-column:1/-1;order:-1;font-size:11.5px;font-weight:700;">🌙 سهرة <span style="font-weight:400;color:var(--muted);">${toQfRate_(TO_QF.emps[ei]) ? (Number(toQfRate_(TO_QF.emps[ei]).eveningRate) > 0 ? '— سعر السهرة المكتوب (' + fmt(toQfRate_(TO_QF.emps[ei]).eveningRate) + ' ج) بيتحمّل على المشروع' : '— اكتب سعر السهرة فوق جنب اليومية') : '— لو كتبت "قيمة السهرة" بتتحسب هي. لو سبتها فاضية بتتاخد من شيت المرتبات: نوت الخانة (سهرة مشروع … — المبلغ) لنفس المشروع، وإلا الإضافة (ج) في خانة اليوم. ولو مفيش حاجة هناك بتتسجل للعلم بس'}</span></div>` : ''}
       <div class="${toQfErrHas_(ek + 'project')}">${toProjDropdownHtml_(`toqfP-${ei}-${iso}-${ri}`, r.project, `toQfSetRow_(${args},'project',v);toQfRenderBox_();`)}</div>
       <input type="text" inputmode="decimal" class="d-input ltr-num${toQfErrHas_(ek + 'hours')}" placeholder="${isEve ? '🌙 ساعات' : 'ساعات'}" value="${isAbs ? '' : qEsc(r.hours)}" ${isAbs ? 'disabled' : ''} onkeypress="return /[0-9.]/.test(event.key)" oninput="this.classList.remove('toqf-err');toQfSetRow_(${args},'hours',this.value);toQfUpdateTotal_(${ei},'${iso}')">
+      <input type="text" inputmode="decimal" class="d-input ltr-num" placeholder="${isEve ? 'قيمة السهرة' : 'قيمة اليوم'}" title="${isEve ? 'اختياري — لو كتبتها بتتحسب هي، لو سبتها فاضية بتتاخد من شيت المرتبات' : 'اختياري — قيمة اليوم (9 ساعات). لو كتبتها بتتحسب بيها، لو سبتها فاضية بياخد يوميته العادية من المرتبات'}" value="${isAbs ? '' : qEsc(r.amount || '')}" ${isAbs ? 'disabled' : ''} onkeypress="return /[0-9.]/.test(event.key)" oninput="toQfSetRow_(${args},'amount',this.value)">
       <input class="d-input toqf-wide" placeholder="${isEve ? 'المطلوب في السهرة (اختياري)' : 'المطلوب (اختياري)'}" value="${qEsc(r.title)}" oninput="toQfSetRow_(${args},'title',this.value)">
       <input class="d-input toqf-wide" placeholder="ملاحظات" value="${qEsc(r.notes)}" oninput="toQfSetRow_(${args},'notes',this.value)">
       <button type="button" class="mat-icon-btn toqf-x" title="شيل السطر" onclick="toQfRemoveRow_(${args})">✕</button>
@@ -12722,14 +12723,17 @@ async function toQuickformSave_() {
         if (!project) { errs.push(where + ': اختار المشروع' + (r.kind === 'eve' ? ' بتاع السهرة' : '') + ' (أو شيل السطر)'); TO_QF_ERR.add(ek + 'project'); return; }
         if (r.kind === 'eve') {
           if (hrs <= 0) { errs.push(where + ': اكتب ساعات السهرة'); TO_QF_ERR.add(ek + 'hours'); return; }
+          const manualAmt = Number(r.amount) || 0; // قيمة السهرة المكتوبة يدوي — بتتغلب على شيت المرتبات/سعر المؤقت
           entries.push(Object.assign({ employee: emp, project, hours: 0, date: iso, title: title || baseTitle, notes: ['سهرة', notes].filter(Boolean).join(' — '), eveningHours: r.hours },
-            temp ? Object.assign({ eveningAmount: Number(temp.eveningRate) || 0 }, tempExtra) : {}));
+            temp ? Object.assign({ eveningAmount: manualAmt > 0 ? manualAmt : (Number(temp.eveningRate) || 0) }, tempExtra) : (manualAmt > 0 ? { eveningAmountManual: manualAmt } : {})));
           return;
         }
         // غياب/إجازة — الساعات صفر يعني مفيش تكلفة، بتتسجل كملاحظة بس
         const isAbsence = project === 'إجازة' || toIsAbsenceNote_(notes);
         if (!isAbsence && hrs <= 0) { errs.push(where + ' (' + project + '): اكتب الساعات'); TO_QF_ERR.add(ek + 'hours'); return; }
-        entries.push(Object.assign({ employee: emp, project, hours: isAbsence ? 0 : r.hours, date: iso, title, notes }, tempExtra));
+        // ⚠️ إضافة 2026-10-10: "قيمة اليوم" مكتوبة = يومية الـ9 ساعات لليوم ده بس (الساعة = القيمة ÷ 9) — بتتغلب على اليومية العادية
+        const dayVal = isAbsence ? 0 : (Number(r.amount) || 0);
+        entries.push(Object.assign({ employee: emp, project, hours: isAbsence ? 0 : r.hours, date: iso, title, notes }, tempExtra, dayVal > 0 ? { overrideHourlyRate: dayVal / 9 } : {}));
       });
       const total = toQfDayTotal_(rows);
       const reg = toQfRegistered_(emp, iso) || 0;
