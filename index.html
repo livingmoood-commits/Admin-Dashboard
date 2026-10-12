@@ -1493,7 +1493,7 @@ function _lsClearAll() {
     Object.keys(localStorage).filter(k => k.indexOf(LS_CACHE_PREFIX) === 0).forEach(k => localStorage.removeItem(k));
   } catch (e) { /* تجاهل */ }
 }
-function apiCacheClear() { _apiCache.clear(); _lsClearAll(); } // بتتنادى بعد أي عملية save/delete عشان القراءة الجاية تكون طازة
+function apiCacheClear() { _apiCache.clear(); _lsClearAll(); if (typeof fxInvalidate === 'function') fxInvalidate(); } // بتتنادى بعد أي عملية save/delete عشان القراءة الجاية تكون طازة
 
 // بيتحدّث في goTo() بالصفحة الحالية — مستخدم عشان نعرف لو التحديث الصامت في الخلفية
 // لسه يستاهل يترسم على الشاشة، أو المستخدم خرج من الصفحة دي خلاص
@@ -1507,6 +1507,8 @@ function _refreshInBackground(action, params, key, url) {
   const promise = _apiFetch(url).then(data => {
     _apiCache.set(key, { t: Date.now(), data });
     _lsSet(key, data);
+    // ⚡ لو البيانات الطازة دي من مدخلات المصاريف الثابتة، الحساب القديم بيتمسح عشان إعادة الرسم تاخد الأرقام الجديدة
+    if (typeof fxInvalidate === 'function' && /^(getTreasuryMoves|listFixedExpenses|listHoursEntries|listProjects|listDebts|listEmployees|payrollListDetailsForMonth)$/.test(action)) fxInvalidate();
     if (pageAtCall && tokenAtCall === _navToken && PAGES[pageAtCall]) PAGES[pageAtCall].render(tokenAtCall);
   }).catch(() => { /* فشل تحديث الخلفية — البيانات المعروضة (القديمة) تفضل زي ما هي، مفيش داعي نزعج المستخدم */ })
     .finally(() => _inFlight.delete(key));
@@ -1905,7 +1907,8 @@ async function apiPost(action, payload) {
     headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // بيتفادى CORS preflight
     body: JSON.stringify({ action, actor, requestId, ...payload })
   });
-  apiCacheClear(); // أي POST معناه البيانات اتغيرت — امسح الكاش عشان القراءة الجاية تكون طازة
+  // ⚡ تسجيل الدخول مش بيغيّر أي بيانات — منمسحش الكاش، عشان أول صفحة بعد الدخول تفتح فورًا من الكاش وتتحدث في الخلفية
+  if (action !== 'login') apiCacheClear(); // أي POST معناه البيانات اتغيرت — امسح الكاش عشان القراءة الجاية تكون طازة
   // ⚠️ إضافة: أي حفظ نجح فعلاً في السيرفر — امسح كل "المسودات" المحفوظة محليًا
   // (شوف قسم "حماية النصوص المكتوبة" تحت). البيانات اتحفظت فعلاً دلوقتي، فمفيش
   // داعي نفضل شايلين نسخة قديمة محليًا ممكن تظهر تاني بالغلط في فورم جديد.
@@ -8221,15 +8224,9 @@ async function showProjectDetail(name, target){
     const fa = fxAdjust(d, fx, d.project);
     box.innerHTML = `
       <div class="panel">
-        <h3>تفاصيل مشروع: ${d.project}</h3>
-        ${fxCostEqHtml(fa)}
-        <div class="cards">
-          ${fxCostSrcCardsHtml(fa, d.project)}
-          ${fa.legacy ? `<div class="card clickable" onclick="showProjectMaterialsModal(_projectDetailCache)"><div class="label">تكلفة الخامات</div><div class="value gold">${fmt(d.materialsCost)} ج</div></div>` : ''}
-          <div class="card"><div class="label">إجمالي التكلفة</div><div class="value green">${fmt(fa.total)} ج</div>${fx ? `<div style="font-size:11.5px;color:var(--muted);margin-top:4px;">مباشرة ${fmt(fa.direct)} + ثابتة ${fmt(fa.share)}</div>` : ''}</div>
-          ${d.financials ? `<div class="card clickable" onclick="showProjectRevenueModal_('${qEscJs(d.project)}')"><div class="label">الإيرادات المسجلة — دوس للتفاصيل والتعديل</div><div class="value green">${fmt(d.financials.revenue)} ج</div></div>` : ''}
-          ${fa.net!==null ? `<div class="card"><div class="label">صافي الربح</div><div class="value ${fa.net>=0?'green':'red'}">${fmt(fa.net)} ج</div></div>` : `<div class="card"><div class="label">صافي الربح</div><div class="value" style="color:var(--muted);font-size:13px;">لسه مفيش إيرادات مسجلة</div></div>`}
-        </div>
+        <h3>تفاصيل مشروع: ${qEsc(d.project)}</h3>
+        ${fxProjectKpisHtml(fa, d, d.project)}
+        ${fxCostBreakdownHtml(fa, d.project, d.laborHours)}
         ${fx ? `<h3 style="margin-top:6px;">المصاريف الثابتة — نصيب ${qEsc(d.project)} شهر بشهر</h3>${fxProjectTableHtml(fx, d.project)}` : ''}
         <h3 style="margin-top:14px;">آخر سجلات الساعات على المشروع</h3>
         ${d.recentHours.length ? `<div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>الموظف</th><th>ساعات</th><th>سهرة</th><th>التكلفة</th></tr></thead>
@@ -9316,23 +9313,10 @@ async function renderCostProjectSummary(project){
     const revenueTotal = d.financials ? d.financials.revenue : (rev.total || 0);
     const archiveCost = (d.materialsCost || 0) + (d.installCost || 0);
     box.innerHTML = `
-      <div class="cards" style="margin-bottom:16px;">
-        <div class="card"><div class="label">إجمالي تكلفة ${qEsc(project)}</div><div class="value gold">${fmt(fa.total)} ج</div>${fa.share ? `<div style="font-size:11.5px;color:var(--muted);margin-top:4px;">مباشرة ${fmt(fa.direct)} + ثابتة ${fmt(fa.share)}</div>` : ''}</div>
-        <div class="card clickable" onclick="showProjectRevenueModal_('${qEscJs(project)}')"><div class="label">إجمالي الإيرادات — دوس للتفاصيل والتعديل</div><div class="value green">${fmt(revenueTotal)} ج</div></div>
-        ${fa.net!==null ? `<div class="card"><div class="label">صافي الربح</div><div class="value ${fa.net>=0?'green':'red'}">${fmt(fa.net)} ج</div></div>` : `<div class="card"><div class="label">صافي الربح</div><div class="value" style="color:var(--muted);font-size:13px;">—</div></div>`}
-        <div class="card clickable" onclick="switchCostTab('summary')"><div class="label">تفاصيل ويوم بيوم وخامات</div><div class="value" style="font-size:13px;color:var(--gold);">شوف تبويبة "تفاصيل المشاريع" ←</div></div>
-      </div>
+      ${fxProjectKpisHtml(fa, d, project)}
+      <div style="text-align:left;margin:-8px 0 12px;"><a href="#" onclick="event.preventDefault();switchCostTab('summary')" style="color:var(--gold);font-weight:700;font-size:13px;">تفاصيل ويوم بيوم وخامات — تبويبة "تفاصيل المشاريع" ←</a></div>
 
-      <!-- ⚠️ إضافة: تفصيل إجمالي التكلفة حسب المصدر — كل مصدر رقمه لوحده، عشان يبان
-           بوضوح مين مساهم بإيه في التكلفة الكلية فوق (عمالة الساعات/بنود التكاليف
-           الموحّدة/أرشيف قديم لو فيه). -->
-      <div class="panel" style="background:var(--cream);border:1.5px dashed var(--border);margin-bottom:16px;">
-        <h3 style="margin-bottom:10px;">تفصيل التكلفة حسب المصدر</h3>
-        ${fxCostEqHtml(fa)}
-        <div class="cost-src-cards">
-          ${fxCostSrcCardsHtml(fa, project)}
-        </div>
-      </div>
+      ${fxCostBreakdownHtml(fa, project, d.laborHours)}
 
       <div class="panel" style="margin-bottom:16px;">
         <h3 style="margin-bottom:4px;">عمالة ${qEsc(project)} — تفصيل يوم بيوم</h3>
@@ -9667,20 +9651,10 @@ async function renderCostSummaryBody_(){
     box.innerHTML = `
       <div class="panel" style="margin-bottom:16px;">
         <h3 style="margin-bottom:12px;">${qEsc(project)}</h3>
-        <div class="cards">
-          <div class="card"><div class="label">إجمالي التكلفة</div><div class="value gold">${fmt(fa.total)} ج</div>${fa.share ? `<div style="font-size:11.5px;color:var(--muted);margin-top:4px;">مباشرة ${fmt(fa.direct)} + ثابتة ${fmt(fa.share)}</div>` : ''}</div>
-          <div class="card clickable" onclick="showProjectRevenueModal_('${qEscJs(project)}')"><div class="label">إجمالي الإيرادات — دوس للتفاصيل والتعديل</div><div class="value green">${fmt(revenueTotal)} ج</div></div>
-          ${fa.net!==null ? `<div class="card"><div class="label">صافي الربح</div><div class="value ${fa.net>=0?'green':'red'}">${fmt(fa.net)} ج</div></div>` : `<div class="card"><div class="label">صافي الربح</div><div class="value" style="color:var(--muted);font-size:13px;">—</div></div>`}
-        </div>
+        ${fxProjectKpisHtml(fa, d, project)}
+        ${fxCostBreakdownHtml(fa, project, d.laborHours)}
       </div>
 
-      <div class="panel" style="background:var(--cream);border:1.5px dashed var(--border);margin-bottom:16px;">
-        <h3 style="margin-bottom:10px;">تفصيل التكلفة حسب المصدر</h3>
-        ${fxCostEqHtml(fa)}
-        <div class="cost-src-cards">
-          ${fxCostSrcCardsHtml(fa, project)}
-        </div>
-      </div>
 
       ${fx ? `<div class="panel" style="margin-bottom:16px;">
         <h3 style="margin-bottom:4px;">المصاريف الثابتة — نصيب ${qEsc(project)} شهر بشهر</h3>
@@ -9966,9 +9940,17 @@ async function revDeleteEntry(id){
 /* ================= Debts (ديون) ================= */
 /* ================= Debts ================= */
 let _debtsCache = [];
+let _debtsProjects = []; // أسامي المشاريع لخانة "المشروع" في الدين (عشان ديون كل مشروع تدخل في تكلفته)
+// قايمة اختيار المشروع للدين — "بدون مشروع" = دين عام
+function _debtProjOptions(sel){
+  sel = String(sel || '').trim();
+  const list = _debtsProjects.slice(); if (sel && !list.includes(sel)) list.push(sel);
+  return `<option value="">— بدون مشروع (دين عام) —</option>` + list.map(p => `<option value="${qEsc(p)}" ${p === sel ? 'selected' : ''}>${qEsc(p)}</option>`).join('');
+}
 async function renderDebts(token) {
   try {
-    const { debts } = await apiGet('listDebts');
+    const [{ debts }, projRes] = await Promise.all([apiGet('listDebts'), apiGet('listProjects').catch(() => ({ projects: [] }))]);
+    _debtsProjects = ((projRes && projRes.projects) || []).map(p => String(p).trim()).filter(Boolean);
     if (isStaleNav(token)) return;
     _debtsListFilter = 'all'; // فتح الصفحة من جديد (تنقّل) → رجّع التبويب لـ"الكل"؛ إعادة الرسم الداخلية بعد سداد/تعديل/حذف بتحافظ على التبويب المختار
     renderDebtsPage(debts);
@@ -9997,6 +9979,7 @@ function renderDebtsPage(debts){
             <datalist id="dbt-creditor-list">${Array.from(new Set(debts.map(d => d.creditor).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'ar')).map(c => `<option value="${qEsc(c)}">`).join('')}</datalist>
             <div class="field"><label>الوصف</label><input autocomplete="off" id="dbt_desc" placeholder="اختياري"></div>
           </div>
+          <div class="field"><label>المشروع <span style="font-weight:400;color:var(--muted);font-size:12px;">(لو الدين يخص مشروع — بيدخل في تكلفة المشروع)</span></label><select id="dbt_project">${_debtProjOptions('')}</select></div>
           <div class="form-row">
             <div class="field"><label>الإجمالي</label><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" id="dbt_total" placeholder="0" onkeypress="return /[0-9.]/.test(event.key)"></div>
             <div class="field"><label>مسدد مبدئيًا (لو فيه)</label><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" id="dbt_paid" placeholder="0" onkeypress="return /[0-9.]/.test(event.key)"></div>
@@ -10042,7 +10025,8 @@ function renderDebtsPage(debts){
       desc: document.getElementById('dbt_desc').value.trim(),
       total: qNum(document.getElementById('dbt_total').value),
       paid: qNum(document.getElementById('dbt_paid').value),
-      notes: document.getElementById('dbt_notes').value
+      notes: document.getElementById('dbt_notes').value,
+      project: document.getElementById('dbt_project').value
     };
     if (!debt.creditor){ msg.className='msg err'; msg.textContent='اسم الجهة الدائنة مطلوب'; btn.disabled=false; btn.textContent='حفظ الدين'; return; }
     try {
@@ -10054,7 +10038,7 @@ function renderDebtsPage(debts){
       _debtsCache = [{
         id: res.id, creditor: debt.creditor, desc: debt.desc, total: debt.total, paid: debt.paid,
         remaining, date: todayStr(), lastPayment: debt.paid > 0 ? todayStr() : '',
-        settled: !!res.settled, notes: debt.notes, project: ''
+        settled: !!res.settled, notes: debt.notes, project: debt.project
       }, ...(_debtsCache || [])];
       renderDebtsPage(_debtsCache);
       showToast('✔ اتحفظ الدين بنجاح', 'success');
@@ -10108,6 +10092,7 @@ function editDebtStart(id){
       <datalist id="dbt-creditor-list">${Array.from(new Set(_debtsCache.map(x => x.creditor).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'ar')).map(c => `<option value="${qEsc(c)}">`).join('')}</datalist>
       <div class="field"><label>الوصف</label><input autocomplete="off" id="ed_desc" value="${qEsc(d.desc||'')}"></div>
     </div>
+    <div class="field"><label>المشروع</label><select id="ed_project">${_debtProjOptions(d.project)}</select></div>
     <div class="form-row">
       <div class="field"><label>الإجمالي</label><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" id="ed_total" value="${d.total}" onkeypress="return /[0-9.]/.test(event.key)"></div>
       <div class="field"><label>المسدد</label><input autocomplete="off" type="text" class="ltr-num" inputmode="numeric" id="ed_paid" value="${d.paid}" onkeypress="return /[0-9.]/.test(event.key)"></div>
@@ -10130,7 +10115,8 @@ async function saveDebtEdit(id){
     desc: document.getElementById('ed_desc').value.trim(),
     total: qNum(document.getElementById('ed_total').value),
     paid: qNum(document.getElementById('ed_paid').value),
-    notes: document.getElementById('ed_notes').value
+    notes: document.getElementById('ed_notes').value,
+    project: document.getElementById('ed_project').value
   };
   // ⚠️ إصلاح بطء "التعديل بيطول": الزرار مكنش بيتقفل وقت الحفظ (تقدر تدوس تاني وهو
   // لسه شغال)، ومع كده كان بيعمل apiGet('listDebts') تاني من السيرفر بعد الحفظ (نداء
@@ -10237,9 +10223,10 @@ function renderDebtsList(allDebts){
   const totalAll = debts.reduce((s,d)=>s+d.total, 0);
   const paidAll = debts.reduce((s,d)=>s+d.paid, 0);
   const remainingAll = debts.reduce((s,d)=>s+d.remaining, 0);
-  box.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>الجهة</th><th>الوصف</th><th>الإجمالي</th><th>المسدد</th><th>الباقي</th><th>الحالة</th><th></th></tr></thead>
+  box.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>الجهة</th><th>المشروع</th><th>الوصف</th><th>الإجمالي</th><th>المسدد</th><th>الباقي</th><th>الحالة</th><th></th></tr></thead>
     <tbody>${debts.map(d=>`<tr>
       <td>${qEsc(d.creditor)}</td>
+      <td>${d.project ? `<span class="pill" style="background:rgba(184,151,90,.15);color:var(--gold-dim);">${qEsc(d.project)}</span>` : '<span style="color:var(--muted);">عام</span>'}</td>
       <td>${qEsc(d.desc||'—')}${d.notes ? ` <button type="button" class="d-log-note-btn has-note" title="فيه ملاحظة — دوس لعرضها" onclick="toggleDebtNotePopover('${qEscJs(d.id)}', this)">📝</button>` : ''}</td>
       <td>${fmt(d.total)} ج</td><td>${fmt(d.paid)} ج</td>
       <td style="color:${d.remaining>0.01?'var(--red)':'var(--green)'};font-weight:700;">${fmt(d.remaining)} ج</td>
@@ -10251,7 +10238,7 @@ function renderDebtsList(allDebts){
       </td>
     </tr>`).join('')}</tbody>
     <tfoot><tr class="tbl-totals-row">
-      <td colspan="2">الإجمالي (${debts.length})</td>
+      <td colspan="3">الإجمالي (${debts.length})</td>
       <td>${fmt(totalAll)} ج</td>
       <td>${fmt(paidAll)} ج</td>
       <td>${fmt(remainingAll)} ج</td>
@@ -11353,7 +11340,7 @@ const FX_CFG_NAME = '⚙️ إعداد: تصنيفات المصاريف العا
 // الافتراضي = كل التصنيفات ما عدا دول (المرتبات والشركاء والديون ليهم حسابهم، الخامات والنقل غالبًا للمشاريع،
 // والإيجار متسجل كبند ثابت يدوي — فلو دخل من الخزنة كمان هيتحسب مرتين)
 const FX_DEFAULT_EXCLUDE = ['مرتبات ومسحوبات', 'مسحوبات شركاء', 'سداد ديون', 'خامات وعدد', 'إيجار', 'مواصلات ونقل'];
-const FX_TTL_MS = 45000;
+const FX_TTL_MS = 10 * 60 * 1000; // ⚡ 10 دقايق — وبيتمسح فورًا مع أي حفظ (apiCacheClear) أو لما بيانات طازة توصل من السيرفر (_refreshInBackground)
 let FX_MODEL = null, FX_MODEL_AT = 0, FX_MODEL_P = null;
 let FX_UI = { month: '', from: '', to: '', cats: null, dirty: false };
 
@@ -11382,7 +11369,9 @@ async function fxLoadModel(force){
       const amount = Number(m.amount) || 0; if (!amount) return;
       all.push({ id: m.id, date: m.date || '', desc: String(m.desc || ''), project: String(m.project || '').trim(), amount, cat: 'أخرى' });
     });
-    const classify = () => all.forEach(r => { r.cat = (cfg.pick({ desc: r.desc, project: r.project }) || {}).cat || 'أخرى'; });
+    // ⚡ نفس الوصف+المشروع بيتكرر كتير في الخزنة — بنصنّفه مرة واحدة بس
+    const classify = () => { const memo = new Map(); all.forEach(r => { const k = r.desc + '\u0001' + r.project; let c = memo.get(k);
+      if (c === undefined) { c = (cfg.pick({ desc: r.desc, project: r.project }) || {}).cat || 'أخرى'; memo.set(k, c); } r.cat = c; }); };
     classify();
     try { await _expxFetchEmpSheet(all); } catch(e) {}
     EXPX_EMP_RE = _expxBuildEmpRe(EXPX_EMP_SHEET, _expxHarvestNames(all));
@@ -11743,18 +11732,68 @@ function fxAdjust(d, fx, project){
   const net = d.financials ? (Number(d.financials.revenue) || 0) - total : null;
   return { share, total, net, pctOfCost: total ? share / total : 0, direct, labor, expenses, debt };
 }
-// سطر المعادلة اللي بيشرح الإجمالي
-function fxCostEqHtml(fa){
-  if (fa.legacy) return '';
-  return `<div style="font-size:12.5px;color:var(--muted);margin:-2px 0 12px;line-height:1.9;">إجمالي التكلفة = عمالة <b>${fmt(fa.labor)}</b> + مصاريف المشروع <b>${fmt(fa.expenses)}</b> + ديون المشروع <b>${fmt(fa.debt)}</b> + ثابتة وعامة <b>${fmt(fa.share)}</b> = <b style="color:var(--gold);">${fmt(fa.total)} ج</b></div>`;
+// ── شكل تفاصيل المشروع: 3 أرقام رئيسية + شريط توزيع التكلفة + صفوف المصادر (كل صف بيفتح تفاصيله) ──
+function fxEnsureCss(){
+  if (document.getElementById('fx-pd-css')) return;
+  const st = document.createElement('style'); st.id = 'fx-pd-css';
+  st.textContent = `
+  .pdk{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:4px 0 16px; }
+  .pdk-t{ background:var(--white); border:1px solid var(--border); border-radius:14px; padding:14px 16px; position:relative; overflow:hidden; text-align:right; }
+  .pdk-t::before{ content:''; position:absolute; inset:0 0 0 auto; width:4px; background:var(--c,var(--gold)); }
+  .pdk-t.clk{ cursor:pointer; transition:transform .12s, box-shadow .12s; } .pdk-t.clk:hover{ transform:translateY(-2px); box-shadow:0 6px 18px rgba(30,26,21,.08); }
+  .pdk-l{ font-size:12.5px; color:var(--muted); font-weight:700; } .pdk-v{ font-size:26px; font-weight:900; margin-top:4px; letter-spacing:-.3px; }
+  .pdk-s{ font-size:11.5px; color:var(--muted); margin-top:4px; }
+  .pdb{ background:var(--white); border:1px solid var(--border); border-radius:14px; padding:14px 16px; margin-bottom:16px; }
+  .pdb-h{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:10px; }
+  .pdb-h b{ font-size:15px; } .pdb-h span{ font-size:12px; color:var(--muted); }
+  .pdb-bar{ display:flex; height:12px; border-radius:8px; overflow:hidden; background:var(--cream); margin-bottom:12px; gap:2px; }
+  .pdb-bar i{ display:block; height:100%; min-width:3px; }
+  .pdb-row{ display:grid; grid-template-columns:14px 1fr auto 58px 16px; align-items:center; gap:10px; width:100%; padding:11px 8px; border:0; border-top:1px solid var(--border);
+    background:transparent; cursor:pointer; text-align:right; font:inherit; color:inherit; border-radius:8px; }
+  .pdb-row:hover{ background:rgba(184,151,90,.09); }
+  .pdb-dot{ width:12px; height:12px; border-radius:4px; }
+  .pdb-l b{ display:block; font-size:14px; } .pdb-l small{ display:block; font-size:11.5px; color:var(--muted); margin-top:2px; }
+  .pdb-v{ font-weight:800; font-size:15px; white-space:nowrap; } .pdb-p{ font-size:12px; color:var(--muted); text-align:left; } .pdb-go{ color:var(--gold); font-weight:900; }
+  .pdb-tot{ display:flex; justify-content:space-between; align-items:center; padding:12px 8px 2px; border-top:2px solid var(--dark); margin-top:2px; font-weight:900; font-size:15px; }
+  @media(max-width:700px){ .pdk{ grid-template-columns:1fr; } .pdb-row{ grid-template-columns:12px 1fr auto 14px; } .pdb-p{ display:none; } }`;
+  document.head.appendChild(st);
 }
-// الكروت الأربعة لمصادر التكلفة (كل كارت بيفتح تفاصيله)
-function fxCostSrcCardsHtml(fa, project){
-  const pj = qEscJs(project);
-  return `<div class="card clickable" title="اعرض التفاصيل" onclick="showProjectLaborModal_('${pj}')"><div class="label">عمالة المشروع (ساعات وسهرات) — دوس للتفاصيل</div><div class="value gold">${fmt(fa.labor)} ج</div></div>
-    <div class="card clickable" title="اعرض البنود" onclick="showProjectExpensesModal_('${pj}')"><div class="label">مصاريف المشروع — دوس للتفاصيل</div><div class="value gold">${fmt(fa.expenses)} ج</div></div>
-    ${fa.legacy ? '' : `<div class="card clickable" title="اعرض الديون" onclick="fxShowProjectDebtsModal('${pj}')"><div class="label">ديون المشروع (الباقي) — دوس للتفاصيل</div><div class="value ${fa.debt ? 'red' : 'gold'}">${fmt(fa.debt)} ج</div></div>
-    <div class="card clickable" title="اعرض النصيب شهر بشهر" onclick="fxShowProjectModal('${pj}')"><div class="label">ثابتة وعامة (نصيب بالساعات — ${fxPct(fa.pctOfCost)}) — دوس للتفاصيل</div><div class="value gold">${fmt(fa.share)} ج</div></div>`}`;
+const FX_SRC_COLORS = { labor: '#B8975A', expenses: '#6B5E4E', debt: '#c0392b', share: '#4f7cac' };
+// شريط + صفوف مصادر التكلفة
+function fxCostBreakdownHtml(fa, project, hours){
+  fxEnsureCss();
+  const pj = qEscJs(project), T = fa.total || 0;
+  const rows = [
+    { k: 'labor', l: 'عمالة المشروع', s: (hours ? fmt(hours) + ' ساعة — ' : '') + 'ساعات وسهرات من المرتبات', v: fa.labor, on: `showProjectLaborModal_('${pj}')` },
+    { k: 'expenses', l: 'مصاريف المشروع', s: 'كل اللي اتصرف على المشروع من الخزنة', v: fa.expenses, on: `showProjectExpensesModal_('${pj}')` }
+  ];
+  if (!fa.legacy) rows.push(
+    { k: 'debt', l: 'ديون المشروع', s: 'الباقي من الديون المتسجلة على المشروع', v: fa.debt, on: `fxShowProjectDebtsModal('${pj}')` },
+    { k: 'share', l: 'ثابتة وعامة', s: 'إيجار + مصاريف عامة — بنسبة ساعات المشروع كل شهر', v: fa.share, on: `fxShowProjectModal('${pj}')` });
+  const pct = v => T ? (v / T * 100).toFixed(1) + '%' : '—';
+  return `<div class="pdb">
+    <div class="pdb-h"><b>التكلفة جاية منين؟</b><span>دوس على أي بند تشوف تفاصيله</span></div>
+    <div class="pdb-bar">${rows.filter(r => r.v > 0).map(r => `<i style="width:${T ? r.v / T * 100 : 0}%;background:${FX_SRC_COLORS[r.k]};" title="${r.l}: ${fmt(r.v)} ج"></i>`).join('')}</div>
+    ${rows.map(r => `<button type="button" class="pdb-row" onclick="${r.on}"><span class="pdb-dot" style="background:${FX_SRC_COLORS[r.k]};"></span>
+      <span class="pdb-l"><b>${r.l}</b><small>${r.s}</small></span><span class="pdb-v">${fmt(r.v)} ج</span><span class="pdb-p">${pct(r.v)}</span><span class="pdb-go">‹</span></button>`).join('')}
+    <div class="pdb-tot"><span>إجمالي التكلفة</span><span style="color:var(--gold);">${fmt(T)} ج</span></div>
+  </div>`;
+}
+// الأرقام الرئيسية: التكلفة / الإيرادات / صافي الربح (+ هامش الربح)
+function fxProjectKpisHtml(fa, d, project){
+  fxEnsureCss();
+  const rev = d.financials ? Number(d.financials.revenue) || 0 : null;
+  const net = fa.net;
+  const margin = rev ? (net / rev * 100).toFixed(1) + '%' : null;
+  return `<div class="pdk">
+    <div class="pdk-t" style="--c:var(--gold);"><div class="pdk-l">إجمالي التكلفة</div><div class="pdk-v" style="color:var(--gold);">${fmt(fa.total)} ج</div>
+      <div class="pdk-s">${fa.legacy ? '&nbsp;' : `مباشرة ${fmt(fa.direct)} + ثابتة ${fmt(fa.share)}`}</div></div>
+    <div class="pdk-t clk" style="--c:var(--green);" onclick="showProjectRevenueModal_('${qEscJs(project)}')"><div class="pdk-l">الإيرادات ‹</div><div class="pdk-v" style="color:var(--green);">${rev === null ? '—' : fmt(rev) + ' ج'}</div>
+      <div class="pdk-s">${rev === null ? 'لسه مفيش إيرادات مسجلة' : 'دوس للتفاصيل والتعديل'}</div></div>
+    <div class="pdk-t" style="--c:${net === null ? 'var(--muted)' : net >= 0 ? 'var(--green)' : 'var(--red)'};"><div class="pdk-l">صافي الربح</div>
+      <div class="pdk-v" style="color:${net === null ? 'var(--muted)' : net >= 0 ? 'var(--green)' : 'var(--red)'};">${net === null ? '—' : fmt(net) + ' ج'}</div>
+      <div class="pdk-s">${margin ? 'هامش الربح ' + margin + ' من الإيرادات' : '&nbsp;'}</div></div>
+  </div>`;
 }
 async function fxShowProjectDebtsModal(project){
   try {
@@ -11770,6 +11809,9 @@ async function fxShowProjectDebtsModal(project){
       <div style="display:flex;justify-content:flex-end;margin-top:12px;"><button type="button" class="btn btn-outline" onclick="closeCardModal()">قفل</button></div>`);
   } catch(err){ showToast('خطأ: ' + (err.message || err), 'error'); }
 }
+
+// ⚡ تحميل المصاريف الثابتة في الخلفية بعد فتح الموقع بشوية — عشان أول ما تفتح التكاليف/المشاريع تبقى جاهزة
+try { if (sessionStorage.getItem('lm_loggedIn') === '1') setTimeout(() => { fxLoadModel().catch(() => {}); }, 4000); } catch(e) {}
 
 async function renderFixedExp(token) { return fxRenderPage(token); } // الصفحة الجديدة (شهري + مصاريف عامة من الخزنة) — شوف قسم FX
 async function deleteFixedExpConfirm(id){
@@ -13717,6 +13759,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     document.getElementById('appRoot').style.display = 'flex';
     applyRoleAccess();
     goTo(_defaultPageForRole(sessionStorage.getItem('lm_currentPage')));
+    setTimeout(() => { if (typeof fxLoadModel === 'function') fxLoadModel().catch(() => {}); }, 4000); // ⚡ تجهيز المصاريف الثابتة في الخلفية
   } catch (err) {
     const m = err.message || String(err);
     msg.className = 'msg err';
