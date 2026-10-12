@@ -9224,7 +9224,7 @@ function _expxDefaultFilters(st){
   const earliest = rows.length ? rows.reduce((min, r) => (r.date && r.date < min) ? r.date : min, todayStr()) : todayStr();
   // لو في مصروف متسجل بتاريخ بعد النهارده، "لحد تاريخ" الافتراضي بيوصل له عشان ميستخبّاش
   const latest = rows.reduce((max, r) => (r.date && r.date > max) ? r.date : max, todayStr());
-  return { from: earliest, to: latest, dim:'all', cat:'all', project: st.cfg.defaultProject || 'all', dow:'all', min:'', max:'', q:'', sort:'date', dir:'desc', groupDays:true, limit: EXPX_PAGE_SIZE, wscope:'other' };
+  return { from: earliest, to: latest, dim:'all', cat:'all', project: st.cfg.defaultProject || 'all', dow:'all', min:'', max:'', q:'', sort:'date', dir:'desc', groupDays:true, limit: EXPX_PAGE_SIZE, wscope:'أخرى', wsort:'n', wall:false, uscope:'أخرى', usort:'t' };
 }
 
 const EXPX_CFG = {
@@ -9322,19 +9322,76 @@ async function expxRender(id, token){
         <div class="panel"><h3>حسب ${qEsc(cfg.catLabel)}${cfg.dims ? ' و' + qEsc(cfg.dimLabel) : ''}</h3><div class="tbl-wrap tbl-wrap-scroll" id="${P}-matrix" style="max-height:460px;"></div></div>
         <div class="panel"><h3>إجمالي كل شهر</h3><div class="tbl-wrap tbl-wrap-scroll" id="${P}-monthly" style="max-height:460px;"></div></div>
       </div>
-      ${cfg.showWords ? `<div class="panel">
+      ${cfg.showWords ? `<style>
+        .expx-wgrid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:10px; }
+        .expx-wcard{ position:relative; display:flex; flex-direction:column; gap:6px; padding:12px 14px 11px; border:1px solid var(--border); border-radius:12px;
+          background:var(--white); cursor:pointer; transition:border-color .2s, box-shadow .2s, transform .2s var(--bounce); }
+        .expx-wcard:hover{ border-color:var(--gold); box-shadow:0 6px 16px rgba(30,26,21,.08); transform:translateY(-2px); }
+        .expx-wcard.on{ border-color:var(--gold); box-shadow:0 0 0 2px var(--gold) inset; background:#fdf8ef; }
+        .expx-wtop{ display:flex; align-items:center; gap:8px; }
+        .expx-wrank{ font-size:10.5px; font-weight:800; color:var(--muted); min-width:18px; }
+        .expx-wword{ font-size:15px; font-weight:800; color:var(--dark); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .expx-wadd{ all:unset; cursor:pointer; width:24px; height:24px; line-height:24px; text-align:center; border-radius:50%; font-size:15px; font-weight:800;
+          color:var(--gold-dim); background:var(--cream); border:1px solid var(--border); flex-shrink:0; transition:background .2s, color .2s; }
+        .expx-wadd:hover{ background:var(--gold); color:#fff; border-color:var(--gold); }
+        .expx-wmeta{ display:flex; justify-content:space-between; align-items:baseline; font-size:12px; }
+        .expx-wmeta .n{ color:var(--muted); font-weight:700; }
+        .expx-wmeta .t{ color:var(--gold-dim); font-weight:800; font-size:13px; }
+        .expx-wbar{ height:5px; background:var(--cream); border-radius:4px; overflow:hidden; }
+        .expx-wbar > div{ height:100%; background:linear-gradient(90deg, var(--gold-dim), var(--gold)); border-radius:4px; }
+        .expx-wctrl{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-size:12px; font-weight:600; }
+        .expx-wctrl select{ padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:12px; background:var(--white); }
+        .expx-seg{ display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+        .expx-seg button{ all:unset; cursor:pointer; padding:6px 10px; font-size:12px; font-weight:700; color:var(--muted); background:var(--white); }
+        .expx-seg button.on{ background:var(--dark); color:var(--gold, #D4B483); }
+        @media(max-width:560px){ .expx-wgrid{ grid-template-columns:1fr 1fr; gap:8px; } .expx-wcard{ padding:10px; } .expx-wword{ font-size:13.5px; } }
+      </style>
+      <div class="panel">
         <h3>
           <span>الكلمات الأكثر تكرارًا</span>
-          <select id="${P}-wscope" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:12px;background:var(--white);">
-            <option value="other">في البنود "أخرى" بس</option>
-            <option value="all">في كل البنود المعروضة</option>
-          </select>
+          <span class="expx-wctrl">
+            <label for="${P}-wscope" style="color:var(--muted);">في:</label>
+            <select id="${P}-wscope"></select>
+            <span class="expx-seg" id="${P}-wsort">
+              <button type="button" data-act="wsort" data-v="n">الأكتر تكرار</button>
+              <button type="button" data-act="wsort" data-v="t">الأعلى مبلغ</button>
+            </span>
+          </span>
         </h3>
-        <div style="font-size:11.5px;color:var(--muted);margin:-6px 0 10px;">دوس على الكلمة عشان تعرض كل البنود اللي فيها (مهما كان مكانها في الجملة) — أو <b>+ تصنيف</b> عشان تعمل منها تصنيف ثابت أو تضيفها لتصنيف موجود.</div>
+        <div style="font-size:11.5px;color:var(--muted);margin:-6px 0 12px;">اختار تصنيف (زي "أخرى" أو "خامات") يطلعلك الكلمات المتكررة فيه. دوس على أي كارت يعرض البنود اللي فيها الكلمة دي، و<b style="color:var(--gold-dim);">＋</b> تعمل منها تصنيف ثابت أو تضيفها لتصنيف موجود.</div>
         <div id="${P}-custom"></div>
         <div id="${P}-words"></div>
       </div>` : ''}
-      ${cfg.showUnclassified ? `<div class="panel"><h3>أكتر بنود متصنفة "أخرى" — ابعتلي كلماتها عشان أضيفها لتصنيف</h3><div class="tbl-wrap tbl-wrap-scroll" id="${P}-uncls" style="max-height:360px;"></div></div>` : ''}
+      ${cfg.showUnclassified ? `<style>
+        .expx-ulist{ display:flex; flex-direction:column; gap:6px; max-height:520px; overflow:auto; padding-inline-end:2px; }
+        .expx-urow{ display:grid; grid-template-columns:26px minmax(0,1fr) 70px 110px; align-items:center; gap:12px; padding:10px 14px; border:1px solid var(--border);
+          border-radius:10px; background:var(--white); cursor:pointer; transition:border-color .2s, background .2s; position:relative; overflow:hidden; }
+        .expx-urow:hover{ border-color:var(--gold); background:#fdf8ef; }
+        .expx-urow.on{ border-color:var(--gold); box-shadow:0 0 0 2px var(--gold) inset; }
+        .expx-urow .bar{ position:absolute; inset-block:0; inset-inline-start:0; background:linear-gradient(90deg, rgba(184,151,90,.13), rgba(184,151,90,.05)); pointer-events:none; }
+        .expx-urow > *{ position:relative; }
+        .expx-urow .rk{ font-size:11px; font-weight:800; color:var(--muted); text-align:center; }
+        .expx-urow .ds{ font-size:13.5px; font-weight:700; color:var(--dark); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .expx-urow .nn{ justify-self:center; font-size:11.5px; font-weight:800; color:var(--muted); background:var(--cream); border:1px solid var(--border); border-radius:20px; padding:2px 10px; white-space:nowrap; }
+        .expx-urow .tt{ font-size:14px; font-weight:800; color:var(--red); text-align:left; white-space:nowrap; }
+        .expx-utotal{ display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding:12px 16px; border-radius:10px; background:var(--dark); color:var(--gold, #D4B483); font-weight:800; font-size:13.5px; }
+        @media(max-width:560px){ .expx-urow{ grid-template-columns:20px minmax(0,1fr) auto; gap:8px; padding:9px 10px; } .expx-urow .nn{ display:none; } .expx-urow .ds{ white-space:normal; font-size:12.5px; } }
+      </style>
+      <div class="panel">
+        <h3>
+          <span>أكتر البنود تكرارًا</span>
+          <span class="expx-wctrl">
+            <label for="${P}-uscope" style="color:var(--muted);">في:</label>
+            <select id="${P}-uscope"></select>
+            <span class="expx-seg" id="${P}-usort">
+              <button type="button" data-act="usort" data-v="t">الأعلى مبلغ</button>
+              <button type="button" data-act="usort" data-v="n">الأكتر تكرار</button>
+            </span>
+          </span>
+        </h3>
+        <div style="font-size:11.5px;color:var(--muted);margin:-6px 0 12px;">البنود اللي ليها نفس الوصف متجمعة مع بعض. دوس على أي بند يعرضلك تفاصيله تحت.</div>
+        <div id="${P}-uncls"></div>
+      </div>` : ''}
       <div class="panel">
         <h3>
           <span>كل المصاريف بالتفاصيل</span>
@@ -9364,6 +9421,8 @@ async function expxRender(id, token){
     bind('min', 'input'); bind('max', 'input'); bind('q', 'input');
     bind('group', 'change', el => el.checked);
     bind('wscope');
+    bind('uscope');
+    _expxFillWscope(id);
     document.getElementById(`${P}-sort`).addEventListener('change', e => {
       const [s, d] = e.target.value.split('-'); st.f.sort = s; st.f.dir = d; expxRenderAll(id);
     });
@@ -9384,6 +9443,9 @@ async function expxRender(id, token){
         _expxSyncInputs(id);
       }
       else if (act === 'more'){ st.f.limit += EXPX_PAGE_SIZE; }
+      else if (act === 'wsort'){ st.f.wsort = v; expxRenderAll(id); return; }
+      else if (act === 'usort'){ st.f.usort = v; expxRenderAll(id); return; }
+      else if (act === 'wall'){ st.f.wall = !st.f.wall; expxRenderAll(id); return; }
       else return;
       if (act !== 'more' && act !== 'sort') st.f.limit = EXPX_PAGE_SIZE;
       expxRenderAll(id);
@@ -9396,7 +9458,7 @@ function _expxSyncInputs(id){
   const f = EXPX[id].f;
   const set = (k, v) => { const el = document.getElementById(`${id}-${k}`); if (!el) return; if (el.type === 'checkbox') el.checked = !!v; else el.value = v; };
   set('from', f.from); set('to', f.to); set('dim', f.dim); set('cat', f.cat); set('project', f.project); set('dow', f.dow);
-  set('min', f.min); set('max', f.max); set('q', f.q); set('group', f.groupDays); set('wscope', f.wscope);
+  set('min', f.min); set('max', f.max); set('q', f.q); set('group', f.groupDays); set('wscope', f.wscope); set('uscope', f.uscope);
   const sortVal = `${f.sort}-${f.dir}`;
   set('sort', ['date-desc', 'date-asc', 'amount-desc', 'amount-asc'].includes(sortVal) ? sortVal : 'custom');
 }
@@ -9562,10 +9624,11 @@ function expxRenderAll(id){
     }
   }
 
-  // ── الكلمات الأكثر تكرارًا ──
+  // ── الكلمات الأكثر تكرارًا (جوه التصنيف المختار من القايمة، أو في كل البنود) ──
   const wordsBox = document.getElementById(`${P}-words`);
   if (wordsBox) {
-    const src = f.wscope === 'all' ? rows : _expxFilter(st, 'cat').filter(r => r.cat === 'أخرى');
+    const scopeAll = f.wscope === 'all';
+    const src = scopeAll ? rows : _expxFilter(st, 'cat').filter(r => r.cat === f.wscope);
     const words = new Map();
     src.forEach(r => {
       const seen = new Set();
@@ -9577,15 +9640,29 @@ function expxRenderAll(id){
         const w = words.get(k) || { w: k, n: 0, t: 0 }; w.n++; w.t += r.amount; words.set(k, w);
       });
     });
-    const list = Array.from(words.values()).filter(w => w.n >= 2).sort((a, b) => (b.n - a.n) || (b.t - a.t)).slice(0, 60);
-    wordsBox.innerHTML = !list.length ? `<div class="empty">${f.wscope === 'all' ? 'مفيش كلمات متكررة في البنود المعروضة' : 'مفيش كلمات متكررة في "أخرى" — كله متصنف تقريبًا 👌'}</div>` :
-      `<div style="display:flex;flex-wrap:wrap;gap:8px;">${list.map(w => `
-        <span style="display:inline-flex;align-items:stretch;border:1px solid var(--border);border-radius:20px;overflow:hidden;background:var(--white);${expxNorm(f.q).trim() === w.w ? 'border-color:var(--gold);box-shadow:0 0 0 1px var(--gold);' : ''}">
-          <button type="button" data-act="q" data-v="${qEsc(w.w)}" title="اعرض البنود اللي فيها الكلمة دي" style="all:unset;cursor:pointer;padding:6px 11px;font-size:12.5px;font-weight:700;">
-            ${qEsc(w.w)} <span style="color:var(--muted);font-weight:600;font-size:11px;">×${w.n} · ${fmt(w.t)} ج</span>
-          </button>
-          <button type="button" data-act="addcat" data-v="${qEsc(w.w)}" title="اعمل من الكلمة دي تصنيف" style="all:unset;cursor:pointer;padding:6px 9px;font-size:11px;font-weight:800;color:var(--gold-dim);background:var(--cream);border-inline-start:1px solid var(--border);">+ تصنيف</button>
-        </span>`).join('')}</div>`;
+    const byT = f.wsort === 't';
+    const all = Array.from(words.values()).filter(w => w.n >= 2).sort((a, b) => byT ? ((b.t - a.t) || (b.n - a.n)) : ((b.n - a.n) || (b.t - a.t)));
+    const SHOW = 24;
+    const list = f.wall ? all : all.slice(0, SHOW);
+    const maxV = all.length ? Math.max(...all.map(w => byT ? w.t : w.n)) : 1;
+    const segBox = document.getElementById(`${P}-wsort`);
+    if (segBox) segBox.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === (f.wsort || 'n')));
+    const qn = expxNorm(f.q).trim();
+    const scopeName = scopeAll ? 'البنود المعروضة' : `"${f.wscope}"`;
+    wordsBox.innerHTML = !all.length ? `<div class="empty">مفيش كلمات متكررة في ${qEsc(scopeName)}</div>` : `
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">${all.length} كلمة متكررة في ${qEsc(scopeName)} (${src.length} بند · ${fmt(_expxSum(src))} ج)</div>
+      <div class="expx-wgrid">${list.map((w, i) => `
+        <div class="expx-wcard${qn === w.w ? ' on' : ''}" data-act="q" data-v="${qEsc(w.w)}" title="اعرض البنود اللي فيها «${qEsc(w.w)}»">
+          <div class="expx-wtop">
+            <span class="expx-wrank">${i + 1}</span>
+            <span class="expx-wword">${qEsc(w.w)}</span>
+            <button type="button" class="expx-wadd" data-act="addcat" data-v="${qEsc(w.w)}" title="اعمل من الكلمة دي تصنيف">＋</button>
+          </div>
+          <div class="expx-wmeta"><span class="n">${w.n} مرة</span><span class="t">${fmt(w.t)} ج</span></div>
+          <div class="expx-wbar"><div style="width:${Math.max(4, Math.round((byT ? w.t : w.n) / maxV * 100))}%;"></div></div>
+        </div>`).join('')}
+      </div>
+      ${all.length > SHOW ? `<div style="text-align:center;margin-top:12px;"><button type="button" class="btn btn-outline btn-sm" data-act="wall">${f.wall ? 'عرض أقل' : `عرض كل الكلمات (${all.length})`}</button></div>` : ''}`;
   }
   const customBox = document.getElementById(`${P}-custom`);
   if (customBox) {
@@ -9598,17 +9675,31 @@ function expxRenderAll(id){
     </div>`;
   }
 
-  // ── البنود اللي اتصنفت "أخرى\" — متجمعة بالوصف، عشان يبان إيه الكلمات اللي محتاجة تتضاف ──
+  // ── أكتر البنود تكرارًا جوه التصنيف المختار — متجمعة بالوصف ──
   const uncls = document.getElementById(`${P}-uncls`);
   if (uncls) {
-    const other = _expxFilter(st, 'cat').filter(r => r.cat === 'أخرى');
+    const uAll = f.uscope === 'all';
+    const src = uAll ? rows : _expxFilter(st, 'cat').filter(r => r.cat === f.uscope);
     const groups = new Map();
-    other.forEach(r => { const k = expxNorm(r.desc).replace(/\s+/g, ' ').trim(); const g = groups.get(k) || { desc: r.desc, n: 0, t: 0 }; g.n++; g.t += r.amount; groups.set(k, g); });
-    const list = Array.from(groups.values()).sort((a, b) => b.t - a.t).slice(0, 40);
-    uncls.innerHTML = !list.length ? '<div class="empty">كل البنود متصنفة 👌</div>' : `<table>
-      <thead><tr><th>الوصف</th><th>اتكرر</th><th>الإجمالي</th></tr></thead>
-      <tbody>${list.map(g => `<tr data-act="q" data-v="${qEsc(g.desc)}" style="cursor:pointer;" title="دوس عشان تعرض البند ده بس"><td style="text-align:right;">${qEsc(g.desc)}</td><td>${g.n}</td><td style="font-weight:800;">${fmt(g.t)}</td></tr>`).join('')}
-        <tr class="tbl-totals-row"><td>إجمالي "أخرى"</td><td>${other.length}</td><td>${fmt(_expxSum(other))}</td></tr></tbody></table>`;
+    src.forEach(r => { const k = expxNorm(r.desc).replace(/[^\p{L}\p{N}]+/gu, ' ').trim(); const g = groups.get(k) || { desc: r.desc, n: 0, t: 0 }; g.n++; g.t += r.amount; groups.set(k, g); });
+    const byN = f.usort === 'n';
+    const list = Array.from(groups.values()).sort((a, b) => byN ? ((b.n - a.n) || (b.t - a.t)) : ((b.t - a.t) || (b.n - a.n))).slice(0, 60);
+    const maxV = list.length ? Math.max(...list.map(g => byN ? g.n : g.t)) : 1;
+    const segBox = document.getElementById(`${P}-usort`);
+    if (segBox) segBox.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === (f.usort || 't')));
+    const qn = expxNorm(f.q).trim();
+    const scopeName = uAll ? 'البنود المعروضة' : `"${f.uscope}"`;
+    uncls.innerHTML = !list.length ? `<div class="empty">مفيش بنود في ${qEsc(scopeName)}</div>` : `
+      <div class="expx-ulist">${list.map((g, i) => `
+        <div class="expx-urow${qn && qn === expxNorm(g.desc).trim() ? ' on' : ''}" data-act="q" data-v="${qEsc(g.desc)}" title="اعرض البند ده بس">
+          <div class="bar" style="width:${Math.max(3, Math.round((byN ? g.n : g.t) / maxV * 100))}%;"></div>
+          <span class="rk">${i + 1}</span>
+          <span class="ds">${qEsc(g.desc)}</span>
+          <span class="nn">${g.n} مرة</span>
+          <span class="tt">${fmt(g.t)} ج</span>
+        </div>`).join('')}
+      </div>
+      <div class="expx-utotal"><span>إجمالي ${qEsc(scopeName)}</span><span>${src.length} بند · ${fmt(_expxSum(src))} ج</span></div>`;
   }
 
   // ── التفاصيل ──
@@ -9663,6 +9754,19 @@ function expxRenderAll(id){
     </table>${moreBtn}`;
 }
 
+// قايمة "في:" بتاعة لوحة الكلمات — كل التصنيفات + "كل البنود"
+function _expxFillWscope(id){
+  const st = EXPX[id]; const sel = document.getElementById(`${id}-wscope`); if (!st || !sel) return;
+  if (st.f.wscope !== 'all' && !st.cfg.cats.some(c => c.key === st.f.wscope)) st.f.wscope = 'أخرى';
+  sel.innerHTML = st.cfg.cats.map(c => `<option value="${qEsc(c.key)}">${c.icon} ${qEsc(c.key)}</option>`).join('') + '<option value="all">📋 كل البنود المعروضة</option>';
+  sel.value = st.f.wscope;
+  const usel = document.getElementById(`${id}-uscope`);
+  if (usel) {
+    if (st.f.uscope !== 'all' && !st.cfg.cats.some(c => c.key === st.f.uscope)) st.f.uscope = 'أخرى';
+    usel.innerHTML = sel.innerHTML;
+    usel.value = st.f.uscope;
+  }
+}
 // بعد أي تغيير في التصنيفات المخصصة: نعيد تصنيف كل الصفوف اللي معانا (من غير أي طلب للسيرفر) ونحدّث قايمة الفلتر
 function _expxReclassify(id){
   const st = EXPX[id]; if (!st) return;
@@ -9671,6 +9775,7 @@ function _expxReclassify(id){
   if (st.f.cat !== 'all' && !st.cfg.cats.some(c => c.key === st.f.cat)) st.f.cat = 'all';
   const sel = document.getElementById(`${id}-cat`);
   if (sel) sel.innerHTML = '<option value="all">الكل</option>' + st.cfg.cats.map(c => `<option value="${qEsc(c.key)}">${c.icon} ${qEsc(c.key)}</option>`).join('');
+  _expxFillWscope(id);
   _expxSyncInputs(id);
   expxRenderAll(id);
 }
