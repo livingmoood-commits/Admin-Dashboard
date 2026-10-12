@@ -1340,6 +1340,7 @@
   <div class="q-steps p-filter-tabs" id="expSwitchTabs" style="display:none;margin-bottom:16px;">
     <div class="step" id="exp-tab-daily" data-page="dailyExpenses"><span class="icon" style="margin-inline-end:6px;">&#128221;</span>مصاريف يومية</div>
     <div class="step" id="exp-tab-fixed" data-page="fixedExp"><span class="icon" style="margin-inline-end:6px;">&#128203;</span>المصاريف الثابتة</div>
+    <div class="step" id="exp-tab-cars" data-page="carExpenses"><span class="icon" style="margin-inline-end:6px;">&#128663;</span>مصاريف السيارات</div>
   </div>
   <div class="q-steps p-filter-tabs" id="wfSwitchTabs" style="display:none;margin-bottom:16px;">
     <div class="step" id="wf-tab-taskOrganize" data-page="taskOrganize"><span class="icon" style="margin-inline-end:6px;">&#128221;</span>تنظيم المهام</div>
@@ -2039,7 +2040,7 @@ function checkApiConfigured(){
 const QP_GROUP_PAGES = ['quotation', 'debtors'];
 // صفحتين "مصاريف يومية" و"المصاريف الثابتة" بقوا مجمّعين تحت زرار واحد في القائمة
 // الجانبية (data-exp-group) بنفس فكرة QP_GROUP_PAGES فوق بالظبط.
-const EXP_GROUP_PAGES = ['dailyExpenses', 'fixedExp'];
+const EXP_GROUP_PAGES = ['dailyExpenses', 'fixedExp', 'carExpenses'];
 // نفس الفكرة لصفحات Work Flow — بقيت صفحتين بس (تنظيم المهام والخامات)؛ "تقرير يومي
 // بالصنايعية" و"بنود المشاريع" اتشالوا كصفحات مستقلة لأن نفس الوظيفة موجودة بالظبط
 // جوه تابات "تنظيم المهام" (تاب "شغل يومي"/"اسبوعي" فيهم زرار تقرير، وتاب "تايم بلاننج"
@@ -2052,6 +2053,7 @@ const PAGES = {
   dailyExpenses:{ title:'مصاريف يومية', sub:'سجّل كل مصاريف اليوم سطر سطر — بتتسجل في شيت اليوم بتاعك مباشرة', render: renderDailyExpenses },
   costs:        { title:'التكاليف', sub:'خامات + عمالة + إيرادات — تابين جنب بعض لكل مشروع', render: renderCosts },
   fixedExp:     { title:'المصاريف الثابتة', sub:'إيجار / كهرباء / إلخ — وطريقة توزيعها على المشاريع', render: renderFixedExp },
+  carExpenses:  { title:'مصاريف السيارات', sub:'كل مصروف على BYD / KIA / Skoda — بنزين، صيانة، أي حاجة — بالتفاصيل والإجماليات', render: renderCarExpenses },
   projectsPage: { title:'المشاريع', sub:'كل المشاريع في مكان واحد — إضافة، تعديل، أرشفة، وإيرادات موحّدة من التكاليف والمصاريف', render: renderProjectsPage },
   projectSpend: { title:'مصاريف المشاريع', sub:'لكل مشروع: مصاريفه من شيت المصاريف + العمالة — بالتفاصيل', render: renderProjectSpend },
   quotation:    { title:'Quotations', sub:'قائمة العملاء وعروض الأسعار', render: renderQuotation },
@@ -2138,6 +2140,7 @@ function expSyncTabsBar(page){
   if (!show) return;
   document.getElementById('exp-tab-daily').classList.toggle('active', page === 'dailyExpenses');
   document.getElementById('exp-tab-fixed').classList.toggle('active', page === 'fixedExp');
+  document.getElementById('exp-tab-cars').classList.toggle('active', page === 'carExpenses');
 }
 // نفس الفكرة لتابات صفحات Work Flow (بقيت 2 بس: تنظيم المهام + الخامات)
 function wfSyncTabsBar(page){
@@ -9075,6 +9078,311 @@ async function deleteDebtConfirm(id){
 }
 
 /* ================= Fixed Expenses ================= */
+/* ================= مصاريف السيارات ================= */
+// ⚠️ إضافة 2026-10-12: صفحة "مصاريف السيارات" — بتجمع أي مصروف خرج من الخزنة ووصفه
+// (أو المشروع الموجه) فيه اسم عربية من العربيات اللي تحت (BYD / KIA / Skoda) —
+// بنزين، صيانة، غسيل، ترخيص، أي حاجة. المصدر: سجل "الخزنة" (getTreasuryMoves) —
+// وده نفس السجل اللي كل مصروف بيتسجل من "مصاريف يومية" بيتخصم فيه تلقائي، فمفيش
+// تكرار ومفيش أي تعديل في الباك اند (Apps Script) محتاج Deploy جديد.
+// لإضافة عربية جديدة أو اسم تاني لنفس العربية: زوّد في CAR_EXP_CARS بس.
+const _CAR_AR = '؀-ۿ';
+const _CAR_AR_PREFIX = '(?:و|ف|ب|ل|ال|وال|فال|بال|لل)?';
+// كلمة عربي مستقلة (مش جزء من كلمة أطول — مثلاً "كيا" جوه "تركيا" مش هتتحسب)
+function _carArWord(w){ return '(?:^|[^' + _CAR_AR + '])' + _CAR_AR_PREFIX + w + '(?=$|[^' + _CAR_AR + '])'; }
+function _carEnWord(w){ return '(?:^|[^a-z0-9])' + w + '(?=$|[^a-z0-9])'; }
+const CAR_EXP_CARS = [
+  { key:'BYD',   label:'BYD',   bg:'#e8eef8', fg:'#1f4e8c', re: new RegExp([_carEnWord('byd'), _carArWord('بي ?واي ?دي')].join('|'), 'i') },
+  { key:'KIA',   label:'KIA',   bg:'#fbe7e4', fg:'#a3301f', re: new RegExp([_carEnWord('kia'), _carArWord('كيا')].join('|'), 'i') },
+  { key:'Skoda', label:'Skoda', bg:'#e6f4ea', fg:'#2C5F3A', re: new RegExp([_carEnWord('skoda'), _carEnWord('scoda'), _carArWord('ا?سكودا')].join('|'), 'i') }
+];
+// نوع المصروف بيتحدد تلقائي من الوصف (أول نوع يطابق بالترتيب ده)
+const CAR_EXP_CATS = [
+  { key:'صيانة',            icon:'🔧', re:/صيان|زيت|فلتر|فرامل|تيل|كاوتش|كاوتشات|اطار|إطار|بطاري|عفش|ميكانيك|سمكر|دوكو|رادياتير|مساعد|تصليح|اصلاح|إصلاح|قطع غيار|بوجيه|تكييف|فريون|ورش|توكيل|كهربائي|لمب|مساحات|زجاج|سير |تيرموستات|ترصيص|ضبط زوايا|عمرة|عمره|maint|service|oil/i },
+  { key:'بنزين',            icon:'⛽', re:/بنزين|بانزين|وقود|سولار|تفويل|تموين|fuel|gas/i },
+  { key:'غسيل',             icon:'🧽', re:/غسيل|غسل|مغسل|تلميع|wash/i },
+  { key:'ترخيص ومخالفات',   icon:'📄', re:/ترخيص|رخص|مخالف|مرور|فحص|نمر/i },
+  { key:'تأمين',            icon:'🛡️', re:/تأمين|تامين|insurance/i },
+  { key:'جراج وركنة',       icon:'🅿️', re:/جراج|جراش|ركن|باركن|سايس|parking/i },
+  { key:'كارتة وطرق',       icon:'🛣️', re:/كارت|بواب|طريق|رسوم|toll/i },
+  { key:'أقساط',            icon:'💳', re:/قسط|اقساط|أقساط/i },
+  { key:'أخرى',             icon:'✨', re:/.^/ }
+];
+const CAR_AR_DAYS = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+const CAR_AR_MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+let _carRows = [];
+let _carFilters = null;
+
+function _carDetect(text){
+  const s = String(text || '');
+  let best = null, bestIdx = Infinity;
+  CAR_EXP_CARS.forEach(c => {
+    const m = s.match(c.re);
+    if (m && m.index < bestIdx){ best = c; bestIdx = m.index; }
+  });
+  return best;
+}
+function _carCategory(desc){
+  const s = String(desc || '');
+  return (CAR_EXP_CATS.find(c => c.re.test(s)) || CAR_EXP_CATS[CAR_EXP_CATS.length - 1]).key;
+}
+function _carDayName(dateStr){
+  const m = String(dateStr || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return '';
+  return CAR_AR_DAYS[new Date(+m[1], +m[2] - 1, +m[3]).getDay()];
+}
+function _carMonthLabel(ym){
+  const m = String(ym || '').match(/^(\d{4})-(\d{2})/);
+  return m ? `${CAR_AR_MONTHS[+m[2] - 1]} ${m[1]}` : 'بدون تاريخ';
+}
+function _carPill(carKey){
+  const c = CAR_EXP_CARS.find(x => x.key === carKey);
+  if (!c) return qEsc(carKey);
+  return `<span class="pill" style="background:${c.bg};color:${c.fg};">${qEsc(c.label)}</span>`;
+}
+function _carCatIcon(cat){ const c = CAR_EXP_CATS.find(x => x.key === cat); return c ? c.icon : ''; }
+function _carDefaultFilters(){
+  const earliest = _carRows.length ? _carRows.reduce((min, r) => (r.date && r.date < min) ? r.date : min, _carRows[0].date || todayStr()) : todayStr();
+  return { from: earliest, to: todayStr(), car: 'all', cat: 'all', q: '', sort: 'date-desc' };
+}
+
+async function renderCarExpenses(token) {
+  try {
+    const movesData = await apiGet('getTreasuryMoves', {});
+    if (isStaleNav(token)) return;
+    const moves = (movesData && movesData.moves) || [];
+    _carRows = [];
+    moves.forEach(m => {
+      if (m.type !== 'مصروف') return;
+      const amount = Number(m.amount) || 0;
+      if (!amount) return;
+      // الوصف الأول (هو الأدق)، ولو مفيهوش اسم عربية نبص على المشروع الموجه
+      const car = _carDetect(m.desc) || _carDetect(m.project);
+      if (!car) return;
+      _carRows.push({
+        id: m.id, date: m.date || '', day: _carDayName(m.date), desc: String(m.desc || ''), project: String(m.project || ''),
+        amount, car: car.key, cat: _carCategory(m.desc)
+      });
+    });
+    _carFilters = _carDefaultFilters();
+
+    const carOpts = CAR_EXP_CARS.map(c => `<option value="${c.key}">${qEsc(c.label)}</option>`).join('');
+    const catOpts = CAR_EXP_CATS.map(c => `<option value="${qEsc(c.key)}">${c.icon} ${qEsc(c.key)}</option>`).join('');
+    document.getElementById('content').innerHTML = `
+      <div class="adv-filter" id="carFilterBar">
+        <div class="af-field"><label>من تاريخ</label><input type="date" id="car-from" autocomplete="off" value="${_carFilters.from}"></div>
+        <div class="af-field"><label>لحد تاريخ</label><input type="date" id="car-to" autocomplete="off" value="${_carFilters.to}"></div>
+        <div class="af-field"><label>العربية</label><select id="car-car"><option value="all">كل العربيات</option>${carOpts}</select></div>
+        <div class="af-field"><label>نوع المصروف</label><select id="car-cat"><option value="all">كل الأنواع</option>${catOpts}</select></div>
+        <div class="af-field"><label>بحث في الوصف / المشروع</label><input type="text" id="car-q" autocomplete="off" placeholder="مثلا: زيت، كاوتش..."></div>
+        <div class="af-field af-actions"><button type="button" class="af-reset" id="car-reset">↺ مسح الفلاتر</button></div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin:-4px 0 14px;" id="car-quick">
+        <button type="button" class="btn btn-outline btn-sm" data-range="month">الشهر ده</button>
+        <button type="button" class="btn btn-outline btn-sm" data-range="prev">الشهر اللي فات</button>
+        <button type="button" class="btn btn-outline btn-sm" data-range="3m">آخر 3 شهور</button>
+        <button type="button" class="btn btn-outline btn-sm" data-range="year">السنة دي</button>
+        <button type="button" class="btn btn-outline btn-sm" data-range="all">الكل</button>
+      </div>
+      <div class="adv-filter-count" id="carFilterNote"></div>
+      <div class="panel" id="car-summary-panel">
+        <h3>ملخص مصاريف السيارات</h3>
+        <div class="cards" id="carCardsBox" style="margin-bottom:0;"></div>
+      </div>
+      <div class="grid2">
+        <div class="panel"><h3>حسب العربية ونوع المصروف</h3><div class="tbl-wrap" id="car-matrix"></div></div>
+        <div class="panel"><h3>إجمالي كل شهر</h3><div class="tbl-wrap tbl-wrap-scroll" id="car-monthly" style="max-height:420px;"></div></div>
+      </div>
+      <div class="panel">
+        <h3>
+          <span>كل المصاريف بالتفاصيل</span>
+          <select id="car-sort" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:12px;background:var(--white);">
+            <option value="date-desc">الأحدث الأول</option>
+            <option value="date-asc">الأقدم الأول</option>
+            <option value="amount-desc">الأعلى مبلغ</option>
+            <option value="amount-asc">الأقل مبلغ</option>
+          </select>
+        </h3>
+        <div class="tbl-wrap tbl-wrap-scroll" id="car-detail" style="max-height:70vh;"></div>
+      </div>
+    `;
+    const bind = (id, key, ev) => document.getElementById(id).addEventListener(ev || 'change', e => { _carFilters[key] = e.target.value; carRenderAll(); });
+    bind('car-from', 'from'); bind('car-to', 'to'); bind('car-car', 'car'); bind('car-cat', 'cat'); bind('car-q', 'q', 'input'); bind('car-sort', 'sort');
+    document.getElementById('car-reset').addEventListener('click', () => { _carFilters = _carDefaultFilters(); carSyncFilterInputs(); carRenderAll(); });
+    document.getElementById('car-quick').addEventListener('click', e => {
+      const b = e.target.closest('button[data-range]'); if (!b) return;
+      carApplyQuickRange(b.dataset.range);
+    });
+    carRenderAll();
+  } catch(err){ showError(err); }
+}
+
+function carSyncFilterInputs(){
+  const f = _carFilters;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  set('car-from', f.from); set('car-to', f.to); set('car-car', f.car); set('car-cat', f.cat); set('car-q', f.q); set('car-sort', f.sort);
+}
+function carApplyQuickRange(kind){
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const today = todayStr();
+  if (kind === 'month'){ _carFilters.from = ymd(new Date(now.getFullYear(), now.getMonth(), 1)); _carFilters.to = today; }
+  else if (kind === 'prev'){ _carFilters.from = ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1)); _carFilters.to = ymd(new Date(now.getFullYear(), now.getMonth(), 0)); }
+  else if (kind === '3m'){ _carFilters.from = ymd(new Date(now.getFullYear(), now.getMonth() - 2, 1)); _carFilters.to = today; }
+  else if (kind === 'year'){ _carFilters.from = `${now.getFullYear()}-01-01`; _carFilters.to = today; }
+  else { const d = _carDefaultFilters(); _carFilters.from = d.from; _carFilters.to = d.to; }
+  carSyncFilterInputs();
+  carRenderAll();
+}
+function carSelectCar(key){
+  _carFilters.car = (_carFilters.car === key) ? 'all' : key;
+  carSyncFilterInputs();
+  carRenderAll();
+}
+// الصفوف بعد فلتر التاريخ + البحث + نوع المصروف (من غير فلتر العربية) — بنستخدمها في
+// كروت العربيات عشان كل كارت يوري رقم العربية دي حتى لو في عربية تانية مختارة
+function _carBaseFiltered(){
+  const f = _carFilters;
+  const q = String(f.q || '').trim().toLowerCase();
+  return _carRows.filter(r =>
+    (!f.from || !r.date || r.date >= f.from) &&
+    (!f.to || !r.date || r.date <= f.to) &&
+    (f.cat === 'all' || r.cat === f.cat) &&
+    (!q || (r.desc + ' ' + r.project).toLowerCase().includes(q))
+  );
+}
+function _carFiltered(){
+  const base = _carBaseFiltered();
+  return _carFilters.car === 'all' ? base : base.filter(r => r.car === _carFilters.car);
+}
+function carRenderAll(){
+  if (!_carFilters) return;
+  const base = _carBaseFiltered();
+  const rows = _carFiltered();
+  const sum = arr => arr.reduce((s, r) => s + r.amount, 0);
+  const total = sum(rows);
+  const baseTotal = sum(base);
+
+  // ── ملاحظة الفلتر ──
+  const note = document.getElementById('carFilterNote');
+  if (note) {
+    const d = _carDefaultFilters();
+    const parts = [];
+    if (_carFilters.from !== d.from || _carFilters.to !== d.to) parts.push(`الفترة من ${_carFilters.from || 'البداية'} لحد ${_carFilters.to || 'النهارده'}`);
+    if (_carFilters.car !== 'all') parts.push(`العربية: ${_carFilters.car}`);
+    if (_carFilters.cat !== 'all') parts.push(`النوع: ${_carFilters.cat}`);
+    if (String(_carFilters.q || '').trim()) parts.push(`بحث: "${_carFilters.q.trim()}"`);
+    note.textContent = parts.length ? 'عرض ' + parts.join(' — ') : '';
+  }
+
+  // ── الكروت ──
+  const daysCount = new Set(rows.map(r => r.date).filter(Boolean)).size;
+  const fuel = sum(rows.filter(r => r.cat === 'بنزين'));
+  const maint = sum(rows.filter(r => r.cat === 'صيانة'));
+  const carCards = CAR_EXP_CARS.map(c => {
+    const cr = base.filter(r => r.car === c.key);
+    const t = sum(cr);
+    const pct = baseTotal ? Math.round(t / baseTotal * 100) : 0;
+    const active = _carFilters.car === c.key;
+    return `<div class="card" onclick="carSelectCar('${c.key}')" title="دوس عشان تعرض العربية دي بس" style="cursor:pointer;${active ? 'border-color:var(--gold);box-shadow:0 0 0 2px var(--gold) inset;' : ''}">
+      <div class="label">${_carPill(c.key)}</div>
+      <div class="value red">${fmt(t)} ج</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">${cr.length} مصروف · ${pct}% من الإجمالي</div>
+    </div>`;
+  }).join('');
+  const cardsBox = document.getElementById('carCardsBox');
+  if (cardsBox) cardsBox.innerHTML = `
+    <div class="card"><div class="label">إجمالي مصاريف السيارات</div><div class="value red">${fmt(total)} ج</div><div style="font-size:11.5px;color:var(--muted);margin-top:4px;">${rows.length} مصروف في ${daysCount} يوم</div></div>
+    ${carCards}
+    <div class="card"><div class="label">⛽ بنزين</div><div class="value gold">${fmt(fuel)} ج</div></div>
+    <div class="card"><div class="label">🔧 صيانة</div><div class="value gold">${fmt(maint)} ج</div></div>
+  `;
+
+  // ── جدول العربية × النوع ──
+  const cars = _carFilters.car === 'all' ? CAR_EXP_CARS : CAR_EXP_CARS.filter(c => c.key === _carFilters.car);
+  const usedCats = CAR_EXP_CATS.filter(c => rows.some(r => r.cat === c.key));
+  const matrix = document.getElementById('car-matrix');
+  if (matrix) {
+    matrix.innerHTML = !rows.length ? '<div class="empty">مفيش مصاريف مطابقة للفلاتر</div>' : `
+      <table>
+        <thead><tr><th>النوع</th>${cars.map(c => `<th>${qEsc(c.label)}</th>`).join('')}${cars.length > 1 ? '<th>الإجمالي</th>' : ''}</tr></thead>
+        <tbody>
+          ${usedCats.map(cat => {
+            const cr = rows.filter(r => r.cat === cat.key);
+            return `<tr><td style="text-align:right;font-weight:700;">${cat.icon} ${qEsc(cat.key)}</td>
+              ${cars.map(c => { const v = sum(cr.filter(r => r.car === c.key)); return `<td>${v ? fmt(v) : '<span style="color:var(--muted);">-</span>'}</td>`; }).join('')}
+              ${cars.length > 1 ? `<td style="font-weight:800;">${fmt(sum(cr))}</td>` : ''}</tr>`;
+          }).join('')}
+          <tr class="tbl-totals-row"><td>الإجمالي</td>${cars.map(c => `<td>${fmt(sum(rows.filter(r => r.car === c.key)))}</td>`).join('')}${cars.length > 1 ? `<td>${fmt(total)}</td>` : ''}</tr>
+        </tbody>
+      </table>`;
+  }
+
+  // ── إجمالي كل شهر ──
+  const monthly = document.getElementById('car-monthly');
+  if (monthly) {
+    const months = Array.from(new Set(rows.map(r => (r.date || '').slice(0, 7)))).sort().reverse();
+    monthly.innerHTML = !rows.length ? '<div class="empty">مفيش مصاريف مطابقة للفلاتر</div>' : `
+      <table>
+        <thead><tr><th>الشهر</th>${cars.map(c => `<th>${qEsc(c.label)}</th>`).join('')}${cars.length > 1 ? '<th>الإجمالي</th>' : ''}</tr></thead>
+        <tbody>
+          ${months.map(ym => {
+            const mr = rows.filter(r => (r.date || '').slice(0, 7) === ym);
+            return `<tr><td style="text-align:right;font-weight:700;white-space:nowrap;">${_carMonthLabel(ym)}</td>
+              ${cars.map(c => { const v = sum(mr.filter(r => r.car === c.key)); return `<td>${v ? fmt(v) : '<span style="color:var(--muted);">-</span>'}</td>`; }).join('')}
+              ${cars.length > 1 ? `<td style="font-weight:800;">${fmt(sum(mr))}</td>` : ''}</tr>`;
+          }).join('')}
+          <tr class="tbl-totals-row"><td>الإجمالي</td>${cars.map(c => `<td>${fmt(sum(rows.filter(r => r.car === c.key)))}</td>`).join('')}${cars.length > 1 ? `<td>${fmt(total)}</td>` : ''}</tr>
+        </tbody>
+      </table>`;
+  }
+
+  // ── التفاصيل ──
+  const detail = document.getElementById('car-detail');
+  if (!detail) return;
+  if (!rows.length) { detail.innerHTML = '<div class="empty">مفيش مصاريف مطابقة للفلاتر</div>'; return; }
+  const sorted = rows.slice();
+  const s = _carFilters.sort;
+  const byDate = (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (Number(a.id) || 0) - (Number(b.id) || 0));
+  if (s === 'date-asc') sorted.sort(byDate);
+  else if (s === 'amount-desc') sorted.sort((a, b) => b.amount - a.amount);
+  else if (s === 'amount-asc') sorted.sort((a, b) => a.amount - b.amount);
+  else sorted.sort((a, b) => byDate(b, a));
+  const groupByDay = s === 'date-desc' || s === 'date-asc';
+  const rowHtml = (r, i) => `<tr>
+      <td style="color:var(--muted);font-size:11px;">${i + 1}</td>
+      <td style="white-space:nowrap;">${qEsc(r.date || '-')}</td>
+      <td style="white-space:nowrap;">${qEsc(r.day || '-')}</td>
+      <td style="text-align:right;">${qEsc(r.desc)}</td>
+      <td>${_carPill(r.car)}</td>
+      <td style="white-space:nowrap;">${_carCatIcon(r.cat)} ${qEsc(r.cat)}</td>
+      <td style="font-size:12px;color:var(--muted);">${qEsc(r.project || '-')}</td>
+      <td style="font-weight:800;color:var(--red);white-space:nowrap;">${fmt(r.amount)}</td>
+    </tr>`;
+  let body = '';
+  if (groupByDay) {
+    let n = 0, lastDate = null;
+    sorted.forEach(r => {
+      if (r.date !== lastDate) {
+        lastDate = r.date;
+        const dayRows = sorted.filter(x => x.date === r.date);
+        body += `<tr class="master-group-header"><td colspan="7" style="text-align:right;">${qEsc(r.day || '')} ${qEsc(r.date || 'بدون تاريخ')} — ${dayRows.length} مصروف</td><td style="white-space:nowrap;">${fmt(sum(dayRows))} ج</td></tr>`;
+      }
+      body += rowHtml(r, n++);
+    });
+  } else {
+    body = sorted.map(rowHtml).join('');
+  }
+  detail.innerHTML = `
+    <table style="min-width:820px;">
+      <thead><tr><th style="width:30px;">#</th><th>التاريخ</th><th>اليوم</th><th>الوصف</th><th>العربية</th><th>النوع</th><th>المشروع</th><th>المبلغ</th></tr></thead>
+      <tbody>
+        ${body}
+        <tr class="tbl-totals-row"><td colspan="7">الإجمالي (${rows.length} مصروف)</td><td style="white-space:nowrap;">${fmt(total)} ج</td></tr>
+      </tbody>
+    </table>`;
+}
+
 async function renderFixedExp(token) {
   try {
     const [{items}, dist] = await Promise.all([apiGet('listFixedExpenses'), apiGet('getFixedExpensesDistribution', {basis:'labor'})]);
