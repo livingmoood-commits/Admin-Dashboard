@@ -9138,30 +9138,58 @@ const CAR_EXP_CATS = [
   { key:'أقساط',            icon:'💳', re:/قسط|اقساط/ },
   { key:'أخرى',             icon:'✨', re:null }
 ];
+// أدوات بناء أنماط التصنيف: _gw = كلمة كاملة (بـ"و/ال/بال..." قبلها أو من غيرها)، _gs = جزء من كلمة (جذر)
+const _GP = '(?:و|ف|ب|ل|ال|وال|بال|فال|لل)?';
+function _gw(...ws){ return ' ' + _GP + '(?:' + ws.join('|') + ') '; }
+function _gs(...ws){ return '(?:' + ws.join('|') + ')'; }
+function _gre(...parts){ return new RegExp(parts.join('|')); }
 const GEN_EXP_CATS = [
-  // مسحوبات الشركاء (زي "مسحوبات ش ق") منفصلة — دي مش مرتبات
-  { key:'مسحوبات شركاء',         icon:'🤝', re:/ ش ق |شركاء|شركا |الشركا|شريك/ },
-  // ⚠️ تعديل 2026-10-12: مسحوبات الموظفين والسلف بقت جزء من المرتبات (طلب صاحب الشغل)
-  { key:'مرتبات ومسحوبات',       icon:'💰', re:/مسحوب|سلفه| (?:ال)?سلف |مرتب|يوميه|يوميات|اسبوعيه|سهره|سهرات|اوفر تايم|اجور|حافز|مكافاه/ },
-  { key:'سداد ديون',             icon:'📕', re:/سداد|قسط|اقساط| (?:ال)?دين / },
-  { key:'سيارات وبنزين',         icon:'🚗', re:/بنزين|بانزين|سولار|وقود|جراج| (?:ال)?ركنه|سايس|مخالف|ترخيص|كاوتش|غسيل (?:ال)?عربي/ },
-  { key:'إيجار',                 icon:'🏠', re:/ايجار/ },
-  { key:'فواتير ونت وموبايل',    icon:'💡', re:/فاتور|كهربا(?!ئي)| (?:ال)?نور | (?:ال)?نت |انترنت|راوتر|رصيد|كارت شحن|موبايل|تليفون| (?:ال)?غاز / },
-  { key:'مواصلات ونقل',          icon:'🚚', re:/مواصلات|توصيل| (?:ال)?نقل| (?:ال)?شحن|تاكسي|اوبر|uber| كريم |توكتوك|تكتك|ميكروباص|ونش|تروسيكل|اجره/ },
-  { key:'صيانة وتصليحات',        icon:'🔧', re:/صيان|تصليح|اصلاح|سباك|كهربائي| (?:ال)?فني |ترميم/ },
-  { key:'خامات',                 icon:'🧱', re:/خام|خشب|ابلكاش|mdf|ام دي اف|كونتر|قشره|بويه|دهان|سبراي|اسبراي|لاكيه|ورنيش|بلاستيك|غراء| (?:ال)?غرا | (?:ال)?كله |مسامير|مسمار|صواميل|صامول|مفصل| (?:ال)?مجري|مجاري|سحاب|مقابض|مقبض|اكسسوار|زجاج|مرايه|رخام|جرانيت|حديد|الوميتال|المونيوم|قماش|اسفنج|جلد|فورمايكا|hpl|كوارتز|سيليكون|شريط|صنفره|تنر|معجون| (?:ال)?فوم|براغي|بنط|كوالين|كالون|بيلي|ستانلس|لمبات| (?:ال)?(?:سلك|اسلاك) |بلاط|سيراميك|اسمنت| (?:ال)?جبس| (?:ال)?رمل / },
-  { key:'عدد وأدوات',            icon:'🛠️', re:/ (?:ال)?عده |مفك|شنيور|صاروخ|منشار|اسطوان| (?:ال)?د[يي]?سك|مسدس|كمبروسر|شاكوش|زرديه|مفتاح/ },
-  { key:'قهوة ومشروبات',         icon:'☕', re:/قهو|كوفي|كافيه|coffee| (?:ال)?شاي |نسكافيه|نيسكافيه| (?:ال)?(?:مياه|ميه|مايه) |بيبسي|كولا|عصير|ساقع|مشروب| (?:ال)?سكر | (?:ال)?لبن |كابتشينو|زمزم|ريدبول|بريل/ },
-  { key:'أكل (فطار/غدا/عشا)',             icon:'🍔', re:/فطار|فطور|فطاار| (?:ال)?فطر | (?:ال)?غدا| (?:ال)?عشا(?:ء|ه)? | (?:و|ال|وال)?اكل| (?:ال)?فول |طعميه|سندوتش|ساندوتش|كشري|فراخ|لحمه|لحوم| (?:ال)?عيش |بيتزا|وجبه|حلويات|كنافه|بسكوت|شيبسي| (?:ال)?كيك|جبنه| (?:ال)?بيض |فاكهه|كبده| (?:ال)?سمك |مكرونه|شاورما|برجر|food/ },
-  { key:'نظافة',                 icon:'🧹', re:/نظاف|منظف|صابون|كلور|ديتول|مناديل|زباله|مقشه|جردل|شامبو/ },
-  { key:'مكتبية وطباعة',         icon:'🖊️', re:/ (?:ال)?ورق|طباع|حبر|اقلام| (?:ال)?قلم|ملفات|تصوير ورق|ادوات مكتب| (?:ال)?ختم|دفتر|كشكول/ },
-  { key:'إكراميات وهدايا',       icon:'🎁', re:/اكرامي|بقشيش|حلاوه|عيديه|هديه|هدايا|تبرع|صدقه/ },
-  { key:'تسويق وإعلانات',        icon:'📣', re:/اعلان|ممول|فيسبوك|فيس بوك|انستجرام|انستا|تيك توك| meta | ads |تسويق|بانر|يافط|كروت شخصيه/ },
-  { key:'حكومي ورسوم',           icon:'🏛️', re:/ضرايب|ضرائب|تامينات|رسوم|دمغه|شهر عقاري|سجل تجاري|محامي| (?:ال)?حي |رخصه محل|غرامه/ },
+  // ⚠️ مسحوبات الشركاء (نفس الشركاء التلاتة بتوع PW_PARTNERS): أي بند فيه اسم شريك منهم بالكامل
+  // (أيًا كان مكانه في الوصف) أو "شخصي" أو "ش ق" بيروح هنا وبس — مش مرتبات ولا أي تصنيف تاني.
+  // الاسم لازم يبقى كامل ("عمر برعي" مش "برعي" لوحدها) عشان في ناس تانية اسمها برعي (زي "عم خالد برعي").
+  { key:'مسحوبات شركاء',         icon:'🤝', re:_gre(_gw('عمر (?:ال)?برعي', 'احمد (?:ال)?خلف', 'محمود (?:ال)?برعي', 'شخصي', 'ش ق', 'شركا'), _gs('شركاء', 'شريك')) },
+  // مسحوبات الموظفين والسلف جزء من المرتبات — ومعاها أجور الصنايعية (نجار/اسطرجي/مكنجي...).
+  // كمان أي بند فيه اسم موظف من شيت المرتبات ومالقاش تصنيف تاني بيتحسب هنا (شوف _expxLoadEmployees تحت)
+  { key:'مرتبات ومسحوبات',       icon:'💰', re:_gre(_gs('مسحوب', 'سلفه', 'مرتب', 'يوميه', 'يوميات', 'اسبوعيه', 'سهره', 'سهرات', 'اوفر تايم', 'اجور', 'حافز', 'مكافاه',
+                                                        'نجار', 'اسطرجي', 'اسطورجي', 'مكنجي', 'قشرجي', 'صنايعي', 'نقاش', 'بواب', 'حارس', 'هيلبر'),
+                                                    _gw('سلف', 'عامل', 'امن', 'جونيور', 'junior', 'اسطي', 'اسطا')) },
+  { key:'سداد ديون',             icon:'📕', re:_gre(_gs('سداد', 'قسط', 'اقساط'), _gw('دين')) },
+  { key:'سيارات وبنزين',         icon:'🚗', re:_gre(_gs('بنزين', 'بانزين', 'سولار', 'وقود', 'جراج', 'سايس', 'مخالف', 'ترخيص', 'كاوتش', 'غسيل (?:ال)?عربي'), _gw('ركنه')) },
+  { key:'إيجار',                 icon:'🏠', re:_gre(_gs('ايجار')) },
+  { key:'فواتير ونت وموبايل',    icon:'💡', re:_gre(_gs('فاتور', 'كهربا(?!ئي)', 'انترنت', 'راوتر', 'رصيد', 'كارت شحن', 'موبايل', 'تليفون'), _gw('نور', 'نت', 'غاز')) },
+  { key:'مواصلات ونقل',          icon:'🚚', re:_gre(_gs('مواصلات', 'توصيل', 'تاكسي', 'اوبر', 'uber', 'توكتوك', 'تكتك', 'تكاتك', 'ميكروباص', 'ونش', 'تروسيكل', 'اجره', 'مشوار', 'مشاوير', 'سكوتر'),
+                                                    _gw('نقل', 'نقله', 'شحن', 'كريم', 'توك', 'سياره', 'عربيه')) },
+  { key:'صيانة وتصليحات',        icon:'🔧', re:_gre(_gs('صيان', 'تصليح', 'اصلاح', 'سباك', 'كهربائي', 'ترميم'), _gw('فني')) },
+  // الخامات والعدد والأدوات تصنيف واحد
+  { key:'خامات وعدد',            icon:'🧱', re:_gre(
+      _gs('خام', 'خشب', 'ابلكاش', 'mdf', 'ام دي اف', 'كونتر', 'قشره', 'بويه', 'دهان', 'سبراي', 'اسبراي', 'لاكيه', 'ورنيش', 'بلاستيك', 'غراء', 'مسامير', 'مسمار',
+          'صواميل', 'صامول', 'مفصل', 'مجاري', 'سحاب', 'مقابض', 'مقبض', 'اكسسوار', 'زجاج', 'مرايه', 'رخام', 'جرانيت', 'حديد', 'الوميتال', 'المونيوم', 'قماش',
+          'اسفنج', 'جلد', 'فورمايكا', 'hpl', 'كوارتز', 'سيليكون', 'شريط', 'صنفره', 'تنر', 'معجون', 'براغي', 'بنط', 'كوالين', 'كالون', 'بيلي', 'ستانلس', 'لمبات',
+          'بلاط', 'سيراميك', 'اسمنت', 'قواشيط', 'قشاط', 'دباس', 'دبابيس', 'دبوس', 'سوست',
+          'مفك', 'شنيور', 'صاروخ', 'منشار', 'اسطوان', 'مسدس', 'كمبروسر', 'شاكوش', 'زرديه', 'مفتاح'),
+      _gw('غرا', 'كله', 'مجري', 'فوم', 'سلك', 'اسلاك', 'جبس', 'رمل', 'زان', 'لزق', 'لزقه', 'تيب', 'تاتش', 'دوكو', 'جرايد', 'بكر', 'عجل', 'عده', 'ديسك', 'دسك')) },
+  { key:'سناكس وتسالي',          icon:'🍿', re:_gre(_gs('سناك', 'شيبس', 'شيبسي', 'بسكوت', 'بسكويت', 'حلويات', 'شوكولا', 'شيكولا', 'مولتو', 'بونبون', 'تسالي', 'جاتوه', 'ايس كريم', 'كرواسون', 'باتيه', 'كيكه', 'snack'),
+                                                    _gw('بليله', 'ترمس', 'سوداني', 'لب', 'كيك', 'لبان', 'كاندي')) },
+  { key:'قهوة ومشروبات',         icon:'☕', re:_gre(_gs('قهو', 'كوفي', 'كافيه', 'coffee', 'نسكافيه', 'نيسكافيه', 'بيبسي', 'كولا', 'عصير', 'ساقع', 'مشروب', 'كابتشينو', 'زمزم', 'ريدبول', 'بريل', 'سبرايت', 'فانتا', 'شويبس'),
+                                                    _gw('شاي', 'مياه', 'ميه', 'مايه', 'سكر', 'لبن', 'حليب', 'اكواب', 'كوبايات')) },
+  { key:'أكل (فطار/غدا/عشا)',    icon:'🍔', re:_gre(_gs('فطار', 'فطور', 'فطاار', 'طعميه', 'سندوتش', 'ساندوتش', 'كشري', 'فراخ', 'لحمه', 'لحوم', 'بيتزا', 'وجبه', 'كنافه', 'جبنه', 'فاكهه', 'كبده',
+                                                        'مكرونه', 'شاورما', 'برجر', 'كفته', 'حواوشي', 'food'),
+                                                    _gw('فطر', 'غدا', 'غداء', 'عشا', 'عشاء', 'عشاه', 'اكل', 'اكله', 'اكلات', 'فول', 'عيش', 'بيض', 'سمك')) },
+  { key:'سجاير',                 icon:'🚬', re:_gre(_gs('سجاير', 'سجائر', 'سيجار', 'معسل', 'شيشه'), _gw('دخان')) },
+  { key:'علاج وأدوية',           icon:'💊', re:_gre(_gs('علاج', 'ادويه', 'صيدلي', 'دكتور', 'مستشفي'), _gw('دوا', 'دواء', 'كشف')) },
+  { key:'نظافة',                 icon:'🧹', re:_gre(_gs('نظاف', 'منظف', 'صابون', 'كلور', 'ديتول', 'مناديل', 'زباله', 'مقشه', 'جردل', 'شامبو'), _gw('غسيل')) },
+  { key:'مكتبية وطباعة',         icon:'🖊️', re:_gre(_gs('طباع', 'حبر', 'اقلام', 'ملفات', 'تصوير ورق', 'ادوات مكتب', 'دفتر', 'كشكول'), _gw('ورق', 'ورقه', 'قلم', 'ختم')) },
+  { key:'إكراميات وهدايا',       icon:'🎁', re:_gre(_gs('اكرامي', 'بقشيش', 'حلاوه', 'عيديه', 'هديه', 'هدايا', 'تبرع', 'صدقه')) },
+  { key:'تسويق وإعلانات',        icon:'📣', re:_gre(_gs('اعلان', 'ممول', 'فيسبوك', 'فيس بوك', 'انستجرام', 'انستا', 'تيك توك', 'تسويق', 'بانر', 'يافط', 'كروت شخصيه'), _gw('meta', 'ads', 'تصوير')) },
+  { key:'حكومي ورسوم',           icon:'🏛️', re:_gre(_gs('ضرايب', 'ضرائب', 'تامينات', 'رسوم', 'دمغه', 'شهر عقاري', 'سجل تجاري', 'محامي', 'رخصه محل', 'غرامه'), _gw('حي')) },
+  // آخر حاجة قبل أخرى: "قهوة ميتينج" تفضل قهوة و"نقل للمخزن" يفضل نقل، واللي مالوش تصنيف تاني بيروح هنا
+  { key:'ميتينجات وعملاء',       icon:'📅', re:_gre(_gs('ميتينج', 'ميتنج', 'ميتينغ', 'meeting', 'اجتماع', 'مقابله'), _gw('عميل', 'عملاء', 'زياره', 'معاينه')) },
+  { key:'مخزن',                  icon:'📦', re:_gre(_gs('مخزن', 'مخازن', 'تخزين', 'مستودع')) },
   { key:'أخرى',                  icon:'✨', re:null }
 ];
+function _expxPad(desc){ return ' ' + expxNorm(desc).replace(/[^\p{L}\p{N}]+/gu, ' ').trim() + ' '; }
 function _expxCategory(cats, desc){
-  const s = ' ' + expxNorm(desc).replace(/[^\p{L}\p{N}]+/gu, ' ').trim() + ' ';
+  const s = _expxPad(desc);
   return (cats.find(c => c.re && c.re.test(s)) || cats[cats.length - 1]).key;
 }
 
@@ -9198,6 +9226,34 @@ function _expxWordKey(t){
   return w;
 }
 
+/* ── أسماء الموظفين (من شيت المرتبات) → "مرتبات ومسحوبات" ──
+ * بنجيب القايمة في الخلفية بعد ما الصفحة تفتح (من غير ما نأخر فتحها)، وأي بند لسه "أخرى" وفيه
+ * اسم موظف بالكامل (زي "احمد هاشم") — أو الاسم الأول لوحده لو مفيش موظف تاني بنفس الاسم الأول —
+ * بيتحسب مرتبات. الشركاء التلاتة مستبعدين (ليهم تصنيفهم). */
+let EXPX_EMP_RE = null, EXPX_EMP_LOADED = false;
+function _expxBuildEmpRe(names){
+  const partners = (typeof PW_PARTNERS !== 'undefined' ? PW_PARTNERS : ['عمر برعي', 'احمد خلف', 'محمود برعي']).map(p => expxNorm(p).trim());
+  const partnerFirst = new Set(partners.map(p => p.split(' ')[0]));
+  const full = new Set(), firstCount = new Map();
+  names.map(n => expxNorm(n).replace(/[^\p{L}\p{N}]+/gu, ' ').trim()).filter(Boolean).forEach(n => {
+    if (partners.includes(n)) return;
+    const parts = n.split(' ');
+    if (parts.length >= 2) full.add(n);
+    firstCount.set(parts[0], (firstCount.get(parts[0]) || 0) + 1);
+  });
+  const firsts = Array.from(firstCount.entries()).filter(([w, c]) => c === 1 && w.length >= 3 && !partnerFirst.has(w) && !EXPX_STOPWORDS.has(w)).map(([w]) => w);
+  const alts = Array.from(full).concat(firsts).map(_expxReEsc);
+  return alts.length ? new RegExp(' ' + _GP + '(?:' + alts.join('|') + ') ') : null;
+}
+function _expxLoadEmployees(token){
+  if (EXPX_EMP_LOADED) return;
+  apiGet('listEmployees').then(res => {
+    EXPX_EMP_RE = _expxBuildEmpRe((res.employees || []).map(e => String(e.name || '')));
+    EXPX_EMP_LOADED = true;
+    if (EXPX.gen && !isStaleNav(token)) _expxReclassify('gen');
+  }).catch(() => { /* مش حرج — التصنيف بالكلمات شغال عادي من غيرها */ });
+}
+
 const EXPX_AR_DAYS = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
 const EXPX_AR_MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 const EXPX_GENERAL = '__general__'; // اختيار "مصروفات عامة + بدون مشروع" في فلتر المشروع
@@ -9224,7 +9280,7 @@ function _expxDefaultFilters(st){
   const earliest = rows.length ? rows.reduce((min, r) => (r.date && r.date < min) ? r.date : min, todayStr()) : todayStr();
   // لو في مصروف متسجل بتاريخ بعد النهارده، "لحد تاريخ" الافتراضي بيوصل له عشان ميستخبّاش
   const latest = rows.reduce((max, r) => (r.date && r.date > max) ? r.date : max, todayStr());
-  return { from: earliest, to: latest, dim:'all', cat:'all', project: st.cfg.defaultProject || 'all', dow:'all', min:'', max:'', q:'', sort:'date', dir:'desc', groupDays:true, limit: EXPX_PAGE_SIZE, wscope:'أخرى', wsort:'n', wall:false, uscope:'أخرى', usort:'t' };
+  return { from: earliest, to: latest, dim:'all', cats:[], project: st.cfg.defaultProject || 'all', dow:'all', min:'', max:'', q:'', sort:'date', dir:'desc', groupDays:true, limit: EXPX_PAGE_SIZE, wscope:'أخرى', wsort:'n', wall:false, uscope:'أخرى', usort:'t' };
 }
 
 const EXPX_CFG = {
@@ -9244,6 +9300,7 @@ const EXPX_CFG = {
     pick: m => {
       let cat = _expxCategory(EXPX_CFG.gen.matchCats, m.desc);
       if (EXPX_CFG.gen.matchCats.some(c => c.custom && c.key === cat)) return { dim:'', cat }; // التصنيف المخصص بيكسب
+      if (cat === 'أخرى' && EXPX_EMP_RE && EXPX_EMP_RE.test(_expxPad(m.desc))) return { dim:'', cat:'مرتبات ومسحوبات' };
       // أي مصروف فيه اسم عربية (BYD/KIA/Skoda) بيروح "سيارات وبنزين" — إلا لو مرتبات/مسحوبات/سداد دين
       if (_carDetect(m.desc) && !['مسحوبات شركاء', 'مرتبات ومسحوبات', 'سداد ديون'].includes(cat)) cat = 'سيارات وبنزين';
       return { dim:'', cat };
@@ -9291,7 +9348,12 @@ async function expxRender(id, token){
         <div class="af-field"><label>من تاريخ</label><input type="date" id="${P}-from" autocomplete="off"></div>
         <div class="af-field"><label>لحد تاريخ</label><input type="date" id="${P}-to" autocomplete="off"></div>
         ${dimField}
-        <div class="af-field"><label>${qEsc(cfg.catLabel)}</label><select id="${P}-cat"><option value="all">الكل</option>${catOpts}</select></div>
+        <div class="af-field"><label>${qEsc(cfg.catLabel)} <span style="font-weight:600;">(تقدر تختار أكتر من واحد)</span></label>
+          <div class="expx-ms" id="${P}-catms">
+            <button type="button" class="expx-ms-btn" data-act="msopen"><span id="${P}-catms-label">الكل</span><span style="opacity:.6;">▾</span></button>
+            <div class="expx-ms-panel" id="${P}-catms-panel"></div>
+          </div>
+        </div>
         <div class="af-field"><label>المشروع</label><select id="${P}-project">${projOpts}</select></div>
         <div class="af-field"><label>اليوم</label><select id="${P}-dow"><option value="all">كل الأيام</option>${dowOpts}</select></div>
         <div class="af-field"><label>المبلغ</label><div class="af-amount" style="flex:1;">
@@ -9313,14 +9375,39 @@ async function expxRender(id, token){
         <button type="button" class="btn btn-outline btn-sm" data-act="range" data-v="year">السنة دي</button>
         <button type="button" class="btn btn-outline btn-sm" data-act="range" data-v="all">الكل</button>
       </div>
+      <style>
+        .expx-ms{ position:relative; min-width:0; }
+        .expx-ms-btn{ all:unset; box-sizing:border-box; width:100%; display:flex; justify-content:space-between; align-items:center; gap:6px; padding:8px 9px; border:1px solid var(--border);
+          border-radius:8px; font-size:12.5px; background:var(--white); cursor:pointer; white-space:nowrap; overflow:hidden; }
+        .expx-ms-btn span:first-child{ overflow:hidden; text-overflow:ellipsis; }
+        .expx-ms.has .expx-ms-btn{ border-color:var(--gold); box-shadow:0 0 0 1px var(--gold); font-weight:700; }
+        .expx-ms-panel{ display:none; position:absolute; top:calc(100% + 4px); inset-inline-start:0; z-index:30; min-width:240px; max-height:340px; overflow:auto; background:var(--white);
+          border:1px solid var(--border); border-radius:10px; box-shadow:0 12px 30px rgba(30,26,21,.18); padding:6px; }
+        .expx-ms.open .expx-ms-panel{ display:block; }
+        .expx-ms-item{ display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:7px; cursor:pointer; font-size:12.5px; }
+        .expx-ms-item:hover{ background:var(--cream); }
+        .expx-ms-item input{ width:15px; height:15px; accent-color:var(--gold-dim); pointer-events:none; }
+        .expx-ms-item .t{ margin-inline-start:auto; color:var(--muted); font-size:11px; font-weight:700; }
+        .expx-ms-acts{ display:flex; gap:6px; padding:4px 4px 8px; border-bottom:1px solid var(--border); margin-bottom:4px; }
+        .expx-ms-acts button{ all:unset; cursor:pointer; font-size:11.5px; font-weight:700; color:var(--gold-dim); padding:3px 8px; border-radius:6px; background:var(--cream); }
+        .expx-selbar{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:12px 14px; margin-bottom:16px; border-radius:12px; background:var(--dark); color:#fff; }
+        .expx-selbar .lbl{ font-size:12px; font-weight:700; color:var(--gold, #D4B483); }
+        .expx-selbar .chip{ display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:20px; background:rgba(255,255,255,.1); font-size:12px; font-weight:700; }
+        .expx-selbar .chip button{ all:unset; cursor:pointer; color:#e8a598; font-weight:800; }
+        .expx-selbar .sum{ margin-inline-start:auto; display:flex; gap:14px; align-items:baseline; font-weight:800; }
+        .expx-selbar .sum .v{ font-size:18px; color:var(--gold, #D4B483); }
+        .expx-selbar .sum .n{ font-size:12px; color:#cfc6b8; }
+        .expx-selbar .clr{ all:unset; cursor:pointer; font-size:11.5px; font-weight:700; color:#cfc6b8; padding:4px 10px; border:1px solid rgba(255,255,255,.2); border-radius:8px; }
+      </style>
       <div class="adv-filter-count" id="${P}-note"></div>
+      <div id="${P}-selbar"></div>
       <div class="panel">
         <h3>${qEsc(cfg.summaryTitle)}</h3>
         <div class="cards" id="${P}-cards" style="margin-bottom:0;"></div>
       </div>
       <div class="grid2">
-        <div class="panel"><h3>حسب ${qEsc(cfg.catLabel)}${cfg.dims ? ' و' + qEsc(cfg.dimLabel) : ''}</h3><div class="tbl-wrap tbl-wrap-scroll" id="${P}-matrix" style="max-height:460px;"></div></div>
-        <div class="panel"><h3>إجمالي كل شهر</h3><div class="tbl-wrap tbl-wrap-scroll" id="${P}-monthly" style="max-height:460px;"></div></div>
+        <div class="panel" style="min-width:0;"><h3>حسب ${qEsc(cfg.catLabel)}${cfg.dims ? ' و' + qEsc(cfg.dimLabel) : ''}</h3><div class="tbl-wrap tbl-wrap-scroll" id="${P}-matrix" style="max-height:460px;"></div></div>
+        <div class="panel" style="min-width:0;"><h3>إجمالي كل شهر</h3><div class="tbl-wrap tbl-wrap-scroll" id="${P}-monthly" style="max-height:460px;"></div></div>
       </div>
       ${cfg.showWords ? `<style>
         .expx-wgrid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:10px; }
@@ -9417,7 +9504,11 @@ async function expxRender(id, token){
       const el = document.getElementById(`${P}-${key}`); if (!el) return;
       el.addEventListener(ev || 'change', e => { st.f[key] = conv ? conv(e.target) : e.target.value; st.f.limit = EXPX_PAGE_SIZE; expxRenderAll(id); });
     };
-    ['from', 'to', 'dim', 'cat', 'project', 'dow'].forEach(k => bind(k));
+    ['from', 'to', 'dim', 'project', 'dow'].forEach(k => bind(k));
+    if (!window._expxMsOutsideBound) {
+      window._expxMsOutsideBound = true;
+      document.addEventListener('click', e => { if (!e.target.isConnected) return; document.querySelectorAll('.expx-ms.open').forEach(ms => { if (!ms.contains(e.target)) ms.classList.remove('open'); }); });
+    }
     bind('min', 'input'); bind('max', 'input'); bind('q', 'input');
     bind('group', 'change', el => el.checked);
     bind('wscope');
@@ -9435,7 +9526,14 @@ async function expxRender(id, token){
       else if (act === 'csv'){ expxDownloadCsv(id); return; }
       else if (act === 'range'){ _expxApplyRange(st, v); _expxSyncInputs(id); }
       else if (act === 'dim'){ st.f.dim = st.f.dim === v ? 'all' : v; _expxSyncInputs(id); }
-      else if (act === 'cat'){ st.f.cat = st.f.cat === v ? 'all' : v; _expxSyncInputs(id); }
+      else if (act === 'msopen'){ document.getElementById(`${P}-catms`).classList.toggle('open'); return; }
+      else if (act === 'cat' || act === 'mscat'){
+        const i = st.f.cats.indexOf(v);
+        if (i === -1) st.f.cats.push(v); else st.f.cats.splice(i, 1);
+        _expxSyncInputs(id);
+      }
+      else if (act === 'msall'){ st.f.cats = []; _expxSyncInputs(id); }
+      else if (act === 'msonly'){ st.f.cats = st.cfg.cats.map(c => c.key); _expxSyncInputs(id); }
       else if (act === 'q'){ st.f.q = v; _expxSyncInputs(id); }
       else if (act === 'sort'){
         if (st.f.sort === v) st.f.dir = st.f.dir === 'asc' ? 'desc' : 'asc';
@@ -9451,13 +9549,14 @@ async function expxRender(id, token){
       expxRenderAll(id);
     });
     expxRenderAll(id);
+    if (id === 'gen') _expxLoadEmployees(token);
   } catch(err){ showError(err); }
 }
 
 function _expxSyncInputs(id){
   const f = EXPX[id].f;
   const set = (k, v) => { const el = document.getElementById(`${id}-${k}`); if (!el) return; if (el.type === 'checkbox') el.checked = !!v; else el.value = v; };
-  set('from', f.from); set('to', f.to); set('dim', f.dim); set('cat', f.cat); set('project', f.project); set('dow', f.dow);
+  set('from', f.from); set('to', f.to); set('dim', f.dim); _expxRenderMs(id); set('project', f.project); set('dow', f.dow);
   set('min', f.min); set('max', f.max); set('q', f.q); set('group', f.groupDays); set('wscope', f.wscope); set('uscope', f.uscope);
   const sortVal = `${f.sort}-${f.dir}`;
   set('sort', ['date-desc', 'date-asc', 'amount-desc', 'amount-asc'].includes(sortVal) ? sortVal : 'custom');
@@ -9486,7 +9585,7 @@ function _expxFilter(st, skip){
     (!f.from || !r.date || r.date >= f.from) &&
     (!f.to || !r.date || r.date <= f.to) &&
     (skip === 'dim' || f.dim === 'all' || r.dim === f.dim) &&
-    (skip === 'cat' || f.cat === 'all' || r.cat === f.cat) &&
+    (skip === 'cat' || !f.cats.length || f.cats.includes(r.cat)) &&
     (f.project === 'all' ||
       (f.project === EXPX_GENERAL ? (r.project === 'مصروفات عامة' || !r.project) :
        f.project === '__none__' ? !r.project : r.project === f.project)) &&
@@ -9526,12 +9625,22 @@ function expxRenderAll(id){
     const parts = [];
     if (f.from !== d.from || f.to !== d.to) parts.push(`الفترة من ${f.from || 'البداية'} لحد ${f.to || 'النهارده'}`);
     if (f.dim !== 'all') parts.push(`${cfg.dimLabel}: ${f.dim}`);
-    if (f.cat !== 'all') parts.push(`${cfg.catLabel}: ${f.cat}`);
+    if (f.cats.length) parts.push(`${cfg.catLabel}: ${f.cats.join('، ')}`);
     if (f.project !== d.project) parts.push(`المشروع: ${f.project === 'all' ? 'كل المشاريع' : f.project === EXPX_GENERAL ? 'مصروفات عامة' : f.project === '__none__' ? 'بدون مشروع' : f.project}`);
     if (f.dow !== 'all') parts.push(`يوم ${EXPX_AR_DAYS[+f.dow]}`);
     if (f.min !== '' || f.max !== '') parts.push(`المبلغ ${f.min !== '' ? 'من ' + f.min : ''} ${f.max !== '' ? 'لحد ' + f.max : ''}`.trim());
     if (String(f.q || '').trim()) parts.push(`بحث: "${f.q.trim()}"`);
     note.textContent = parts.length ? 'عرض ' + parts.join(' — ') : '';
+  }
+  // ── شريط الاختيار المتعدد: التصنيفات المختارة + إجماليهم مع بعض ──
+  const selbar = document.getElementById(`${P}-selbar`);
+  if (selbar) {
+    selbar.innerHTML = !f.cats.length ? '' : `<div class="expx-selbar">
+      <span class="lbl">المختار:</span>
+      ${f.cats.map(k => `<span class="chip">${_expxCatIcon(cfg, k)} ${qEsc(k)} <span style="opacity:.7;font-weight:600;">${fmt(_expxSum(rows.filter(r => r.cat === k)))}</span><button type="button" data-act="cat" data-v="${qEsc(k)}" title="شيله من الاختيار">✕</button></span>`).join('')}
+      <span class="sum"><span class="n">${rows.length} بند</span><span class="v">${fmt(total)} ج</span></span>
+      <button type="button" class="clr" data-act="msall">مسح الاختيار</button>
+    </div>`;
   }
 
   // ── الكروت ──
@@ -9552,7 +9661,7 @@ function expxRenderAll(id){
   } else {
     cardsHtml += `<div class="card"><div class="label">متوسط اليوم</div><div class="value">${fmt(daysCount ? total / daysCount : 0)} ج</div></div>`;
     const top = cats.map(c => ({ c, t: _expxSum(rows.filter(r => r.cat === c.key)) })).filter(x => x.t > 0).sort((a, b) => b.t - a.t).slice(0, 4);
-    cardsHtml += top.map(x => `<div class="card" data-act="cat" data-v="${qEsc(x.c.key)}" style="cursor:pointer;${f.cat === x.c.key ? 'border-color:var(--gold);box-shadow:0 0 0 2px var(--gold) inset;' : ''}">
+    cardsHtml += top.map(x => `<div class="card" data-act="cat" data-v="${qEsc(x.c.key)}" style="cursor:pointer;${f.cats.includes(x.c.key) ? 'border-color:var(--gold);box-shadow:0 0 0 2px var(--gold) inset;' : ''}">
         <div class="label">${x.c.icon} ${qEsc(x.c.key)}</div><div class="value gold">${fmt(x.t)} ج</div>
         <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">${total ? Math.round(x.t / total * 100) : 0}% من الإجمالي</div></div>`).join('');
   }
@@ -9568,13 +9677,15 @@ function expxRenderAll(id){
     const mRows = _expxFilter(st, 'cat');
     const mTotal = _expxSum(mRows);
     const used = cats.map(c => { const cr = mRows.filter(r => r.cat === c.key); return { c, cr, t: _expxSum(cr) }; }).filter(x => x.cr.length).sort((a, b) => b.t - a.t);
-    const selStyle = key => f.cat === key ? 'outline:2px solid var(--gold);outline-offset:-2px;' : '';
+    const selStyle = key => f.cats.includes(key) ? 'outline:2px solid var(--gold);outline-offset:-2px;background:#fdf8ef;' : '';
+    const chk = key => `<input type="checkbox" ${f.cats.includes(key) ? 'checked' : ''} style="pointer-events:none;accent-color:var(--gold-dim);margin-inline-end:6px;vertical-align:middle;">`;
+    const selRows = f.cats.length ? mRows.filter(r => f.cats.includes(r.cat)) : [];
     if (!mRows.length) matrix.innerHTML = '<div class="empty">مفيش مصاريف مطابقة للفلاتر</div>';
     else if (dims) {
       matrix.innerHTML = `<table>
         <thead><tr><th>${qEsc(cfg.catLabel)}</th>${dims.map(c => `<th>${qEsc(c.label)}</th>`).join('')}${dims.length > 1 ? '<th>الإجمالي</th>' : ''}</tr></thead>
         <tbody>
-          ${used.map(x => `<tr data-act="cat" data-v="${qEsc(x.c.key)}" style="cursor:pointer;${selStyle(x.c.key)}"><td style="text-align:right;font-weight:700;">${x.c.icon} ${qEsc(x.c.key)}</td>
+          ${used.map(x => `<tr data-act="cat" data-v="${qEsc(x.c.key)}" style="cursor:pointer;${selStyle(x.c.key)}"><td style="text-align:right;font-weight:700;">${chk(x.c.key)}${x.c.icon} ${qEsc(x.c.key)}</td>
             ${dims.map(c => { const v = _expxSum(x.cr.filter(r => r.dim === c.key)); return `<td>${v ? fmt(v) : dash}</td>`; }).join('')}
             ${dims.length > 1 ? `<td style="font-weight:800;">${fmt(x.t)}</td>` : ''}</tr>`).join('')}
           <tr class="tbl-totals-row"><td>الإجمالي</td>${dims.map(c => `<td>${fmt(_expxSum(mRows.filter(r => r.dim === c.key)))}</td>`).join('')}${dims.length > 1 ? `<td>${fmt(mTotal)}</td>` : ''}</tr>
@@ -9584,10 +9695,13 @@ function expxRenderAll(id){
         <thead><tr><th>${qEsc(cfg.catLabel)}</th><th>العدد</th><th>الإجمالي</th><th style="min-width:120px;">النسبة</th><th>متوسط المصروف</th></tr></thead>
         <tbody>
           ${used.map(x => { const pct = mTotal ? x.t / mTotal * 100 : 0; return `<tr data-act="cat" data-v="${qEsc(x.c.key)}" style="cursor:pointer;${selStyle(x.c.key)}">
-            <td style="text-align:right;font-weight:700;white-space:nowrap;">${x.c.icon} ${qEsc(x.c.key)}</td>
+            <td style="text-align:right;font-weight:700;white-space:nowrap;">${chk(x.c.key)}${x.c.icon} ${qEsc(x.c.key)}</td>
             <td>${x.cr.length}</td><td style="font-weight:800;">${fmt(x.t)}</td>
             <td><div style="display:flex;align-items:center;gap:6px;"><div style="flex:1;height:8px;background:var(--cream);border-radius:4px;overflow:hidden;"><div style="width:${pct.toFixed(1)}%;height:100%;background:var(--gold);"></div></div><span style="font-size:11px;min-width:30px;">${Math.round(pct)}%</span></div></td>
             <td>${fmt(x.t / x.cr.length)}</td></tr>`; }).join('')}
+          ${selRows.length ? `<tr><td style="text-align:right;font-weight:800;background:var(--cream);color:var(--gold-dim);">✔ المختار (${f.cats.length})</td><td style="background:var(--cream);font-weight:800;">${selRows.length}</td>
+            <td style="background:var(--cream);font-weight:800;color:var(--gold-dim);">${fmt(_expxSum(selRows))}</td><td style="background:var(--cream);font-weight:800;">${mTotal ? Math.round(_expxSum(selRows) / mTotal * 100) : 0}%</td>
+            <td style="background:var(--cream);">${fmt(_expxSum(selRows) / selRows.length)}</td></tr>` : ''}
           <tr class="tbl-totals-row"><td>الإجمالي</td><td>${mRows.length}</td><td>${fmt(mTotal)}</td><td>100%</td><td>${fmt(mRows.length ? mTotal / mRows.length : 0)}</td></tr>
         </tbody></table>`;
     }
@@ -9754,6 +9868,20 @@ function expxRenderAll(id){
     </table>${moreBtn}`;
 }
 
+// قايمة اختيار التصنيفات (متعددة) — بتتبني من جديد مع كل تغيير عشان الأرقام اللي جنب كل تصنيف تفضل مظبوطة
+function _expxRenderMs(id){
+  const st = EXPX[id]; if (!st) return;
+  const wrap = document.getElementById(`${id}-catms`), panel = document.getElementById(`${id}-catms-panel`), label = document.getElementById(`${id}-catms-label`);
+  if (!wrap || !panel || !label) return;
+  const f = st.f, cats = st.cfg.cats;
+  const base = _expxFilter(st, 'cat');
+  const totals = new Map(); base.forEach(r => totals.set(r.cat, (totals.get(r.cat) || 0) + r.amount));
+  label.textContent = !f.cats.length ? 'الكل' : f.cats.length === 1 ? f.cats[0] : `${f.cats.length} تصنيفات مختارة`;
+  wrap.classList.toggle('has', f.cats.length > 0);
+  panel.innerHTML = `<div class="expx-ms-acts"><button type="button" data-act="msall">✕ مسح الاختيار (الكل)</button></div>` +
+    cats.map(c => `<div class="expx-ms-item" data-act="mscat" data-v="${qEsc(c.key)}">
+      <input type="checkbox" ${f.cats.includes(c.key) ? 'checked' : ''}> <span>${c.icon} ${qEsc(c.key)}</span><span class="t">${fmt(totals.get(c.key) || 0)}</span></div>`).join('');
+}
 // قايمة "في:" بتاعة لوحة الكلمات — كل التصنيفات + "كل البنود"
 function _expxFillWscope(id){
   const st = EXPX[id]; const sel = document.getElementById(`${id}-wscope`); if (!st || !sel) return;
@@ -9772,16 +9900,14 @@ function _expxReclassify(id){
   const st = EXPX[id]; if (!st) return;
   if (id === 'gen') _expxRefreshGenCats();
   st.rows.forEach(r => { const hit = st.cfg.pick({ desc: r.desc, project: r.project }); if (hit) r.cat = hit.cat; });
-  if (st.f.cat !== 'all' && !st.cfg.cats.some(c => c.key === st.f.cat)) st.f.cat = 'all';
-  const sel = document.getElementById(`${id}-cat`);
-  if (sel) sel.innerHTML = '<option value="all">الكل</option>' + st.cfg.cats.map(c => `<option value="${qEsc(c.key)}">${c.icon} ${qEsc(c.key)}</option>`).join('');
+  st.f.cats = st.f.cats.filter(k => st.cfg.cats.some(c => c.key === k));
   _expxFillWscope(id);
   _expxSyncInputs(id);
   expxRenderAll(id);
 }
 async function expxAddCustomCat(id, word){
   const custom = _expxLoadCustom();
-  const examples = Array.from(new Set(custom.map(c => c.key).concat(['قهوة ومشروبات', 'خامات', 'أكل (فطار/غدا/عشا)']))).slice(0, 4).join(' / ');
+  const examples = Array.from(new Set(custom.map(c => c.key).concat(['قهوة ومشروبات', 'خامات وعدد', 'أكل (فطار/غدا/عشا)']))).slice(0, 4).join(' / ');
   const name = await openGenPrompt(`كل بند فيه كلمة "${word}" (في أي حتة في الوصف) هيروح للتصنيف ده.\nاكتب اسم تصنيف جديد، أو اسم تصنيف موجود عشان تضيف له الكلمة (زي: ${examples})`, word, 'تصنيف من كلمة');
   const key = String(name || '').trim();
   if (!key) return;
@@ -9817,6 +9943,7 @@ function expxDownloadCsv(id){
   document.body.appendChild(a); a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
+
 
 async function renderFixedExp(token) {
   try {
