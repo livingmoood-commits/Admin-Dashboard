@@ -9677,32 +9677,49 @@ function expxRenderAll(id){
     const mRows = _expxFilter(st, 'cat');
     const mTotal = _expxSum(mRows);
     const used = cats.map(c => { const cr = mRows.filter(r => r.cat === c.key); return { c, cr, t: _expxSum(cr) }; }).filter(x => x.cr.length).sort((a, b) => b.t - a.t);
-    const selStyle = key => f.cats.includes(key) ? 'outline:2px solid var(--gold);outline-offset:-2px;background:#fdf8ef;' : '';
-    const chk = key => `<input type="checkbox" ${f.cats.includes(key) ? 'checked' : ''} style="pointer-events:none;accent-color:var(--gold-dim);margin-inline-end:6px;vertical-align:middle;">`;
-    const selRows = f.cats.length ? mRows.filter(r => f.cats.includes(r.cat)) : [];
+    // التحديد: الصف المختار عليه شريط دهبي على الجنب + علامة ✓، والباقي بيبهت — والإجمالي اللي تحت بيبقى إجمالي المختار
+    const hasSel = f.cats.length > 0;
+    const rowCls = key => 'expx-mxrow' + (f.cats.includes(key) ? ' on' : (hasSel ? ' dim' : ''));
+    const chk = key => `<span class="expx-tick">${f.cats.includes(key) ? '✓' : ''}</span>`;
+    const selRows = hasSel ? mRows.filter(r => f.cats.includes(r.cat)) : [];
+    const fRows = selRows.length ? selRows : mRows, fTotal = _expxSum(fRows);
+    const footLbl = selRows.length ? `<span class="expx-footlbl">✓ المختار (${f.cats.length})<small>من إجمالي ${fmt(mTotal)}</small></span>` : 'الإجمالي';
+    const footCls = 'tbl-totals-row' + (selRows.length ? ' expx-selfoot' : '');
+    const mxCss = `<style>
+      .expx-mxrow td{ transition:background .2s, opacity .2s; }
+      .expx-mxrow:hover td{ background:#faf5ea; }
+      .expx-mxrow.on td{ background:#f6efe0; }
+      .expx-mxrow.on td:first-child{ box-shadow:inset -4px 0 0 var(--gold); }
+      .expx-mxrow.dim td{ opacity:.45; }
+      .expx-mxrow.dim:hover td{ opacity:.8; }
+      .expx-tick{ display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:50%; border:1.5px solid var(--border); margin-inline-end:8px;
+        vertical-align:middle; font-size:11px; font-weight:900; color:#fff; transition:all .2s; }
+      .expx-mxrow:hover .expx-tick{ border-color:var(--gold); }
+      .expx-mxrow.on .expx-tick{ background:var(--gold); border-color:var(--gold); }
+      .expx-selfoot td{ background:linear-gradient(0deg, #2a2116, #1e1a14) !important; color:var(--gold, #D4B483) !important; }
+      .expx-footlbl{ display:inline-flex; flex-direction:column; line-height:1.3; }
+      .expx-footlbl small{ font-size:10.5px; font-weight:600; color:#cfc6b8; }
+    </style>`;
     if (!mRows.length) matrix.innerHTML = '<div class="empty">مفيش مصاريف مطابقة للفلاتر</div>';
     else if (dims) {
-      matrix.innerHTML = `<table>
+      matrix.innerHTML = mxCss + `<table>
         <thead><tr><th>${qEsc(cfg.catLabel)}</th>${dims.map(c => `<th>${qEsc(c.label)}</th>`).join('')}${dims.length > 1 ? '<th>الإجمالي</th>' : ''}</tr></thead>
         <tbody>
-          ${used.map(x => `<tr data-act="cat" data-v="${qEsc(x.c.key)}" style="cursor:pointer;${selStyle(x.c.key)}"><td style="text-align:right;font-weight:700;">${chk(x.c.key)}${x.c.icon} ${qEsc(x.c.key)}</td>
+          ${used.map(x => `<tr class="${rowCls(x.c.key)}" data-act="cat" data-v="${qEsc(x.c.key)}" style="cursor:pointer;"><td style="text-align:right;font-weight:700;">${chk(x.c.key)}${x.c.icon} ${qEsc(x.c.key)}</td>
             ${dims.map(c => { const v = _expxSum(x.cr.filter(r => r.dim === c.key)); return `<td>${v ? fmt(v) : dash}</td>`; }).join('')}
             ${dims.length > 1 ? `<td style="font-weight:800;">${fmt(x.t)}</td>` : ''}</tr>`).join('')}
-          <tr class="tbl-totals-row"><td>الإجمالي</td>${dims.map(c => `<td>${fmt(_expxSum(mRows.filter(r => r.dim === c.key)))}</td>`).join('')}${dims.length > 1 ? `<td>${fmt(mTotal)}</td>` : ''}</tr>
+          <tr class="${footCls}"><td>${footLbl}</td>${dims.map(c => `<td>${fmt(_expxSum(fRows.filter(r => r.dim === c.key)))}</td>`).join('')}${dims.length > 1 ? `<td>${fmt(fTotal)}</td>` : ''}</tr>
         </tbody></table>`;
     } else {
-      matrix.innerHTML = `<table>
+      matrix.innerHTML = mxCss + `<table>
         <thead><tr><th>${qEsc(cfg.catLabel)}</th><th>العدد</th><th>الإجمالي</th><th style="min-width:120px;">النسبة</th><th>متوسط المصروف</th></tr></thead>
         <tbody>
-          ${used.map(x => { const pct = mTotal ? x.t / mTotal * 100 : 0; return `<tr data-act="cat" data-v="${qEsc(x.c.key)}" style="cursor:pointer;${selStyle(x.c.key)}">
+          ${used.map(x => { const pct = mTotal ? x.t / mTotal * 100 : 0; return `<tr class="${rowCls(x.c.key)}" data-act="cat" data-v="${qEsc(x.c.key)}" style="cursor:pointer;">
             <td style="text-align:right;font-weight:700;white-space:nowrap;">${chk(x.c.key)}${x.c.icon} ${qEsc(x.c.key)}</td>
             <td>${x.cr.length}</td><td style="font-weight:800;">${fmt(x.t)}</td>
             <td><div style="display:flex;align-items:center;gap:6px;"><div style="flex:1;height:8px;background:var(--cream);border-radius:4px;overflow:hidden;"><div style="width:${pct.toFixed(1)}%;height:100%;background:var(--gold);"></div></div><span style="font-size:11px;min-width:30px;">${Math.round(pct)}%</span></div></td>
             <td>${fmt(x.t / x.cr.length)}</td></tr>`; }).join('')}
-          ${selRows.length ? `<tr><td style="text-align:right;font-weight:800;background:var(--cream);color:var(--gold-dim);">✔ المختار (${f.cats.length})</td><td style="background:var(--cream);font-weight:800;">${selRows.length}</td>
-            <td style="background:var(--cream);font-weight:800;color:var(--gold-dim);">${fmt(_expxSum(selRows))}</td><td style="background:var(--cream);font-weight:800;">${mTotal ? Math.round(_expxSum(selRows) / mTotal * 100) : 0}%</td>
-            <td style="background:var(--cream);">${fmt(_expxSum(selRows) / selRows.length)}</td></tr>` : ''}
-          <tr class="tbl-totals-row"><td>الإجمالي</td><td>${mRows.length}</td><td>${fmt(mTotal)}</td><td>100%</td><td>${fmt(mRows.length ? mTotal / mRows.length : 0)}</td></tr>
+          <tr class="${footCls}"><td>${footLbl}</td><td>${fRows.length}</td><td>${fmt(fTotal)}</td><td>${mTotal ? Math.round(fTotal / mTotal * 100) : 0}%</td><td>${fmt(fRows.length ? fTotal / fRows.length : 0)}</td></tr>
         </tbody></table>`;
     }
   }
