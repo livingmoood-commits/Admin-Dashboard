@@ -3707,9 +3707,11 @@ async function renderDashboard(token) {
           <h3 style="margin:0;">المشاريع بالتكلفة والربح</h3>
           <button class="btn btn-sm btn-outline" onclick="goTo('costs','projects')">الصفحة الكاملة ←</button>
         </div>
-        ${dashProjectsTableHTML(projects)}
+        <div id="dashProjTbl">${dashProjectsTableHTML(projects, FX_MODEL)}</div>
       </div>
     `;
+    // نصيب الثابتة + الديون بيتحمّل في الخلفية وبعدين الجدول بيتعاد رسمه بالمعادلة الموحدة
+    fxLoadModel().then(fx => { const el = document.getElementById('dashProjTbl'); if (el && fx) el.innerHTML = dashProjectsTableHTML(projects, fx); }).catch(() => {});
     dashPartnerWithdrawalsCompute(); // أول حساب تلقائي — من أول ما اتسجل أي بند (من فاضية) لحد النهارده
   } catch(err){ showError(err); }
 }
@@ -3853,19 +3855,20 @@ async function openTreasuryDashCard(){
 
 // جدول المشاريع بالتكلفة والربح — أهم جدول في الصفحة، مرتب الأعلى تكلفة فوق.
 // دوس على أي صف → openDashProjectDetail بتفصيل مصادر التكلفة + صافي الربح
-function dashProjectsTableHTML(projects){
+function dashProjectsTableHTML(projects, fx){
   if (!projects.length) return '<div class="empty">مفيش مشاريع مسجلة لسه</div>';
-  const list = projects.slice().sort((a,b)=>b.totalCost-a.totalCost);
-  const totalCostAll = list.reduce((s,p)=>s+p.totalCost, 0);
-  const totalRevenueAll = list.reduce((s,p)=>s+(p.financials ? p.financials.revenue : 0), 0);
-  const totalNetAll = list.reduce((s,p)=>s+(p.netProfit||0), 0);
-  return `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>ساعات العمل</th><th>التكلفة الإجمالية</th><th>الإيراد المسجل</th><th>صافي الربح</th></tr></thead>
-    <tbody>${list.map(p => `<tr class="clickable-row" style="cursor:pointer;" onclick="openDashProjectDetail('${qEscJs(p.project)}')" title="دوس لعرض تفاصيل المشروع">
+  // نفس معادلة صفحة المشاريع والتكاليف: عمالة + مصاريف المشروع + ديونه (الباقي) + نصيبه من الثابتة والعامة
+  const list = projects.map(p => ({ p, a: fxAdjust(p, fx || null, p.project) })).sort((x, y) => y.a.total - x.a.total);
+  const totalCostAll = list.reduce((s, r) => s + r.a.total, 0);
+  const totalRevenueAll = list.reduce((s, r) => s + (r.p.financials ? r.p.financials.revenue : 0), 0);
+  const totalNetAll = list.reduce((s, r) => s + (r.a.net || 0), 0);
+  return `${fx ? '<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">التكلفة = عمالة + مصاريف المشروع + ديونه + نصيبه من الثابتة والعامة.</div>' : ''}<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>ساعات العمل</th><th>التكلفة الإجمالية</th><th>الإيراد المسجل</th><th>صافي الربح</th></tr></thead>
+    <tbody>${list.map(({ p, a }) => `<tr class="clickable-row" style="cursor:pointer;" onclick="openDashProjectDetail('${qEscJs(p.project)}')" title="دوس لعرض تفاصيل المشروع">
       <td>${qEsc(p.project)}</td>
       <td>${fmt(p.laborHours)} س</td>
-      <td class="gold" style="font-weight:700;">${fmt(p.totalCost)} ج</td>
+      <td class="gold" style="font-weight:700;">${fmt(a.total)} ج</td>
       <td>${p.financials ? fmt(p.financials.revenue)+' ج' : '—'}</td>
-      <td style="color:${p.netProfit==null?'var(--muted)':(p.netProfit>=0?'var(--green)':'var(--red)')};font-weight:800;">${p.netProfit==null?'—':fmt(p.netProfit)+' ج'}</td>
+      <td style="color:${a.net==null?'var(--muted)':(a.net>=0?'var(--green)':'var(--red)')};font-weight:800;">${a.net==null?'—':fmt(a.net)+' ج'}</td>
     </tr>`).join('')}</tbody>
     <tfoot><tr class="tbl-totals-row">
       <td>الإجمالي (${list.length} مشروع)</td>
@@ -3880,23 +3883,24 @@ function dashProjectsTableHTML(projects){
 async function openDashProjectDetail(name){
   openCardModal('<div class="loading-row">جاري التحميل...</div>');
   try {
-    const p = await apiGet('getProjectFullSummary', { name });
+    const [p, fx] = await Promise.all([apiGet('getProjectFullSummary', { name }), fxLoadModel().catch(() => null)]);
+    const a = fxAdjust(p, fx, name), pj = qEscJs(name);
     openCardModal(`
       <div class="cd-head"><h3>${qEsc(name)}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
       <div class="cd-subcards">
-        <div class="cd-subcard"><div class="label">تكلفة العمالة</div><div class="value">${fmt(p.laborCost)} ج</div></div>
-        <div class="cd-subcard"><div class="label">تكلفة الخامات</div><div class="value">${fmt(p.materialsCost + p.productsLaborCost)} ج</div></div>
-        <div class="cd-subcard"><div class="label">تكلفة التركيب</div><div class="value">${fmt(p.installCost)} ج</div></div>
-        <div class="cd-subcard"><div class="label">التكاليف (الموحّد)</div><div class="value">${fmt(p.costsTotal)} ج</div></div>
+        <div class="cd-subcard" style="cursor:pointer;" onclick="showProjectLaborModal_('${pj}')"><div class="label">عمالة المشروع 🔍</div><div class="value">${fmt(a.labor)} ج</div></div>
+        <div class="cd-subcard" style="cursor:pointer;" onclick="showProjectExpensesModal_('${pj}')"><div class="label">مصاريف المشروع 🔍</div><div class="value">${fmt(a.expenses)} ج</div></div>
+        ${a.legacy ? '' : `<div class="cd-subcard" style="cursor:pointer;" onclick="fxShowProjectDebtsModal('${pj}')"><div class="label">ديون المشروع (الباقي) 🔍</div><div class="value">${fmt(a.debt)} ج</div></div>
+        <div class="cd-subcard" style="cursor:pointer;" onclick="fxShowProjectModal('${pj}')"><div class="label">ثابتة وعامة (${fxPct(a.pctOfCost)}) 🔍</div><div class="value">${fmt(a.share)} ج</div></div>`}
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:800;margin:14px 0;padding:10px 14px;background:var(--cream);border-radius:10px;">
-        <span>الإجمالي</span><span class="gold">${fmt(p.totalCost)} ج</span>
+        <span>الإجمالي</span><span class="gold">${fmt(a.total)} ج</span>
       </div>
       ${p.financials ? `<div style="display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:800;margin-bottom:14px;padding:10px 14px;border-radius:10px;background:var(--cream);">
         <span>الإيراد المسجل</span><span>${fmt(p.financials.revenue)} ج</span>
       </div>` : ''}
-      <div style="display:flex;justify-content:space-between;align-items:center;font-size:15px;font-weight:800;padding:10px 14px;border-radius:10px;background:${p.netProfit==null?'var(--cream)':(p.netProfit>=0?'#e8f3ea':'#fbe2e2')};">
-        <span>صافي الربح</span><span style="color:${p.netProfit==null?'var(--muted)':(p.netProfit>=0?'var(--green)':'var(--red)')};">${p.netProfit==null?'لسه مفيش إيراد مسجل':fmt(p.netProfit)+' ج'}</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:15px;font-weight:800;padding:10px 14px;border-radius:10px;background:${a.net==null?'var(--cream)':(a.net>=0?'#e8f3ea':'#fbe2e2')};">
+        <span>صافي الربح</span><span style="color:${a.net==null?'var(--muted)':(a.net>=0?'var(--green)':'var(--red)')};">${a.net==null?'لسه مفيش إيراد مسجل':fmt(a.net)+' ج'}</span>
       </div>
       <button class="cd-back" style="margin-top:14px;" onclick='closeCardModal(); goTo("costs");'>فتح صفحة التكاليف ←</button>
     `);
@@ -8231,11 +8235,11 @@ async function renderProjectsPage(token){
   const box = document.getElementById('content');
   box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
-    const [{ projects: active }, { projects: archivedNames }] = await Promise.all([
-      apiGet('listProjectsSummary'), apiGet('listArchivedProjects')
+    const [{ projects: active }, { projects: archivedNames }, fx] = await Promise.all([
+      apiGet('listProjectsSummary'), apiGet('listArchivedProjects'), fxLoadModel().catch(() => null)
     ]);
     if (isStaleNav(token)) return;
-    PJSTATE.active = active; PJSTATE.archived = archivedNames;
+    PJSTATE.active = active; PJSTATE.archived = archivedNames; PJSTATE.fx = fx;
     pjRenderPage();
   } catch(err){ showError(err); }
 }
@@ -8270,44 +8274,43 @@ function pjRenderTabBody(){
     ` : `<div class="empty">مفيش مشاريع مؤرشفة</div>`;
     return;
   }
-  // ⚠️ تعديل 2026-10-10 ("عاوزين كل ده يظهر في المشاريع"): تفصيل التكلفة لكل مشروع — عمالة + خامات + إجمالي المصاريف
-  // (متابعة صرف المشاريع) + تكاليف تانية (بنود التكاليف اليدوية/تركيب) = إجمالي التكلفة، والإيرادات وصافي الربح، وصف إجمالي تحت.
+  // ⚠️ تعديل 2026-10-12: تكلفة المشروع = عمالة + مصاريف المشروع + ديون المشروع (الباقي) + نصيبه من الثابتة والعامة بالساعات (fxAdjust)
+  const fx = PJSTATE.fx || null;
   const rowsData = PJSTATE.active.map(p => {
-    const labor = Number(p.laborCost) || 0, mat = Number(p.materialsCost) || 0, exp = Number(p.projectExpenses) || 0, total = Number(p.totalCost) || 0;
-    const other = Math.max(0, total - labor - mat - exp);
-    const rev = p.financials ? (Number(p.financials.revenue) || 0) : null;
-    return { p, labor, hours: Number(p.laborHours) || 0, mat, exp, other, total, rev, net: rev === null ? null : rev - total };
+    const a = fxAdjust(p, fx, p.project);
+    return { p, a, hours: Number(p.laborHours) || 0, labor: a.labor, exp: a.expenses, debt: a.debt, share: a.share, total: a.total,
+      rev: p.financials ? (Number(p.financials.revenue) || 0) : null, net: a.net };
   });
   const sumOf = k => rowsData.reduce((t, r) => t + (Number(r[k]) || 0), 0);
   const netCell = v => v === null || v === undefined ? '—' : `<b style="color:${v >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(v)} ج</b>`;
   body.innerHTML = PJSTATE.active.length ? `
-    <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">إجمالي التكلفة = العمالة + الخامات + إجمالي المصاريف (متابعة صرف المشاريع) + تكاليف تانية مسجلة. دوس على اسم المشروع للتفاصيل.</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">إجمالي التكلفة = عمالة المشروع + مصاريف المشروع + ديون المشروع (الباقي) + نصيبه من الثابتة والعامة (موزعة شهريًا بنسبة ساعات الشغل). دوس على أي رقم تشوف تفاصيله، أو على اسم المشروع للتفاصيل كلها.</div>
     <div class="tbl-wrap"><table><thead><tr>
-      <th>المشروع</th><th>العمالة</th><th>الخامات</th><th>إجمالي المصاريف</th><th>تكاليف تانية</th><th>إجمالي التكلفة</th>
+      <th>المشروع</th><th>العمالة</th><th>مصاريف المشروع</th><th>ديون المشروع</th><th>ثابتة وعامة (نصيب)</th><th>إجمالي التكلفة</th>
       <th>الإيرادات</th><th>صافي الربح</th><th></th>
     </tr></thead>
     <tbody>${rowsData.map(r => {
-      const p = r.p;
+      const p = r.p, pj = qEscJs(p.project);
       return `
       <tr>
-        <td class="row-clickable" onclick="showProjectDetail('${qEscJs(p.project)}')"><b>${qEsc(p.project)}</b></td>
-        <td class="row-clickable" title="تفاصيل العمالة" onclick="showProjectLaborModal_('${qEscJs(p.project)}')">${fmt(r.labor)} ج<div style="font-size:11px;color:var(--muted);">${fmt(r.hours)} س</div></td>
-        <td>${fmt(r.mat)} ج</td>
-        <td class="row-clickable" title="تفاصيل المصاريف" onclick="showProjectExpensesModal_('${qEscJs(p.project)}')">${fmt(r.exp)} ج</td>
-        <td>${fmt(r.other)} ج</td>
-        <td><b>${fmt(r.total)} ج</b></td>
-        <td class="row-clickable" title="تفاصيل وتعديل الإيرادات" onclick="showProjectRevenueModal_('${qEscJs(p.project)}')">${r.rev === null ? '—' : fmt(r.rev) + ' ج'}</td>
+        <td class="row-clickable" onclick="showProjectDetail('${pj}')"><b>${qEsc(p.project)}</b></td>
+        <td class="row-clickable" title="تفاصيل العمالة" onclick="showProjectLaborModal_('${pj}')">${fmt(r.labor)} ج<div style="font-size:11px;color:var(--muted);">${fmt(r.hours)} س</div></td>
+        <td class="row-clickable" title="تفاصيل المصاريف" onclick="showProjectExpensesModal_('${pj}')">${fmt(r.exp)} ج</td>
+        ${fx ? `<td class="row-clickable" title="تفاصيل الديون" onclick="fxShowProjectDebtsModal('${pj}')">${r.debt ? `<span style="color:var(--red);">${fmt(r.debt)} ج</span>` : '—'}</td>
+        <td class="row-clickable" title="النصيب شهر بشهر" onclick="fxShowProjectModal('${pj}')">${r.share ? fmt(r.share) + ' ج<div style="font-size:11px;color:var(--muted);">' + fxPct(r.a.pctOfCost) + ' من التكلفة</div>' : '—'}</td>` : `<td>—</td><td>—</td>`}
+        <td class="row-clickable" title="التفاصيل كلها" onclick="showProjectDetail('${pj}')"><b>${fmt(r.total)} ج</b></td>
+        <td class="row-clickable" title="تفاصيل وتعديل الإيرادات" onclick="showProjectRevenueModal_('${pj}')">${r.rev === null ? '—' : fmt(r.rev) + ' ج'}</td>
         <td>${netCell(r.net)}</td>
         <td style="text-align:left;white-space:nowrap;">
-          <button class="btn btn-sm btn-outline" title="إعادة تسمية" onclick="pjOpenRenameModal_('${qEscJs(p.project)}')">✏️ تعديل</button>
-          <button class="btn btn-sm btn-outline" title="أرشفة" onclick="pjArchive('${qEscJs(p.project)}')">📦 أرشيف</button>
-          <button class="btn btn-sm btn-danger" title="حذف نهائي" onclick="pjConfirmDelete('${qEscJs(p.project)}')">🗑 حذف</button>
+          <button class="btn btn-sm btn-outline" title="إعادة تسمية" onclick="pjOpenRenameModal_('${pj}')">✏️ تعديل</button>
+          <button class="btn btn-sm btn-outline" title="أرشفة" onclick="pjArchive('${pj}')">📦 أرشيف</button>
+          <button class="btn btn-sm btn-danger" title="حذف نهائي" onclick="pjConfirmDelete('${pj}')">🗑 حذف</button>
         </td>
       </tr>`;
     }).join('')}</tbody>
     <tfoot><tr class="tbl-totals-row">
-      <td><b>الإجمالي</b></td><td><b>${fmt(sumOf('labor'))} ج</b></td><td><b>${fmt(sumOf('mat'))} ج</b></td><td><b>${fmt(sumOf('exp'))} ج</b></td>
-      <td><b>${fmt(sumOf('other'))} ج</b></td><td><b>${fmt(sumOf('total'))} ج</b></td>
+      <td><b>الإجمالي</b></td><td><b>${fmt(sumOf('labor'))} ج</b></td><td><b>${fmt(sumOf('exp'))} ج</b></td><td><b>${fmt(sumOf('debt'))} ج</b></td>
+      <td><b>${fmt(sumOf('share'))} ج</b></td><td><b>${fmt(sumOf('total'))} ج</b></td>
       <td><b>${fmt(rowsData.reduce((t, r) => t + (r.rev || 0), 0))} ج</b></td>
       <td><b>${fmt(rowsData.reduce((t, r) => t + (r.net === null ? 0 : r.net), 0))} ج</b></td><td></td>
     </tr></tfoot></table></div>
