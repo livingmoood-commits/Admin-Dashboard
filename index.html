@@ -9364,6 +9364,7 @@ async function expxRender(id, token){
         <div class="af-field af-actions" style="gap:6px;">
           <button type="button" class="af-reset" data-act="reset">↺ مسح الفلاتر</button>
           <button type="button" class="af-reset" data-act="csv" title="تنزيل الجدول بالفلاتر الحالية — يفتح على Excel">⬇ Excel</button>
+          <button type="button" class="af-reset" data-act="print" title="طباعة/حفظ PDF للمختار (أو كل التصنيفات لو مفيش اختيار) بالفلاتر الحالية">🖨️ PDF</button>
         </div>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin:-4px 0 14px;">
@@ -9451,7 +9452,7 @@ async function expxRender(id, token){
       </div>` : ''}
       ${cfg.showUnclassified ? `<style>
         .expx-ulist{ display:flex; flex-direction:column; gap:6px; max-height:520px; overflow:auto; padding-inline-end:2px; }
-        .expx-urow{ display:grid; grid-template-columns:26px minmax(0,1fr) 70px 110px; align-items:center; gap:12px; padding:10px 14px; border:1px solid var(--border);
+        .expx-urow{ flex-shrink:0; display:grid; grid-template-columns:26px minmax(0,1fr) 70px 110px; align-items:center; gap:12px; padding:10px 14px; border:1px solid var(--border);
           border-radius:10px; background:var(--white); cursor:pointer; transition:border-color .2s, background .2s; position:relative; overflow:hidden; }
         .expx-urow:hover{ border-color:var(--gold); background:#fdf8ef; }
         .expx-urow.on{ border-color:var(--gold); box-shadow:0 0 0 2px var(--gold) inset; }
@@ -9524,6 +9525,7 @@ async function expxRender(id, token){
       if (act === 'delcat'){ expxDeleteCustomCat(id, v); return; }
       if (act === 'reset'){ st.f = _expxDefaultFilters(st); _expxSyncInputs(id); }
       else if (act === 'csv'){ expxDownloadCsv(id); return; }
+      else if (act === 'print'){ expxPrintPdf(id); return; }
       else if (act === 'range'){ _expxApplyRange(st, v); _expxSyncInputs(id); }
       else if (act === 'dim'){ st.f.dim = st.f.dim === v ? 'all' : v; _expxSyncInputs(id); }
       else if (act === 'msopen'){ document.getElementById(`${P}-catms`).classList.toggle('open'); return; }
@@ -9639,6 +9641,7 @@ function expxRenderAll(id){
       <span class="lbl">المختار:</span>
       ${f.cats.map(k => `<span class="chip">${_expxCatIcon(cfg, k)} ${qEsc(k)} <span style="opacity:.7;font-weight:600;">${fmt(_expxSum(rows.filter(r => r.cat === k)))}</span><button type="button" data-act="cat" data-v="${qEsc(k)}" title="شيله من الاختيار">✕</button></span>`).join('')}
       <span class="sum"><span class="n">${rows.length} بند</span><span class="v">${fmt(total)} ج</span></span>
+      <button type="button" class="clr" data-act="print" style="color:var(--gold, #D4B483);border-color:var(--gold, #D4B483);">🖨️ طباعة PDF</button>
       <button type="button" class="clr" data-act="msall">مسح الاختيار</button>
     </div>`;
   }
@@ -9942,6 +9945,47 @@ async function expxDeleteCustomCat(id, key){
   _expxSaveCustom(_expxLoadCustom().filter(c => c.key !== key));
   _expxReclassify(id);
 }
+
+// طباعة PDF: التصنيفات المختارة (أو كلها لو مفيش اختيار) — ملخص فوق، وبعده بنود كل تصنيف
+// تحت بعض على طول من غير ما كل تصنيف يبدأ صفحة جديدة (عشان مفيش فراغات)، بكل الفلاتر الحالية
+function expxPrintPdf(id){
+  const st = EXPX[id]; if (!st) return;
+  const cfg = st.cfg, f = st.f;
+  const rows = _expxSorted(st, _expxFilter(st));
+  if (!rows.length) { showToast('مفيش بنود تتطبع', 'error'); return; }
+  const total = _expxSum(rows);
+  const keys = f.cats.length ? f.cats.slice() : Array.from(new Set(rows.map(r => r.cat)));
+  const groups = keys.map(k => { const cr = rows.filter(r => r.cat === k); return { k, cr, t: _expxSum(cr) }; }).filter(g => g.cr.length).sort((a, b) => b.t - a.t);
+  const n = v => `<span class="num">${fmt(v)}</span>`;
+  const range = `من ${qEsc(f.from || '-')} إلى ${qEsc(f.to || '-')}` + (f.dim && f.dim !== 'all' ? ` · ${qEsc(f.dim)}` : '') + (f.q ? ` · بحث: «${qEsc(f.q)}»` : '');
+  const body = `<style>
+      .xp-meta{font-size:11.5px;color:#6B5E4E;margin-bottom:10px;}
+      .xp-sum{display:flex;gap:10px;margin-bottom:12px;} .xp-sum div{flex:1;border:1px solid #e7e0d4;border-radius:8px;padding:8px 10px;text-align:center;}
+      .xp-sum b{display:block;font-size:16px;color:#b23b3b;} .xp-sum span{font-size:10.5px;color:#6B5E4E;}
+      table.xp{font-size:10.5px;margin:0;} table.xp td{padding:3px 5px;}
+      table.xp thead tr{background:#1E1A15;color:#D4B483;}
+      tr.xp-cat td{background:#f3ebdc;font-weight:800;font-size:11.5px;padding:5px;border-top:2px solid #B8975A;}
+      tr.xp-sub td{font-weight:700;color:#6B5E4E;background:#faf7f1;}
+      tr.xp-tot td{background:#1E1A15;color:#D4B483;font-weight:800;font-size:12px;padding:6px 5px;}
+      @media print{ tr.xp-cat{page-break-after:avoid;} }
+    </style>
+    <div class="xp-meta">${range}</div>
+    <div class="xp-sum"><div><b>${fmt(total)} ج</b><span>الإجمالي</span></div><div><b style="color:#1E1A15;">${rows.length}</b><span>بند</span></div><div><b style="color:#1E1A15;">${groups.length}</b><span>تصنيف</span></div></div>
+    <table class="xp"><thead><tr><th>${qEsc(cfg.catLabel)}</th><th>العدد</th><th>الإجمالي</th><th>النسبة</th></tr></thead><tbody>
+      ${groups.map(g => `<tr><td>${_expxCatIcon(cfg, g.k)} ${qEsc(g.k)}</td><td>${g.cr.length}</td><td>${n(g.t)}</td><td>${total ? Math.round(g.t / total * 100) : 0}%</td></tr>`).join('')}
+      <tr class="xp-tot"><td>الإجمالي</td><td>${rows.length}</td><td>${n(total)}</td><td>100%</td></tr>
+    </tbody></table>
+    <h2 class="sec">التفاصيل</h2>
+    <table class="xp"><thead><tr><th>التاريخ</th><th>اليوم</th><th>الوصف</th>${cfg.dims ? `<th>${qEsc(cfg.dimLabel)}</th>` : ''}<th>المشروع</th><th>المبلغ</th></tr></thead><tbody>
+      ${groups.map(g => `<tr class="xp-cat"><td colspan="${cfg.dims ? 5 : 4}">${_expxCatIcon(cfg, g.k)} ${qEsc(g.k)} — ${g.cr.length} بند</td><td>${n(g.t)}</td></tr>`
+        + g.cr.map(r => `<tr><td class="num" style="white-space:nowrap;">${qEsc(r.date || '-')}</td><td>${qEsc(r.day || '')}</td><td>${qEsc(r.desc)}</td>${cfg.dims ? `<td>${qEsc(r.dim || '')}</td>` : ''}<td>${qEsc(r.project || '')}</td><td style="white-space:nowrap;">${n(r.amount)}</td></tr>`).join('')).join('')}
+      <tr class="xp-tot"><td colspan="${cfg.dims ? 5 : 4}">الإجمالي (${rows.length} بند)</td><td>${n(total)} ج</td></tr>
+    </tbody></table>`;
+  const title = cfg.title + (f.cats.length ? ' — ' + f.cats.join(' + ') : '');
+  _openPrintDoc(buildGenericPrintShell_(title, body));
+}
+// زرار الطباعة اللي فوق في الصفحتين دول بيطبع نفس التقرير
+if (typeof PRINT_ROUTES !== 'undefined') { PRINT_ROUTES.carExpenses = () => expxPrintPdf('car'); PRINT_ROUTES.expCategories = () => expxPrintPdf('gen'); }
 
 // تنزيل الصفوف المعروضة (بكل الفلاتر والترتيب الحالي) كـ CSV بيفتح على Excel بالعربي مظبوط (BOM)
 function expxDownloadCsv(id){
