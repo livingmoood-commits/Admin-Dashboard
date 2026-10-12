@@ -6757,18 +6757,21 @@ async function renderProjectsTab(token) {
   const box = document.getElementById('costTabBody'); if (!box) return;
   box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
-    const { projects } = await apiGet('listProjectsSummary');
+    // ⚠️ إضافة 2026-10-12: نصيب كل مشروع من المصاريف الثابتة (شهري بالساعات — شوف قسم FX) بيتضاف على التكلفة ويتخصم من الربح
+    const [{ projects }, fx] = await Promise.all([apiGet('listProjectsSummary'), fxLoadModel().catch(() => null)]);
     if (isStaleNav(token)) return; // المستخدم غيّر الصفحة قبل ما الطلب يخلص — ميلمسش DOM بعد كده خالص
     const freshBox = document.getElementById('costTabBody'); if (!freshBox) return;
+    const adj = p => fxAdjust(p, fx, p.project);
     freshBox.innerHTML = `
       <div class="panel">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
           <h3 style="margin:0;">ملخص تكلفة المشاريع (${projects.length})</h3>
         </div>
-        ${projects.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>ساعات العمالة</th><th>تكلفة العمالة</th><th>تكلفة الخامات</th><th>إجمالي المصاريف</th><th>إجمالي التكلفة</th><th>الإيرادات</th><th>صافي الربح</th></tr></thead>
-        <tbody>${projects.map(p => `<tr class="row-clickable" onclick="showProjectDetail('${p.project.replace(/'/g,"\\'")}')"><td>${p.project}</td><td>${fmt(p.laborHours)}</td><td>${fmt(p.laborCost)} ج</td><td>${fmt(p.materialsCost)} ج</td><td>${fmt(p.projectExpenses || 0)} ج</td><td><b>${fmt(p.totalCost)} ج</b></td>
+        ${fx ? `<p style="font-size:12.5px;color:var(--muted);margin:-6px 0 12px;">"إجمالي التكلفة" و"صافي الربح" شاملين نصيب كل مشروع من المصاريف الثابتة (إيجار + مصاريف عامة) — موزعة شهريًا بنسبة ساعات الشغل. <a href="#" onclick="event.preventDefault();goTo('fixedExp')" style="color:var(--gold);font-weight:700;">تفاصيل التوزيع ←</a></p>` : ''}
+        ${projects.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>ساعات العمالة</th><th>تكلفة العمالة</th><th>تكلفة الخامات</th><th>إجمالي المصاريف</th>${fx ? '<th>مصاريف ثابتة (نصيب)</th>' : ''}<th>إجمالي التكلفة</th><th>الإيرادات</th><th>صافي الربح</th></tr></thead>
+        <tbody>${projects.map(p => { const a = adj(p); return `<tr class="row-clickable" onclick="showProjectDetail('${p.project.replace(/'/g,"\\'")}')"><td>${p.project}</td><td>${fmt(p.laborHours)}</td><td>${fmt(p.laborCost)} ج</td><td>${fmt(p.materialsCost)} ج</td><td>${fmt(p.projectExpenses || 0)} ج</td>${fx ? `<td>${a.share ? fmt(a.share) + ' ج <span style="font-size:11px;color:var(--muted);">(' + fxPct(a.pctOfCost) + ')</span>' : '—'}</td>` : ''}<td><b>${fmt(a.total)} ج</b></td>
           <td>${p.financials ? fmt(p.financials.revenue)+' ج' : '—'}</td>
-          <td>${p.netProfit===null ? '—' : `<b style="color:${p.netProfit>=0?'var(--green)':'var(--red)'}">${fmt(p.netProfit)} ج</b>`}</td></tr>`).join('')}</tbody></table></div>`
+          <td>${a.net===null ? '—' : `<b style="color:${a.net>=0?'var(--green)':'var(--red)'}">${fmt(a.net)} ج</b>`}</td></tr>`; }).join('')}</tbody></table></div>`
         : `<div class="empty">مفيش مشاريع لسه — من صفحة "متابعة صرف المشاريع" دوس "+ مشروع جديد" عشان تضيف أول مشروع</div>`}
       </div>
       <div id="projectDetailBox"></div>
@@ -8037,11 +8040,13 @@ async function renderCostProjectSummary(project){
     // ⚠️ إضافة: هنا كمان بنجيب سجلات "ساعات_وسهرات" (اللي بتتسجل تلقائي من صفحة
     // مرتبات > إضافة سريعة) الخاصة بالمشروع ده — عشان تبان جنب باقي مصادر التكلفة
     // في نفس الصفحة، كل مصدر في قسمه لوحده (مش مخلوطين في جدول واحد).
-    const [d, rev, hoursRes] = await Promise.all([
+    const [d, rev, hoursRes, fx] = await Promise.all([
       apiGet('getProjectFullSummary', { name: project }),
       apiGet('listProjectRevenueEntries', { name: project }),
-      apiGet('listHoursEntries', { filters: { project } })
+      apiGet('listHoursEntries', { filters: { project } }),
+      fxLoadModel().catch(() => null)
     ]);
+    const fa = fxAdjust(d, fx, project);
     const filterEl = document.getElementById('costFilterProject');
     if (!filterEl || filterEl.value !== project) return;
     window._costSumD = d; // المستخدم غيّر المشروع أثناء التحميل — متكتبش ملخص قديم فوق الجديد
@@ -8051,9 +8056,9 @@ async function renderCostProjectSummary(project){
     const archiveCost = (d.materialsCost || 0) + (d.installCost || 0);
     box.innerHTML = `
       <div class="cards" style="margin-bottom:16px;">
-        <div class="card"><div class="label">إجمالي تكلفة ${qEsc(project)}</div><div class="value gold">${fmt(d.totalCost)} ج</div></div>
+        <div class="card"><div class="label">إجمالي تكلفة ${qEsc(project)}</div><div class="value gold">${fmt(fa.total)} ج</div>${fa.share ? `<div style="font-size:11.5px;color:var(--muted);margin-top:4px;">مباشرة ${fmt(fa.direct)} + ثابتة ${fmt(fa.share)}</div>` : ''}</div>
         <div class="card clickable" onclick="showProjectRevenueModal_('${qEscJs(project)}')"><div class="label">إجمالي الإيرادات — دوس للتفاصيل والتعديل</div><div class="value green">${fmt(revenueTotal)} ج</div></div>
-        ${d.netProfit!==null ? `<div class="card"><div class="label">صافي الربح</div><div class="value ${d.netProfit>=0?'green':'red'}">${fmt(d.netProfit)} ج</div></div>` : `<div class="card"><div class="label">صافي الربح</div><div class="value" style="color:var(--muted);font-size:13px;">—</div></div>`}
+        ${fa.net!==null ? `<div class="card"><div class="label">صافي الربح</div><div class="value ${fa.net>=0?'green':'red'}">${fmt(fa.net)} ج</div></div>` : `<div class="card"><div class="label">صافي الربح</div><div class="value" style="color:var(--muted);font-size:13px;">—</div></div>`}
         <div class="card clickable" onclick="switchCostTab('summary')"><div class="label">تفاصيل ويوم بيوم وخامات</div><div class="value" style="font-size:13px;color:var(--gold);">شوف تبويبة "تفاصيل المشاريع" ←</div></div>
       </div>
 
@@ -8066,6 +8071,7 @@ async function renderCostProjectSummary(project){
           <div class="card clickable" onclick="showProjectLaborModal_('${qEscJs(project)}')"><div class="label">عمالة (ساعات وسهرات — من المرتبات)</div><div class="value gold">${fmt(d.laborCost)} ج</div></div>
           <div class="card clickable" onclick="showProjectExpensesModal_('${qEscJs(project)}')"><div class="label">إجمالي المصاريف (متابعة صرف المشاريع)</div><div class="value gold">${fmt(d.projectExpenses || 0)} ج</div></div>
           <div class="card clickable" onclick="showProjectOtherCostsModal_(window._costSumD)"><div class="label">التكاليف الموحّدة (بنود + عمالة مسجلة هنا)</div><div class="value gold">${fmt(d.costsTotal)} ج</div></div>
+          ${fx ? `<div class="card clickable" onclick="fxShowProjectModal('${qEscJs(project)}')"><div class="label">مصاريف ثابتة (نصيب المشروع — ${fxPct(fa.pctOfCost)} من التكلفة)</div><div class="value gold">${fmt(fa.share)} ج</div></div>` : ''}
           ${archiveCost > 0.01 ? `<div class="card clickable" onclick="showProjectOtherCostsModal_(window._costSumD)"><div class="label">أرشيف قديم (خامات/تركيب)</div><div class="value gold">${fmt(archiveCost)} ج</div></div>` : ''}
         </div>
       </div>
@@ -8379,11 +8385,14 @@ async function renderCostSummaryBody_(){
     // نداءين مختلفين). دلوقتي بنجيب listHoursEntries مرة واحدة بس، وملخص كل
     // موظف (الأيام/الساعات/التكلفة) بيتحسب من نفس البيانات دي في المتصفح —
     // ده بيقلل عدد الطلبات المتزامنة لصفحة "تفاصيل المشاريع" من 4 لـ3.
-    const [d, rev, hoursRes] = await Promise.all([
+    const [d, rev, hoursRes, fx] = await Promise.all([
       apiGet('getProjectFullSummary', { name: project }),
       apiGet('listProjectRevenueEntries', { name: project }),
-      apiGet('listHoursEntries', { filters: { project } })
+      apiGet('listHoursEntries', { filters: { project } }),
+      fxLoadModel().catch(() => null)
     ]);
+    if (SUMMARY_STATE.project !== project) return;
+    const fa = fxAdjust(d, fx, project);
     const empRateMap = window._costEmpRateMap || {};
     window._costSumD = d;
     const hoursEntries = hoursRes.entries || [];
@@ -8401,9 +8410,9 @@ async function renderCostSummaryBody_(){
       <div class="panel" style="margin-bottom:16px;">
         <h3 style="margin-bottom:12px;">${qEsc(project)}</h3>
         <div class="cards">
-          <div class="card"><div class="label">إجمالي التكلفة</div><div class="value gold">${fmt(d.totalCost)} ج</div></div>
+          <div class="card"><div class="label">إجمالي التكلفة</div><div class="value gold">${fmt(fa.total)} ج</div>${fa.share ? `<div style="font-size:11.5px;color:var(--muted);margin-top:4px;">مباشرة ${fmt(fa.direct)} + ثابتة ${fmt(fa.share)}</div>` : ''}</div>
           <div class="card clickable" onclick="showProjectRevenueModal_('${qEscJs(project)}')"><div class="label">إجمالي الإيرادات — دوس للتفاصيل والتعديل</div><div class="value green">${fmt(revenueTotal)} ج</div></div>
-          ${d.netProfit!==null ? `<div class="card"><div class="label">صافي الربح</div><div class="value ${d.netProfit>=0?'green':'red'}">${fmt(d.netProfit)} ج</div></div>` : `<div class="card"><div class="label">صافي الربح</div><div class="value" style="color:var(--muted);font-size:13px;">—</div></div>`}
+          ${fa.net!==null ? `<div class="card"><div class="label">صافي الربح</div><div class="value ${fa.net>=0?'green':'red'}">${fmt(fa.net)} ج</div></div>` : `<div class="card"><div class="label">صافي الربح</div><div class="value" style="color:var(--muted);font-size:13px;">—</div></div>`}
         </div>
       </div>
 
@@ -8415,8 +8424,15 @@ async function renderCostSummaryBody_(){
           <div class="card clickable" onclick="showProjectExpensesModal_('${qEscJs(project)}')"><div class="label">إجمالي المصاريف (متابعة صرف المشاريع)</div><div class="value gold">${fmt(d.projectExpenses || 0)} ج</div></div>
           <div class="card clickable" onclick="showProjectOtherCostsModal_(window._costSumD)"><div class="label">التكاليف الموحّدة (بنود + عمالة يدوية)</div><div class="value gold">${fmt(d.costsTotal)} ج</div></div>
           ${archiveCost > 0.01 ? `<div class="card clickable" onclick="showProjectOtherCostsModal_(window._costSumD)"><div class="label">أرشيف قديم</div><div class="value gold">${fmt(archiveCost)} ج</div></div>` : ''}
+          ${fx ? `<div class="card clickable" onclick="fxShowProjectModal('${qEscJs(project)}')"><div class="label">مصاريف ثابتة (نصيب — ${fxPct(fa.pctOfCost)} من التكلفة)</div><div class="value gold">${fmt(fa.share)} ج</div></div>` : ''}
         </div>
       </div>
+
+      ${fx ? `<div class="panel" style="margin-bottom:16px;">
+        <h3 style="margin-bottom:4px;">المصاريف الثابتة — نصيب ${qEsc(project)} شهر بشهر</h3>
+        <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">كل شهر: (إيجار وبنود ثابتة + مصاريف عامة من الخزنة) × نسبة ساعات شغل المشروع من ساعات كل المشاريع في الشهر. <a href="#" onclick="event.preventDefault();goTo('fixedExp')" style="color:var(--gold);font-weight:700;">تفاصيل كل شهر ←</a></p>
+        ${fxProjectTableHtml(fx, project)}
+      </div>` : ''}
 
       <div class="panel">
         <h3 style="margin-bottom:4px;">ملخص العمالة — كل موظف</h3>
@@ -9281,18 +9297,28 @@ function _expxRebuildEmp(){
   const st = EXPX.gen;
   EXPX_EMP_RE = _expxBuildEmpRe(EXPX_EMP_SHEET, st ? _expxHarvestNames(st.rows) : []);
 }
+// بيجيب أسامي الموظفين من شيت المرتبات الحالي + شيتات تفاصيل كل شهر موجود في المصاريف (مرة واحدة بس في الجلسة)
+let EXPX_EMP_P = null;
+function _expxFetchEmpSheet(rows){
+  if (EXPX_EMP_LOADED) return Promise.resolve(EXPX_EMP_SHEET);
+  if (EXPX_EMP_P) return EXPX_EMP_P;
+  const months = Array.from(new Set((rows || []).map(r => parseInt(String(r.date || '').slice(5, 7), 10)).filter(m => m >= 1 && m <= 12)));
+  const reqs = [apiGet('listEmployees').then(res => res.employees || []).catch(() => [])]
+    .concat(months.map(m => apiGet('payrollListDetailsForMonth', { monthNum: m }).then(res => res.employees || []).catch(() => [])));
+  EXPX_EMP_P = Promise.all(reqs).then(lists => {
+    EXPX_EMP_SHEET = Array.from(new Set([].concat(...lists).map(e => String(e.name || '')).filter(Boolean)));
+    EXPX_EMP_LOADED = true; EXPX_EMP_P = null;
+    return EXPX_EMP_SHEET;
+  });
+  return EXPX_EMP_P;
+}
 function _expxLoadEmployees(token){
   const st = EXPX.gen;
   // الأسامي اللي في المصاريف نفسها — فورًا من غير انتظار السيرفر
   _expxRebuildEmp();
   if (EXPX_EMP_RE && st) _expxReclassify('gen');
   if (EXPX_EMP_LOADED) return;
-  const months = st ? Array.from(new Set(st.rows.map(r => parseInt(String(r.date || '').slice(5, 7), 10)).filter(m => m >= 1 && m <= 12))) : [];
-  const reqs = [apiGet('listEmployees').then(res => res.employees || []).catch(() => [])]
-    .concat(months.map(m => apiGet('payrollListDetailsForMonth', { monthNum: m }).then(res => res.employees || []).catch(() => [])));
-  Promise.all(reqs).then(lists => {
-    EXPX_EMP_SHEET = Array.from(new Set([].concat(...lists).map(e => String(e.name || '')).filter(Boolean)));
-    EXPX_EMP_LOADED = true;
+  _expxFetchEmpSheet(st ? st.rows : []).then(() => {
     _expxRebuildEmp();
     if (EXPX.gen && !isStaleNav(token)) _expxReclassify('gen');
   });
@@ -9570,6 +9596,14 @@ async function expxRender(id, token){
       if (act === 'reset'){ st.f = _expxDefaultFilters(st); _expxSyncInputs(id); }
       else if (act === 'csv'){ expxDownloadCsv(id); return; }
       else if (act === 'print'){ expxPrintPdf(id); return; }
+      else if (act === 'fxsave'){
+        const sel = st.f.cats.slice();
+        openGenConfirm(`التصنيفات دي (${sel.length}) هي اللي هتتحسب مصاريف ثابتة وتتوزع على المشاريع في صفحة التكاليف:\n${sel.join(' + ')}`, 'اعتماد المصاريف الثابتة').then(async ok => {
+          if (!ok) return;
+          try { await fxSaveCats(sel); showToast('✔ اتعتمدت — شوفها في تاب المصاريف الثابتة', 'success'); } catch(err){ showToast('خطأ: ' + (err.message || err), 'error'); }
+        });
+        return;
+      }
       else if (act === 'range'){ _expxApplyRange(st, v); _expxSyncInputs(id); }
       else if (act === 'dim'){ st.f.dim = st.f.dim === v ? 'all' : v; _expxSyncInputs(id); }
       else if (act === 'msopen'){ document.getElementById(`${P}-catms`).classList.toggle('open'); return; }
@@ -9685,6 +9719,7 @@ function expxRenderAll(id){
       <span class="lbl">المختار:</span>
       ${f.cats.map(k => `<span class="chip">${_expxCatIcon(cfg, k)} ${qEsc(k)} <span style="opacity:.7;font-weight:600;">${fmt(_expxSum(rows.filter(r => r.cat === k)))}</span><button type="button" data-act="cat" data-v="${qEsc(k)}" title="شيله من الاختيار">✕</button></span>`).join('')}
       <span class="sum"><span class="n">${rows.length} بند</span><span class="v">${fmt(total)} ج</span></span>
+      ${id === 'gen' ? `<button type="button" class="clr" data-act="fxsave" title="التصنيفات المختارة دي هي اللي هتدخل في المصاريف الثابتة وتتوزع على المشاريع">📌 اعتمدهم كمصاريف ثابتة</button>` : ''}
       <button type="button" class="clr" data-act="print" style="color:var(--gold, #D4B483);border-color:var(--gold, #D4B483);">🖨️ طباعة PDF</button>
       <button type="button" class="clr" data-act="msall">مسح الاختيار</button>
     </div>`;
@@ -10050,14 +10085,171 @@ function expxDownloadCsv(id){
 }
 
 
-async function renderFixedExp(token) {
+/* ================= المصاريف الثابتة الشهرية + توزيعها على المشاريع (FX) =================
+ * ⚠️ إضافة 2026-10-12: المصاريف الثابتة لأي شهر = 
+ *     (1) البنود الثابتة اليدوي (إيجار... من الفورم — نفس المبلغ كل شهر)
+ *   + (2) المصاريف العامة من الخزنة (مشروع "مصروفات عامة" أو من غير مشروع) اللي تصنيفها من ضمن
+ *         "تصنيفات المصاريف العامة" المختارة (قهوة/أكل/بنزين/فواتير...) — بتتجمع أول بأول من الخزنة، مفيش إدخال يدوي.
+ * إجمالي كل شهر بيتوزع على المشاريع بنسبة ساعات الشغل العادية لكل مشروع في نفس الشهر (من ساعات_وسهرات).
+ * الشهر اللي مفيهوش ساعات متسجلة بيفضل "غير موزّع" (بيبان كتنبيه).
+ * نصيب كل مشروع بيتضاف على "إجمالي التكلفة" ويتخصم من "صافي الربح" في صفحة التكاليف.
+ * التصنيفات المختارة متخزنة في شيت المصاريف الثابتة نفسه كبند إعداد مبلغه 0 (FX_CFG_NAME) — عشان تبقى
+ * واحدة على كل الأجهزة من غير تعديل في السيرفر. البند ده مخفي من القايمة ومبلغه 0 فمش بيأثر في أي حساب. */
+const FX_CFG_NAME = '⚙️ إعداد: تصنيفات المصاريف العامة';
+// الافتراضي = كل التصنيفات ما عدا دول (المرتبات والشركاء والديون ليهم حسابهم، الخامات والنقل غالبًا للمشاريع،
+// والإيجار متسجل كبند ثابت يدوي — فلو دخل من الخزنة كمان هيتحسب مرتين)
+const FX_DEFAULT_EXCLUDE = ['مرتبات ومسحوبات', 'مسحوبات شركاء', 'سداد ديون', 'خامات وعدد', 'إيجار', 'مواصلات ونقل'];
+const FX_TTL_MS = 45000;
+let FX_MODEL = null, FX_MODEL_AT = 0, FX_MODEL_P = null;
+let FX_UI = { month: '', from: '', to: '', cats: null, dirty: false };
+
+function fxDefaultCats(){ return GEN_EXP_CATS.map(c => c.key).filter(k => !FX_DEFAULT_EXCLUDE.includes(k)); }
+function _fxIsCfg(it){ return String(it && it.name || '').trim() === FX_CFG_NAME; }
+function _fxMonthKey(d){ return /^\d{4}-\d{2}/.test(String(d || '')) ? String(d).slice(0, 7) : ''; }
+function fxMonthLabel(k){ const p = String(k).split('-'); return (EXPX_AR_MONTHS[(+p[1]) - 1] || p[1]) + ' ' + p[0]; }
+function _fxAddMonth(k){ let [y, m] = k.split('-').map(Number); m++; if (m > 12) { m = 1; y++; } return y + '-' + String(m).padStart(2, '0'); }
+function fxInvalidate(){ FX_MODEL = null; FX_MODEL_AT = 0; }
+function fxPct(v){ return (v * 100).toFixed(1) + '%'; }
+
+async function fxLoadModel(force){
+  if (!force && FX_MODEL && Date.now() - FX_MODEL_AT < FX_TTL_MS) return FX_MODEL;
+  if (FX_MODEL_P) return FX_MODEL_P;
+  FX_MODEL_P = (async () => {
+    const [movesData, fixedRes, hoursRes, projRes] = await Promise.all([
+      apiGet('getTreasuryMoves', {}), apiGet('listFixedExpenses'), apiGet('listHoursEntries', { filters: {} }), apiGet('listProjects')
+    ]);
+    // ── تصنيف كل مصاريف الخزنة بنفس محرك صفحة "تصنيف المصروفات" (شامل أسامي الموظفين → مرتبات) ──
+    _expxRefreshGenCats();
+    const cfg = EXPX_CFG.gen;
+    const all = [];
+    ((movesData && movesData.moves) || []).forEach(m => {
+      if (m.type !== 'مصروف') return;
+      const amount = Number(m.amount) || 0; if (!amount) return;
+      all.push({ id: m.id, date: m.date || '', desc: String(m.desc || ''), project: String(m.project || '').trim(), amount, cat: 'أخرى' });
+    });
+    const classify = () => all.forEach(r => { r.cat = (cfg.pick({ desc: r.desc, project: r.project }) || {}).cat || 'أخرى'; });
+    classify();
+    try { await _expxFetchEmpSheet(all); } catch(e) {}
+    EXPX_EMP_RE = _expxBuildEmpRe(EXPX_EMP_SHEET, _expxHarvestNames(all));
+    classify();
+
+    const items = (fixedRes && fixedRes.items) || [];
+    const cfgItems = items.filter(_fxIsCfg);
+    let selCats = null;
+    if (cfgItems.length) { try { const j = JSON.parse(cfgItems[cfgItems.length - 1].notes || '{}'); if (Array.isArray(j.cats)) selCats = j.cats; } catch(e) {} }
+    if (!selCats) selCats = fxDefaultCats();
+    const manual = items.filter(i => !_fxIsCfg(i)).map(i => ({ id: i.id, name: String(i.name || ''), amount: Number(i.amount) || 0, notes: i.notes || '' }));
+    const manualTotal = manual.reduce((s, i) => s + i.amount, 0);
+
+    const general = all.filter(r => (r.project === 'مصروفات عامة' || !r.project) && _fxMonthKey(r.date));
+    const overhead = general.filter(r => selCats.includes(r.cat));
+    const projects = ((projRes && projRes.projects) || []).map(p => String(p).trim());
+    const projSet = new Set(projects);
+    const hours = ((hoursRes && hoursRes.entries) || []).map(e => ({ project: String(e.project || '').trim(), month: _fxMonthKey(e.date), hours: Number(e.hours) || 0 }))
+      .filter(h => h.month && h.hours > 0 && projSet.has(h.project));
+
+    // ── الشهور: من أول شهر فيه داتا لحد الشهر الحالي (+ أي شهر بعده فيه داتا) ──
+    const cur = todayStr().slice(0, 7);
+    const keys = new Set(overhead.map(r => _fxMonthKey(r.date)).concat(hours.map(h => h.month)));
+    const sortedKeys = Array.from(keys).sort();
+    const first = sortedKeys.length ? (sortedKeys[0] < cur ? sortedKeys[0] : cur) : cur;
+    const monthSet = new Set(sortedKeys);
+    for (let k = first; k <= cur; k = _fxAddMonth(k)) monthSet.add(k);
+    const monthKeys = Array.from(monthSet).sort();
+
+    const byProject = {};
+    projects.forEach(p => { byProject[p] = { project: p, total: 0, hours: 0, months: [] }; });
+    const months = monthKeys.map(key => {
+      const oh = overhead.filter(r => _fxMonthKey(r.date) === key);
+      const byCat = {};
+      oh.forEach(r => { const c = byCat[r.cat] || (byCat[r.cat] = { cat: r.cat, n: 0, t: 0 }); c.n++; c.t += r.amount; });
+      const manualM = key <= cur ? manualTotal : 0;
+      const ohTotal = oh.reduce((s, r) => s + r.amount, 0);
+      const total = manualM + ohTotal;
+      const hp = {};
+      hours.filter(h => h.month === key).forEach(h => { hp[h.project] = (hp[h.project] || 0) + h.hours; });
+      const totalHours = Object.values(hp).reduce((s, v) => s + v, 0);
+      const shares = Object.keys(hp).map(p => ({ project: p, hours: hp[p], pct: totalHours ? hp[p] / totalHours : 0, share: totalHours ? total * hp[p] / totalHours : 0 }))
+        .sort((a, b) => b.share - a.share);
+      shares.forEach(s => {
+        const bp = byProject[s.project]; if (!bp) return;
+        bp.total += s.share; bp.hours += s.hours;
+        bp.months.push({ key, hours: s.hours, totalHours, pct: s.pct, monthTotal: total, share: s.share });
+      });
+      return { key, label: fxMonthLabel(key), manual: manualM, overhead: ohTotal, total, rows: oh, byCat: Object.values(byCat).sort((a, b) => b.t - a.t),
+        totalHours, shares, allocated: totalHours ? total : 0, unallocated: totalHours ? 0 : total };
+    });
+    FX_MODEL = { months, byProject, manual, manualTotal, selCats, cfgItems, general,
+      grandTotal: months.reduce((s, m) => s + m.total, 0), grandAllocated: months.reduce((s, m) => s + m.allocated, 0),
+      grandUnallocated: months.reduce((s, m) => s + m.unallocated, 0) };
+    FX_MODEL_AT = Date.now();
+    return FX_MODEL;
+  })();
+  try { return await FX_MODEL_P; } finally { FX_MODEL_P = null; }
+}
+// نصيب مشروع واحد (0 لو الموديل مش متاح)
+function fxShareOf(fx, project){ const p = fx && fx.byProject[String(project || '').trim()]; return p ? p.total : 0; }
+
+async function fxSaveCats(cats){
+  const fx = await fxLoadModel();
+  await apiPost('addFixedExpense', { item: { name: FX_CFG_NAME, amount: 0, notes: JSON.stringify({ cats }) } });
+  for (const it of fx.cfgItems) { try { await apiPost('deleteFixedExpense', { id: it.id }); } catch(e) {} }
+  fxInvalidate();
+}
+
+/* ── صفحة "المصاريف الثابتة" ── */
+async function fxRenderPage(token){
   try {
-    const [{items}, dist] = await Promise.all([apiGet('listFixedExpenses'), apiGet('getFixedExpensesDistribution', {basis:'labor'})]);
+    const fx = await fxLoadModel(true);
     if (isStaleNav(token)) return;
+    if (FX_UI.month !== '__range__') {
+      if (!FX_UI.month || !fx.months.some(m => m.key === FX_UI.month)) FX_UI.month = todayStr().slice(0, 7);
+      if (!fx.months.some(m => m.key === FX_UI.month) && fx.months.length) FX_UI.month = fx.months[fx.months.length - 1].key;
+    }
+    FX_UI.cats = fx.selCats.slice(); FX_UI.dirty = false;
     document.getElementById('content').innerHTML = `
+      <style>
+        .fx-chips{ display:flex; flex-wrap:wrap; gap:8px; }
+        .fx-chip{ all:unset; cursor:pointer; display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:20px; border:1.5px solid var(--border);
+          font-size:12.5px; font-weight:700; color:var(--muted); background:var(--white); transition:all .15s; }
+        .fx-chip .v{ font-weight:600; opacity:.75; font-size:11.5px; }
+        .fx-chip.on{ border-color:var(--gold); background:#f6efe0; color:var(--dark); }
+        .fx-chip.on::before{ content:'✓'; color:var(--gold-dim, #8a6d3b); font-weight:900; }
+        .fx-src{ display:inline-block; font-size:10.5px; font-weight:800; padding:2px 8px; border-radius:10px; margin-inline-start:6px; }
+        .fx-src.man{ background:#efe7d8; color:#6B5E4E; } .fx-src.auto{ background:#e3efe6; color:#2C5F3A; }
+        .fx-mrow{ cursor:pointer; } .fx-mrow.on td{ background:#f6efe0 !important; font-weight:800; }
+        .fx-mrow.on td:first-child{ box-shadow:inset -4px 0 0 var(--gold); }
+        .fx-warn{ background:#fff4e0; border:1.5px solid var(--gold); border-radius:10px; padding:10px 14px; font-size:12.5px; font-weight:700; margin-bottom:14px; }
+      </style>
+      <div class="panel" style="margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+          <h3 style="margin:0;">المصاريف الثابتة — شهر بشهر</h3>
+          <div class="filters" style="margin:0;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <select id="fx-month">${fx.months.slice().reverse().map(m => `<option value="${m.key}">${m.label}</option>`).join('')}<option value="__range__">📅 فترة من تاريخ لتاريخ…</option></select>
+            <span id="fx-range" style="display:none;gap:6px;align-items:center;"><label style="font-size:12px;color:var(--muted);">من</label><input type="date" id="fx-from"><label style="font-size:12px;color:var(--muted);">لحد</label><input type="date" id="fx-to"></span>
+          </div>
+        </div>
+        <p style="font-size:12.5px;color:var(--muted);margin:8px 0 14px;">إجمالي كل شهر = البنود الثابتة اليدوي + المصاريف العامة من الخزنة (بتتحدث لوحدها أول بأول)، وبيتوزع على المشاريع بنسبة ساعات شغل كل مشروع في نفس الشهر — ونصيب كل مشروع بيظهر في صفحة التكاليف.</p>
+        <div id="fx-cards"></div>
+      </div>
+      <div class="panel" style="margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px;">
+          <h3 style="margin:0;">تصنيفات المصاريف العامة اللي بتدخل في الثابتة</h3>
+          <span style="display:flex;gap:8px;"><button type="button" class="btn btn-sm btn-outline" id="fx-cats-reset">الافتراضي</button><button type="button" class="btn btn-sm btn-primary" id="fx-cats-save" disabled>حفظ التصنيفات</button></span>
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">دوس على أي تصنيف عشان تدخّله أو تطلّعه. الأرقام جنب كل تصنيف = مصاريفه العامة في الشهر المختار. (التصنيف من صفحة "تصنيف المصروفات")</p>
+        <div class="fx-chips" id="fx-chips"></div>
+      </div>
+      <div class="grid2" style="margin-bottom:16px;">
+        <div class="panel" style="min-width:0;" id="fx-items"></div>
+        <div class="panel" style="min-width:0;" id="fx-dist"></div>
+      </div>
+      <div class="panel" style="margin-bottom:16px;min-width:0;" id="fx-allmonths"></div>
+      <div class="panel" style="margin-bottom:16px;" id="fx-oh-rows"></div>
       <div class="grid2">
         <div class="panel">
-          <h3>إضافة مصروف ثابت</h3>
+          <h3>إضافة بند ثابت يدوي</h3>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">للحاجات اللي مبلغها ثابت كل شهر ومش بتتسجل في الخزنة كل مرة (إيجار، اشتراكات...). بيتحسب في كل شهر لحد الشهر الحالي.</p>
           <form id="fxForm">
             <div class="field"><label>اسم المصروف</label><input autocomplete="off" id="fx_name" required placeholder="مثال: إيجار المصنع"></div>
             <div class="field"><label>المبلغ الشهري (ج)</label><input autocomplete="off" type="number" id="fx_amount" step="1" min="0" required></div>
@@ -10065,32 +10257,176 @@ async function renderFixedExp(token) {
             <button type="submit" class="btn btn-primary" id="fxBtn" data-hotkey-save>حفظ</button>
             <div class="msg" id="fxMsg"></div>
           </form>
-          <h3 style="margin-top:18px;">القائمة</h3>
-          <div class="tbl-wrap"><table><thead><tr><th>الاسم</th><th>المبلغ الشهري</th><th></th></tr></thead>
-          <tbody>${items.length ? items.map(i=>`<tr><td>${i.name}</td><td>${fmt(i.amount)} ج</td><td><button class="btn btn-sm btn-danger" onclick="deleteFixedExpConfirm('${i.id}')">حذف</button></td></tr>`).join('') : `<tr><td colspan="3" class="empty">مفيش مصاريف ثابتة مسجلة</td></tr>`}</tbody></table></div>
         </div>
         <div class="panel">
-          <h3>توزيع المصاريف الثابتة على المشاريع</h3>
-          <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">بيتوزع نسبيًا على حسب تكلفة عمالة كل مشروع (لو مفيش عمالة مسجلة، بيتوزع بالتساوي).</p>
-          ${dist.distribution.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>النسبة</th><th>المبلغ المخصص</th></tr></thead>
-          <tbody>${dist.distribution.map(d=>`<tr><td>${d.project}</td><td>${(d.weight*100).toFixed(1)}%</td><td>${fmt(d.allocated)} ج</td></tr>`).join('')}</tbody></table></div>`
-          : `<div class="empty">أضف مصاريف ثابتة ومشاريع الأول عشان يظهر التوزيع</div>`}
+          <h3>البنود الثابتة اليدوي</h3>
+          <div class="tbl-wrap"><table><thead><tr><th>الاسم</th><th>المبلغ الشهري</th><th></th></tr></thead>
+          <tbody>${fx.manual.length ? fx.manual.map(i => `<tr><td>${qEsc(i.name)}</td><td>${fmt(i.amount)} ج</td><td><button class="btn btn-sm btn-danger" onclick="deleteFixedExpConfirm('${qEscJs(i.id)}')">حذف</button></td></tr>`).join('') : `<tr><td colspan="3" class="empty">مفيش بنود ثابتة يدوي</td></tr>`}</tbody>
+          ${fx.manual.length ? `<tfoot><tr class="tbl-totals-row"><td>الإجمالي الشهري</td><td>${fmt(fx.manualTotal)} ج</td><td></td></tr></tfoot>` : ''}</table></div>
         </div>
-      </div>
-    `;
+      </div>`;
+    document.getElementById('fx-month').value = FX_UI.month;
+    document.getElementById('fx-from').value = FX_UI.from; document.getElementById('fx-to').value = FX_UI.to;
+    document.getElementById('fx-month').addEventListener('change', e => {
+      if (e.target.value === '__range__' && !FX_UI.from) { const k = FX_UI.month && FX_UI.month !== '__range__' ? FX_UI.month : todayStr().slice(0, 7); FX_UI.from = k + '-01'; FX_UI.to = todayStr(); }
+      FX_UI.month = e.target.value; document.getElementById('fx-from').value = FX_UI.from; document.getElementById('fx-to').value = FX_UI.to; fxRenderBody();
+    });
+    ['fx-from', 'fx-to'].forEach(id => document.getElementById(id).addEventListener('change', () => {
+      FX_UI.from = document.getElementById('fx-from').value; FX_UI.to = document.getElementById('fx-to').value;
+      if (FX_UI.from && FX_UI.to && FX_UI.from > FX_UI.to) { const t = FX_UI.from; FX_UI.from = FX_UI.to; FX_UI.to = t; }
+      fxRenderBody();
+    }));
+    document.getElementById('fx-chips').addEventListener('click', e => {
+      const b = e.target.closest('[data-cat]'); if (!b) return;
+      const k = b.dataset.cat;
+      FX_UI.cats = FX_UI.cats.includes(k) ? FX_UI.cats.filter(x => x !== k) : FX_UI.cats.concat(k);
+      FX_UI.dirty = true; fxRenderBody();
+    });
+    document.getElementById('fx-cats-reset').addEventListener('click', () => { FX_UI.cats = fxDefaultCats(); FX_UI.dirty = true; fxRenderBody(); });
+    document.getElementById('fx-cats-save').addEventListener('click', async (e) => {
+      const btn = e.currentTarget; btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
+      try { await fxSaveCats(FX_UI.cats); showToast('✔ اتحفظت التصنيفات — والتوزيع اتحدث', 'success'); fxRenderPage(); }
+      catch(err){ showToast('خطأ: ' + (err.message || err), 'error'); btn.disabled = false; btn.textContent = 'حفظ التصنيفات'; }
+    });
+    document.getElementById('fx-allmonths').addEventListener('click', e => {
+      const tr = e.target.closest('[data-month]'); if (!tr) return;
+      FX_UI.month = tr.dataset.month; document.getElementById('fx-month').value = FX_UI.month; fxRenderBody();
+    });
     document.getElementById('fxForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const btn = document.getElementById('fxBtn'); const msg = document.getElementById('fxMsg');
-      msg.className='msg'; msg.textContent=''; btn.disabled=true; btn.innerHTML='<span class="spinner"></span>جاري الحفظ...';
+      msg.className = 'msg'; msg.textContent = ''; btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
       const item = { name: document.getElementById('fx_name').value.trim(), amount: document.getElementById('fx_amount').value, notes: document.getElementById('fx_notes').value };
-      try { await apiPost('addFixedExpense', { item }); renderFixedExp(); }
-      catch(err){ msg.className='msg err'; msg.textContent='خطأ: '+(err.message||err); btn.disabled=false; btn.textContent='حفظ'; }
+      if (_fxIsCfg(item)) { msg.className = 'msg err'; msg.textContent = 'الاسم ده محجوز'; btn.disabled = false; btn.textContent = 'حفظ'; return; }
+      try { await apiPost('addFixedExpense', { item }); fxInvalidate(); fxRenderPage(); }
+      catch(err){ msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); btn.disabled = false; btn.textContent = 'حفظ'; }
     });
+    fxRenderBody();
   } catch(err){ showError(err); }
 }
+
+// بيحسب أي فترة (شهر، أو من تاريخ لتاريخ) بالتصنيفات اللي على الشاشة (حتى قبل الحفظ — معاينة).
+// التوزيع بيفضل شهري: كل شهر جوه الفترة بيتوزع بنسبة ساعاته هو، وبعدين بنجمع نصيب كل مشروع.
+// البنود اليدوي (إيجار...) بتتحسب شهر كامل لكل شهر الفترة بتلمسه.
+function _fxPeriodView(fx, from, to, cats){
+  const fm = from.slice(0, 7), tm = to.slice(0, 7);
+  const months = fx.months.filter(m => m.key >= fm && m.key <= tm);
+  const inRange = r => r.date >= from && r.date <= to;
+  const allRows = fx.general.filter(inRange);
+  const byCatAll = {};
+  allRows.forEach(r => { const c = byCatAll[r.cat] || (byCatAll[r.cat] = { cat: r.cat, n: 0, t: 0 }); c.n++; c.t += r.amount; });
+  const proj = {};
+  let manual = 0, overhead = 0, totalHours = 0, unallocated = 0;
+  const perMonth = months.map(m => {
+    const oh = allRows.filter(r => _fxMonthKey(r.date) === m.key && cats.includes(r.cat));
+    const ohT = oh.reduce((s, r) => s + r.amount, 0);
+    const total = m.manual + ohT;
+    manual += m.manual; overhead += ohT; totalHours += m.totalHours;
+    if (!m.totalHours) unallocated += total;
+    m.shares.forEach(s => { const p = proj[s.project] || (proj[s.project] = { project: s.project, hours: 0, share: 0 }); p.hours += s.hours; p.share += total * s.pct; });
+    return { key: m.key, label: m.label, manual: m.manual, overhead: ohT, total, totalHours: m.totalHours };
+  });
+  const total = manual + overhead;
+  const allocated = total - unallocated;
+  const shares = Object.values(proj).map(p => ({ ...p, pct: allocated ? p.share / allocated : 0 })).sort((a, b) => b.share - a.share);
+  const label = (from.slice(8) === '01' && fm === tm && to.slice(0, 7) === fm && to.slice(8) >= '28') ? fxMonthLabel(fm) : `من ${from} لحد ${to}`;
+  return { label, manual, overhead, total, rows: allRows.filter(r => cats.includes(r.cat)), byCatAll, totalHours, shares, unallocated, allocated, perMonth, monthsCount: months.length };
+}
+function _fxRange(){
+  if (FX_UI.month !== '__range__') return { from: FX_UI.month + '-01', to: FX_UI.month + '-31' };
+  return { from: FX_UI.from || todayStr().slice(0, 7) + '-01', to: FX_UI.to || todayStr() };
+}
+function fxRenderBody(){
+  const fx = FX_MODEL; if (!fx || !document.getElementById('fx-cards')) return;
+  const cats = FX_UI.cats;
+  const rg = _fxRange();
+  const mv = _fxPeriodView(fx, rg.from, rg.to, cats);
+  const rangeBox = document.getElementById('fx-range'); if (rangeBox) rangeBox.style.display = FX_UI.month === '__range__' ? 'flex' : 'none';
+  const saveBtn = document.getElementById('fx-cats-save'); if (saveBtn) saveBtn.disabled = !FX_UI.dirty;
+
+  document.getElementById('fx-cards').innerHTML = `
+    ${FX_UI.dirty ? `<div class="fx-warn">✎ غيّرت التصنيفات — دي معاينة. دوس "حفظ التصنيفات" عشان تتطبق على التكاليف.</div>` : ''}
+    ${mv.unallocated > 0 ? `<div class="fx-warn">⚠ ${fmt(mv.unallocated)} ج من المصاريف دي في شهور مفيهاش ساعات شغل متسجلة على مشاريع — مش هتتوزع على أي مشروع لحد ما تتسجل ساعات.</div>` : ''}
+    <div class="cards">
+      <div class="card"><div class="label">بنود ثابتة يدوي</div><div class="value gold">${fmt(mv.manual)} ج</div></div>
+      <div class="card"><div class="label">مصاريف عامة من الخزنة</div><div class="value gold">${fmt(mv.overhead)} ج</div><div style="font-size:11.5px;color:var(--muted);margin-top:4px;">${mv.rows.length} بند</div></div>
+      <div class="card"><div class="label">الإجمالي — ${mv.label}</div><div class="value red">${fmt(mv.total)} ج</div></div>
+      <div class="card"><div class="label">ساعات الشغل على المشاريع</div><div class="value">${fmt(mv.totalHours)} س</div><div style="font-size:11.5px;color:var(--muted);margin-top:4px;">${mv.totalHours ? 'تكلفة الساعة الثابتة: ' + fmt(mv.total / mv.totalHours) + ' ج' : '—'}</div></div>
+    </div>`;
+
+  const allCats = (EXPX_CFG.gen.cats || GEN_EXP_CATS).map(c => c.key);
+  document.getElementById('fx-chips').innerHTML = allCats.map(k => {
+    const c = mv.byCatAll[k];
+    return `<button type="button" class="fx-chip ${cats.includes(k) ? 'on' : ''}" data-cat="${qEsc(k)}">${_expxCatIcon(EXPX_CFG.gen, k)} ${qEsc(k)}${c ? ` <span class="v">${fmt(c.t)}</span>` : ''}</button>`;
+  }).join('');
+
+  const ohCats = Object.values(mv.byCatAll).filter(c => cats.includes(c.cat)).sort((a, b) => b.t - a.t);
+  document.getElementById('fx-items').innerHTML = `
+    <h3>البنود — ${mv.label}</h3>
+    <div class="tbl-wrap"><table><thead><tr><th>البند</th><th>العدد</th><th>المبلغ</th><th>النسبة</th></tr></thead><tbody>
+      ${fx.manual.map(i => { const v = i.amount * mv.perMonth.filter(m => m.manual).length; return `<tr><td style="text-align:right;">${qEsc(i.name)}<span class="fx-src man">يدوي${mv.monthsCount > 1 ? ' × ' + mv.perMonth.filter(m => m.manual).length + ' شهر' : ''}</span></td><td>—</td><td>${fmt(v)} ج</td><td>${mv.total ? fxPct(v / mv.total) : '—'}</td></tr>`; }).join('')}
+      ${ohCats.map(c => `<tr><td style="text-align:right;">${_expxCatIcon(EXPX_CFG.gen, c.cat)} ${qEsc(c.cat)}<span class="fx-src auto">من الخزنة</span></td><td>${c.n}</td><td>${fmt(c.t)} ج</td><td>${mv.total ? fxPct(c.t / mv.total) : '—'}</td></tr>`).join('')}
+      ${!fx.manual.length && !ohCats.length ? `<tr><td colspan="4" class="empty">مفيش مصاريف ثابتة في الشهر ده</td></tr>` : ''}
+    </tbody><tfoot><tr class="tbl-totals-row"><td>الإجمالي</td><td>${mv.rows.length || ''}</td><td>${fmt(mv.total)} ج</td><td>100%</td></tr></tfoot></table></div>`;
+
+  document.getElementById('fx-dist').innerHTML = `
+    <h3>التوزيع على المشاريع — ${mv.label}</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">على أساس إيه؟ نصيب المشروع = إجمالي ثابت الشهر × (ساعات شغل المشروع ÷ ساعات شغل كل المشاريع في نفس الشهر)${mv.monthsCount > 1 ? '، وكل شهر بيتحسب لوحده وبعدين بيتجمع' : ''}. الساعات العادية بس (من غير السهرات).</p>
+    ${mv.shares.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>الساعات</th><th>النسبة</th><th>النصيب</th></tr></thead><tbody>
+      ${mv.shares.map(s => `<tr><td>${qEsc(s.project)}</td><td>${fmt(s.hours)} س</td><td>${fxPct(s.pct)}</td><td><b>${fmt(s.share)} ج</b></td></tr>`).join('')}
+    </tbody><tfoot><tr class="tbl-totals-row"><td>الإجمالي</td><td>${fmt(mv.totalHours)} س</td><td>100%</td><td>${fmt(mv.allocated)} ج</td></tr></tfoot></table></div>`
+    : `<div class="empty">مفيش ساعات شغل على مشاريع في الشهر ده</div>`}`;
+
+  const monthsView = fx.months.map(m => Object.assign(_fxPeriodView(fx, m.key + '-01', m.key + '-31', cats), { key: m.key, label: m.label })).reverse();
+  const tot = monthsView.reduce((a, m) => ({ manual: a.manual + m.manual, oh: a.oh + m.overhead, total: a.total + m.total, hours: a.hours + m.totalHours, alloc: a.alloc + (m.totalHours ? m.total : 0) }), { manual: 0, oh: 0, total: 0, hours: 0, alloc: 0 });
+  document.getElementById('fx-allmonths').innerHTML = `
+    <h3>كل الشهور</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">دوس على أي شهر عشان تشوف تفاصيله فوق.</p>
+    <div class="tbl-wrap"><table><thead><tr><th>الشهر</th><th>بنود يدوي</th><th>مصاريف عامة</th><th>الإجمالي</th><th>ساعات المشاريع</th><th>اتوزع على المشاريع</th></tr></thead><tbody>
+      ${monthsView.map(m => `<tr class="fx-mrow ${m.key === FX_UI.month || (FX_UI.month === '__range__' && m.key >= rg.from.slice(0, 7) && m.key <= rg.to.slice(0, 7)) ? 'on' : ''}" data-month="${m.key}"><td>${m.label}</td><td>${fmt(m.manual)} ج</td><td>${fmt(m.overhead)} ج</td><td><b>${fmt(m.total)} ج</b></td><td>${fmt(m.totalHours)} س</td>
+        <td>${m.totalHours ? fmt(m.total) + ' ج' : (m.total ? '<span style="color:var(--red);font-weight:700;">⚠ مش متوزع</span>' : '—')}</td></tr>`).join('')}
+    </tbody><tfoot><tr class="tbl-totals-row"><td>الإجمالي</td><td>${fmt(tot.manual)} ج</td><td>${fmt(tot.oh)} ج</td><td>${fmt(tot.total)} ج</td><td>${fmt(tot.hours)} س</td><td>${fmt(tot.alloc)} ج</td></tr></tfoot></table></div>`;
+
+  const rows = mv.rows.slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  document.getElementById('fx-oh-rows').innerHTML = `
+    <details ${rows.length && rows.length <= 40 ? 'open' : ''}>
+      <summary style="cursor:pointer;font-weight:800;font-size:15px;">تفاصيل المصاريف العامة الداخلة — ${mv.label} — ${rows.length} بند (${fmt(mv.overhead)} ج)</summary>
+      ${rows.length ? `<div class="tbl-wrap" style="margin-top:10px;"><table><thead><tr><th>التاريخ</th><th>الوصف</th><th>التصنيف</th><th>المبلغ</th></tr></thead><tbody>
+        ${rows.map(r => `<tr><td style="white-space:nowrap;">${qEsc(r.date)}</td><td style="text-align:right;">${qEsc(r.desc)}</td><td>${_expxCatIcon(EXPX_CFG.gen, r.cat)} ${qEsc(r.cat)}</td><td>${fmt(r.amount)} ج</td></tr>`).join('')}
+      </tbody></table></div>` : `<div class="empty">مفيش</div>`}
+    </details>`;
+}
+
+/* ── تفاصيل نصيب مشروع (مودال + جدول في تفاصيل المشاريع) ── */
+function fxProjectTableHtml(fx, project){
+  const p = fx && fx.byProject[String(project || '').trim()];
+  if (!p || !p.months.length) return `<div class="empty">مفيش نصيب مصاريف ثابتة للمشروع ده (مفيش ساعات شغل متسجلة عليه)</div>`;
+  const ms = p.months.slice().sort((a, b) => b.key.localeCompare(a.key));
+  return `<div class="tbl-wrap"><table><thead><tr><th>الشهر</th><th>ساعات المشروع</th><th>ساعات كل المشاريع</th><th>النسبة</th><th>إجمالي ثابت الشهر</th><th>نصيب المشروع</th></tr></thead><tbody>
+    ${ms.map(m => `<tr><td>${fxMonthLabel(m.key)}</td><td>${fmt(m.hours)} س</td><td>${fmt(m.totalHours)} س</td><td>${fxPct(m.pct)}</td><td>${fmt(m.monthTotal)} ج</td><td><b>${fmt(m.share)} ج</b></td></tr>`).join('')}
+  </tbody><tfoot><tr class="tbl-totals-row"><td>الإجمالي</td><td>${fmt(p.hours)} س</td><td colspan="3"></td><td>${fmt(p.total)} ج</td></tr></tfoot></table></div>`;
+}
+async function fxShowProjectModal(project){
+  try {
+    const fx = await fxLoadModel();
+    openCardModal(`<h3 style="margin-bottom:6px;">نصيب ${qEsc(project)} من المصاريف الثابتة</h3>
+      <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">كل شهر: (بنود ثابتة يدوي + مصاريف عامة من الخزنة) × نسبة ساعات المشروع من ساعات كل المشاريع في الشهر.</p>
+      ${fxProjectTableHtml(fx, project)}
+      <div style="display:flex;justify-content:flex-end;margin-top:12px;"><button type="button" class="btn btn-outline" onclick="closeCardModal()">قفل</button></div>`);
+  } catch(err){ showToast('خطأ: ' + (err.message || err), 'error'); }
+}
+// كروت التكلفة (إجمالي/ربح) بعد إضافة نصيب الثابتة — بترجع { total, net, share, pctOfCost }
+function fxAdjust(d, fx, project){
+  const share = fxShareOf(fx, project);
+  const total = (Number(d.totalCost) || 0) + share;
+  const net = d.netProfit === null || d.netProfit === undefined ? null : d.netProfit - share;
+  return { share, total, net, pctOfCost: total ? share / total : 0, direct: Number(d.totalCost) || 0 };
+}
+
+async function renderFixedExp(token) { return fxRenderPage(token); } // الصفحة الجديدة (شهري + مصاريف عامة من الخزنة) — شوف قسم FX
 async function deleteFixedExpConfirm(id){
   if (!(await openGenConfirm('متأكد؟', 'حذف'))) return;
-  try { await apiPost('deleteFixedExpense', { id }); renderFixedExp(); } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
+  try { await apiPost('deleteFixedExpense', { id }); fxInvalidate(); renderFixedExp(); } catch(err){ showToast('خطأ: '+(err.message||err), 'error'); }
 }
 
 /* ================= مسحوبات شركاء (3 شركاء ثابتين) ================= */
