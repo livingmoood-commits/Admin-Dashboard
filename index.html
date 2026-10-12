@@ -1341,6 +1341,7 @@
     <div class="step" id="exp-tab-daily" data-page="dailyExpenses"><span class="icon" style="margin-inline-end:6px;">&#128221;</span>مصاريف يومية</div>
     <div class="step" id="exp-tab-fixed" data-page="fixedExp"><span class="icon" style="margin-inline-end:6px;">&#128203;</span>المصاريف الثابتة</div>
     <div class="step" id="exp-tab-cars" data-page="carExpenses"><span class="icon" style="margin-inline-end:6px;">&#128663;</span>مصاريف السيارات</div>
+    <div class="step" id="exp-tab-cats" data-page="expCategories"><span class="icon" style="margin-inline-end:6px;">&#128202;</span>تصنيف المصروفات</div>
   </div>
   <div class="q-steps p-filter-tabs" id="wfSwitchTabs" style="display:none;margin-bottom:16px;">
     <div class="step" id="wf-tab-taskOrganize" data-page="taskOrganize"><span class="icon" style="margin-inline-end:6px;">&#128221;</span>تنظيم المهام</div>
@@ -2040,7 +2041,7 @@ function checkApiConfigured(){
 const QP_GROUP_PAGES = ['quotation', 'debtors'];
 // صفحتين "مصاريف يومية" و"المصاريف الثابتة" بقوا مجمّعين تحت زرار واحد في القائمة
 // الجانبية (data-exp-group) بنفس فكرة QP_GROUP_PAGES فوق بالظبط.
-const EXP_GROUP_PAGES = ['dailyExpenses', 'fixedExp', 'carExpenses'];
+const EXP_GROUP_PAGES = ['dailyExpenses', 'fixedExp', 'carExpenses', 'expCategories'];
 // نفس الفكرة لصفحات Work Flow — بقيت صفحتين بس (تنظيم المهام والخامات)؛ "تقرير يومي
 // بالصنايعية" و"بنود المشاريع" اتشالوا كصفحات مستقلة لأن نفس الوظيفة موجودة بالظبط
 // جوه تابات "تنظيم المهام" (تاب "شغل يومي"/"اسبوعي" فيهم زرار تقرير، وتاب "تايم بلاننج"
@@ -2054,6 +2055,7 @@ const PAGES = {
   costs:        { title:'التكاليف', sub:'خامات + عمالة + إيرادات — تابين جنب بعض لكل مشروع', render: renderCosts },
   fixedExp:     { title:'المصاريف الثابتة', sub:'إيجار / كهرباء / إلخ — وطريقة توزيعها على المشاريع', render: renderFixedExp },
   carExpenses:  { title:'مصاريف السيارات', sub:'كل مصروف على BYD / KIA / Skoda — بنزين، صيانة، أي حاجة — بالتفاصيل والإجماليات', render: renderCarExpenses },
+  expCategories:{ title:'تصنيف المصروفات', sub:'كل مصروف متصنف تلقائي من وصفه (قهوة، فطار، خامات، مواصلات...) — بالإجماليات والتفاصيل', render: renderExpCategories },
   projectsPage: { title:'المشاريع', sub:'كل المشاريع في مكان واحد — إضافة، تعديل، أرشفة، وإيرادات موحّدة من التكاليف والمصاريف', render: renderProjectsPage },
   projectSpend: { title:'مصاريف المشاريع', sub:'لكل مشروع: مصاريفه من شيت المصاريف + العمالة — بالتفاصيل', render: renderProjectSpend },
   quotation:    { title:'Quotations', sub:'قائمة العملاء وعروض الأسعار', render: renderQuotation },
@@ -2141,6 +2143,7 @@ function expSyncTabsBar(page){
   document.getElementById('exp-tab-daily').classList.toggle('active', page === 'dailyExpenses');
   document.getElementById('exp-tab-fixed').classList.toggle('active', page === 'fixedExp');
   document.getElementById('exp-tab-cars').classList.toggle('active', page === 'carExpenses');
+  document.getElementById('exp-tab-cats').classList.toggle('active', page === 'expCategories');
 }
 // نفس الفكرة لتابات صفحات Work Flow (بقيت 2 بس: تنظيم المهام + الخامات)
 function wfSyncTabsBar(page){
@@ -9078,40 +9081,33 @@ async function deleteDebtConfirm(id){
 }
 
 /* ================= Fixed Expenses ================= */
-/* ================= مصاريف السيارات ================= */
-// ⚠️ إضافة 2026-10-12: صفحة "مصاريف السيارات" — بتجمع أي مصروف خرج من الخزنة ووصفه
-// (أو المشروع الموجه) فيه اسم عربية من العربيات اللي تحت (BYD / KIA / Skoda) —
-// بنزين، صيانة، غسيل، ترخيص، أي حاجة. المصدر: سجل "الخزنة" (getTreasuryMoves) —
-// وده نفس السجل اللي كل مصروف بيتسجل من "مصاريف يومية" بيتخصم فيه تلقائي، فمفيش
-// تكرار ومفيش أي تعديل في الباك اند (Apps Script) محتاج Deploy جديد.
-// لإضافة عربية جديدة أو اسم تاني لنفس العربية: زوّد في CAR_EXP_CARS بس.
+/* ================= مستكشف المصاريف (مصاريف السيارات + تصنيف المصروفات) ================= */
+// ⚠️ إضافة 2026-10-12: صفحتين بيشتغلوا بنفس المحرك ده (EXPX):
+//   1) "مصاريف السيارات" — أي مصروف وصفه (أو المشروع الموجه) فيه BYD / KIA / Skoda.
+//   2) "تصنيف المصروفات" — كل مصروف بيتصنف تلقائي من وصفه (قهوة، فطار، خامات، ...).
+// المصدر: سجل "الخزنة" (getTreasuryMoves) — وده نفس السجل اللي كل مصروف بيتسجل من
+// "مصاريف يومية" بيتخصم فيه تلقائي، فمفيش تكرار ومفيش أي تعديل في الباك اند
+// (Apps Script) محتاج Deploy جديد. التصنيف كله بالكلمات الموجودة في الوصف:
+// لإضافة كلمة لتصنيف، زوّدها في CAR_EXP_CATS أو GEN_EXP_CATS تحت (بالإملاء المبسط:
+// "ا" بدل "أ/إ/آ"، "ه" بدل "ة"، "ي" بدل "ى" — الوصف نفسه بيتبسط بنفس الطريقة قبل المقارنة).
+
+// تبسيط الإملاء عشان "قهوة/قهوه" و"أكل/اكل" يتحسبوا نفس الكلمة
+function expxNorm(s){
+  return String(s || '').replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/[ً-ْـ]/g, '').toLowerCase();
+}
+
+/* ── العربيات ── */
 const _CAR_AR = '؀-ۿ';
 const _CAR_AR_PREFIX = '(?:و|ف|ب|ل|ال|وال|فال|بال|لل)?';
 // كلمة عربي مستقلة (مش جزء من كلمة أطول — مثلاً "كيا" جوه "تركيا" مش هتتحسب)
 function _carArWord(w){ return '(?:^|[^' + _CAR_AR + '])' + _CAR_AR_PREFIX + w + '(?=$|[^' + _CAR_AR + '])'; }
 function _carEnWord(w){ return '(?:^|[^a-z0-9])' + w + '(?=$|[^a-z0-9])'; }
+// لإضافة عربية جديدة أو اسم تاني لنفس العربية (رقم لوحة، اسم السواق...): زوّد هنا بس
 const CAR_EXP_CARS = [
   { key:'BYD',   label:'BYD',   bg:'#e8eef8', fg:'#1f4e8c', re: new RegExp([_carEnWord('byd'), _carArWord('بي ?واي ?دي')].join('|'), 'i') },
   { key:'KIA',   label:'KIA',   bg:'#fbe7e4', fg:'#a3301f', re: new RegExp([_carEnWord('kia'), _carArWord('كيا')].join('|'), 'i') },
   { key:'Skoda', label:'Skoda', bg:'#e6f4ea', fg:'#2C5F3A', re: new RegExp([_carEnWord('skoda'), _carEnWord('scoda'), _carArWord('ا?سكودا')].join('|'), 'i') }
 ];
-// نوع المصروف بيتحدد تلقائي من الوصف (أول نوع يطابق بالترتيب ده)
-const CAR_EXP_CATS = [
-  { key:'صيانة',            icon:'🔧', re:/صيان|زيت|فلتر|فرامل|تيل|كاوتش|كاوتشات|اطار|إطار|بطاري|عفش|ميكانيك|سمكر|دوكو|رادياتير|مساعد|تصليح|اصلاح|إصلاح|قطع غيار|بوجيه|تكييف|فريون|ورش|توكيل|كهربائي|لمب|مساحات|زجاج|سير |تيرموستات|ترصيص|ضبط زوايا|عمرة|عمره|maint|service|oil/i },
-  { key:'بنزين',            icon:'⛽', re:/بنزين|بانزين|وقود|سولار|تفويل|تموين|fuel|gas/i },
-  { key:'غسيل',             icon:'🧽', re:/غسيل|غسل|مغسل|تلميع|wash/i },
-  { key:'ترخيص ومخالفات',   icon:'📄', re:/ترخيص|رخص|مخالف|مرور|فحص|نمر/i },
-  { key:'تأمين',            icon:'🛡️', re:/تأمين|تامين|insurance/i },
-  { key:'جراج وركنة',       icon:'🅿️', re:/جراج|جراش|ركن|باركن|سايس|parking/i },
-  { key:'كارتة وطرق',       icon:'🛣️', re:/كارت|بواب|طريق|رسوم|toll/i },
-  { key:'أقساط',            icon:'💳', re:/قسط|اقساط|أقساط/i },
-  { key:'أخرى',             icon:'✨', re:/.^/ }
-];
-const CAR_AR_DAYS = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
-const CAR_AR_MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-let _carRows = [];
-let _carFilters = null;
-
 function _carDetect(text){
   const s = String(text || '');
   let best = null, bestIdx = Infinity;
@@ -9121,266 +9117,474 @@ function _carDetect(text){
   });
   return best;
 }
-function _carCategory(desc){
-  const s = String(desc || '');
-  return (CAR_EXP_CATS.find(c => c.re.test(s)) || CAR_EXP_CATS[CAR_EXP_CATS.length - 1]).key;
-}
-function _carDayName(dateStr){
-  const m = String(dateStr || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!m) return '';
-  return CAR_AR_DAYS[new Date(+m[1], +m[2] - 1, +m[3]).getDay()];
-}
-function _carMonthLabel(ym){
-  const m = String(ym || '').match(/^(\d{4})-(\d{2})/);
-  return m ? `${CAR_AR_MONTHS[+m[2] - 1]} ${m[1]}` : 'بدون تاريخ';
-}
-function _carPill(carKey){
-  const c = CAR_EXP_CARS.find(x => x.key === carKey);
-  if (!c) return qEsc(carKey);
-  return `<span class="pill" style="background:${c.bg};color:${c.fg};">${qEsc(c.label)}</span>`;
-}
-function _carCatIcon(cat){ const c = CAR_EXP_CATS.find(x => x.key === cat); return c ? c.icon : ''; }
-function _carDefaultFilters(){
-  const earliest = _carRows.length ? _carRows.reduce((min, r) => (r.date && r.date < min) ? r.date : min, _carRows[0].date || todayStr()) : todayStr();
-  return { from: earliest, to: todayStr(), car: 'all', cat: 'all', q: '', sort: 'date-desc' };
+
+/* ── التصنيفات (أول تصنيف يطابق بالترتيب هو اللي بيتاخد — عشان كده الأدق الأول) ── */
+// ملحوظة: الوصف بيتبسط وبيتحط قبله وبعده مسافة، وكل علامات الترقيم بتبقى مسافات — فـ" نت "
+// معناها كلمة "نت" لوحدها (مش جوه "انت")، و"(?:ال)?" معناها بـ"ال" أو من غيرها.
+const CAR_EXP_CATS = [
+  { key:'صيانة',            icon:'🔧', re:/صيان|زيت|فلتر|فرامل|تيل|كاوتش|اطار|بطاري|عفش|ميكانيك|سمكر|دوكو|رادياتير|مساعد|تصليح|اصلاح|قطع غيار|بوجيه|تكييف|فريون|ورش|توكيل|كهربائي|لمب|مساحات|زجاج| (?:ال)?سير |ترموستات|تيرموستات|ترصيص|زوايا|عمره|maint|service| oil / },
+  { key:'بنزين',            icon:'⛽', re:/بنزين|بانزين|وقود|سولار|تفويل|تموين|fuel| gas / },
+  { key:'غسيل',             icon:'🧽', re:/غسيل|غسل|مغسل|تلميع|wash/ },
+  { key:'ترخيص ومخالفات',   icon:'📄', re:/ترخيص|رخص|مخالف|مرور|فحص| (?:ال)?نمر/ },
+  { key:'تأمين',            icon:'🛡️', re:/تامين|insurance/ },
+  { key:'جراج وركنة',       icon:'🅿️', re:/جراج|جراش| (?:ال)?ركن|باركن|سايس|parking/ },
+  { key:'كارتة وطرق',       icon:'🛣️', re:/كارت|بواب|طريق|رسوم|toll/ },
+  { key:'أقساط',            icon:'💳', re:/قسط|اقساط/ },
+  { key:'أخرى',             icon:'✨', re:null }
+];
+const GEN_EXP_CATS = [
+  { key:'مسحوبات',               icon:'💸', re:/مسحوب|سلفه| (?:ال)?سلف / },
+  { key:'مرتبات ويوميات',        icon:'💰', re:/مرتب|يوميه|يوميات|اسبوعيه|سهره|سهرات|اوفر تايم|اجور|حافز|مكافاه/ },
+  { key:'سداد ديون',             icon:'📕', re:/سداد|قسط|اقساط| (?:ال)?دين / },
+  { key:'سيارات وبنزين',         icon:'🚗', re:/بنزين|بانزين|سولار|وقود|جراج| (?:ال)?ركنه|سايس|مخالف|ترخيص|كاوتش|غسيل (?:ال)?عربي/ },
+  { key:'إيجار',                 icon:'🏠', re:/ايجار/ },
+  { key:'فواتير ونت وموبايل',    icon:'💡', re:/فاتور|كهربا(?!ئي)| (?:ال)?نور | (?:ال)?نت |انترنت|راوتر|رصيد|كارت شحن|موبايل|تليفون| (?:ال)?غاز / },
+  { key:'مواصلات ونقل',          icon:'🚚', re:/مواصلات|توصيل| (?:ال)?نقل| (?:ال)?شحن|تاكسي|اوبر|uber| كريم |توكتوك|تكتك|ميكروباص|ونش|تروسيكل|اجره/ },
+  { key:'صيانة وتصليحات',        icon:'🔧', re:/صيان|تصليح|اصلاح|سباك|كهربائي| (?:ال)?فني |ترميم/ },
+  { key:'خامات',                 icon:'🧱', re:/خام|خشب|ابلكاش|mdf|ام دي اف|كونتر|قشره|بويه|دهان|سبراي|اسبراي|لاكيه|ورنيش|بلاستيك|غراء| (?:ال)?غرا | (?:ال)?كله |مسامير|مسمار|صواميل|صامول|مفصل| (?:ال)?مجري|مجاري|سحاب|مقابض|مقبض|اكسسوار|زجاج|مرايه|رخام|جرانيت|حديد|الوميتال|المونيوم|قماش|اسفنج|جلد|فورمايكا|hpl|كوارتز|سيليكون|شريط|صنفره|تنر|معجون| (?:ال)?فوم|براغي|بنط|كوالين|كالون|بيلي|ستانلس|لمبات| (?:ال)?(?:سلك|اسلاك) |بلاط|سيراميك|اسمنت| (?:ال)?جبس| (?:ال)?رمل / },
+  { key:'عدد وأدوات',            icon:'🛠️', re:/ (?:ال)?عده |مفك|شنيور|صاروخ|منشار|اسطوان| (?:ال)?د[يي]?سك|مسدس|كمبروسر|شاكوش|زرديه|مفتاح/ },
+  { key:'قهوة ومشروبات',         icon:'☕', re:/قهوه|كوفي|coffee| (?:ال)?شاي |نسكافيه|نيسكافيه| (?:ال)?(?:مياه|ميه|مايه) |بيبسي|كولا|عصير|ساقع|مشروب| (?:ال)?سكر | (?:ال)?لبن |كابتشينو|زمزم|ريدبول|بريل/ },
+  { key:'أكل وفطار',             icon:'🍔', re:/فطار|فطور| (?:ال)?غدا| (?:ال)?عشا(?:ء|ه)? | (?:و|ال|وال)?اكل| (?:ال)?فول |طعميه|سندوتش|ساندوتش|كشري|فراخ|لحمه|لحوم| (?:ال)?عيش |بيتزا|وجبه|حلويات|كنافه|بسكوت|شيبسي| (?:ال)?كيك|جبنه| (?:ال)?بيض |فاكهه|كبده| (?:ال)?سمك |مكرونه|شاورما|برجر|food/ },
+  { key:'نظافة',                 icon:'🧹', re:/نظاف|منظف|صابون|كلور|ديتول|مناديل|زباله|مقشه|جردل|شامبو/ },
+  { key:'مكتبية وطباعة',         icon:'🖊️', re:/ (?:ال)?ورق|طباع|حبر|اقلام| (?:ال)?قلم|ملفات|تصوير ورق|ادوات مكتب| (?:ال)?ختم|دفتر|كشكول/ },
+  { key:'إكراميات وهدايا',       icon:'🎁', re:/اكرامي|بقشيش|حلاوه|عيديه|هديه|هدايا|تبرع|صدقه/ },
+  { key:'تسويق وإعلانات',        icon:'📣', re:/اعلان|ممول|فيسبوك|فيس بوك|انستجرام|انستا|تيك توك| meta | ads |تسويق|بانر|يافط|كروت شخصيه/ },
+  { key:'حكومي ورسوم',           icon:'🏛️', re:/ضرايب|ضرائب|تامينات|رسوم|دمغه|شهر عقاري|سجل تجاري|محامي| (?:ال)?حي |رخصه محل|غرامه/ },
+  { key:'أخرى',                  icon:'✨', re:null }
+];
+function _expxCategory(cats, desc){
+  const s = ' ' + expxNorm(desc).replace(/[^\p{L}\p{N}]+/gu, ' ').trim() + ' ';
+  return (cats.find(c => c.re && c.re.test(s)) || cats[cats.length - 1]).key;
 }
 
-async function renderCarExpenses(token) {
+const EXPX_AR_DAYS = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+const EXPX_AR_MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+const EXPX_GENERAL = '__general__'; // اختيار "مصروفات عامة + بدون مشروع" في فلتر المشروع
+const EXPX_PAGE_SIZE = 300;
+const EXPX = {}; // حالة كل صفحة: { cfg, rows, f }
+
+function _expxDow(dateStr){
+  const m = String(dateStr || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]).getDay() : -1;
+}
+function _expxMonthLabel(ym){
+  const m = String(ym || '').match(/^(\d{4})-(\d{2})/);
+  return m ? `${EXPX_AR_MONTHS[+m[2] - 1]} ${m[1]}` : 'بدون تاريخ';
+}
+function _expxDimPill(cfg, key){
+  const c = (cfg.dims || []).find(x => x.key === key);
+  if (!c) return qEsc(key || '-');
+  return `<span class="pill" style="background:${c.bg};color:${c.fg};">${qEsc(c.label)}</span>`;
+}
+function _expxCatIcon(cfg, cat){ const c = cfg.cats.find(x => x.key === cat); return c ? c.icon : ''; }
+function _expxSum(arr){ return arr.reduce((s, r) => s + r.amount, 0); }
+function _expxDefaultFilters(st){
+  const rows = st.rows;
+  const earliest = rows.length ? rows.reduce((min, r) => (r.date && r.date < min) ? r.date : min, todayStr()) : todayStr();
+  // لو في مصروف متسجل بتاريخ بعد النهارده، "لحد تاريخ" الافتراضي بيوصل له عشان ميستخبّاش
+  const latest = rows.reduce((max, r) => (r.date && r.date > max) ? r.date : max, todayStr());
+  return { from: earliest, to: latest, dim:'all', cat:'all', project: st.cfg.defaultProject || 'all', dow:'all', min:'', max:'', q:'', sort:'date', dir:'desc', groupDays:true, limit: EXPX_PAGE_SIZE };
+}
+
+const EXPX_CFG = {
+  car: {
+    id:'car', title:'مصاريف السيارات', fileName:'مصاريف-السيارات', summaryTitle:'ملخص مصاريف السيارات',
+    dimLabel:'العربية', dims: CAR_EXP_CARS, cats: CAR_EXP_CATS, catLabel:'نوع المصروف', defaultProject:'all',
+    pick: m => { const car = _carDetect(m.desc) || _carDetect(m.project); return car ? { dim: car.key, cat: _expxCategory(CAR_EXP_CATS, m.desc) } : null; },
+    extraCards: rows => {
+      const fuel = _expxSum(rows.filter(r => r.cat === 'بنزين')), maint = _expxSum(rows.filter(r => r.cat === 'صيانة'));
+      return `<div class="card" data-act="cat" data-v="بنزين" style="cursor:pointer;"><div class="label">⛽ بنزين</div><div class="value gold">${fmt(fuel)} ج</div></div>
+        <div class="card" data-act="cat" data-v="صيانة" style="cursor:pointer;"><div class="label">🔧 صيانة</div><div class="value gold">${fmt(maint)} ج</div></div>`;
+    }
+  },
+  gen: {
+    id:'gen', title:'تصنيف المصروفات', fileName:'تصنيف-المصروفات', summaryTitle:'ملخص المصروفات',
+    dimLabel:'', dims:null, cats: GEN_EXP_CATS, catLabel:'التصنيف', defaultProject: EXPX_GENERAL, showUnclassified:true,
+    pick: m => {
+      let cat = _expxCategory(GEN_EXP_CATS, m.desc);
+      // أي مصروف فيه اسم عربية (BYD/KIA/Skoda) بيروح "سيارات وبنزين" — إلا لو مسحوبات/مرتبات/سداد دين
+      if (_carDetect(m.desc) && !['مسحوبات', 'مرتبات ويوميات', 'سداد ديون'].includes(cat)) cat = 'سيارات وبنزين';
+      return { dim:'', cat };
+    }
+  }
+};
+
+async function renderCarExpenses(token){ return expxRender('car', token); }
+async function renderExpCategories(token){ return expxRender('gen', token); }
+
+async function expxRender(id, token){
   try {
+    const cfg = EXPX_CFG[id];
     const movesData = await apiGet('getTreasuryMoves', {});
     if (isStaleNav(token)) return;
     const moves = (movesData && movesData.moves) || [];
-    _carRows = [];
+    const rows = [];
     moves.forEach(m => {
       if (m.type !== 'مصروف') return;
       const amount = Number(m.amount) || 0;
       if (!amount) return;
-      // الوصف الأول (هو الأدق)، ولو مفيهوش اسم عربية نبص على المشروع الموجه
-      const car = _carDetect(m.desc) || _carDetect(m.project);
-      if (!car) return;
-      _carRows.push({
-        id: m.id, date: m.date || '', day: _carDayName(m.date), desc: String(m.desc || ''), project: String(m.project || ''),
-        amount, car: car.key, cat: _carCategory(m.desc)
-      });
+      const hit = cfg.pick(m);
+      if (!hit) return;
+      const dow = _expxDow(m.date);
+      rows.push({ id: m.id, date: m.date || '', dow, day: dow >= 0 ? EXPX_AR_DAYS[dow] : '', desc: String(m.desc || ''),
+        project: String(m.project || '').trim(), amount, dim: hit.dim, cat: hit.cat });
     });
-    _carFilters = _carDefaultFilters();
+    const st = EXPX[id] = { cfg, rows, f: null };
+    st.f = _expxDefaultFilters(st);
+    const P = id;
 
-    const carOpts = CAR_EXP_CARS.map(c => `<option value="${c.key}">${qEsc(c.label)}</option>`).join('');
-    const catOpts = CAR_EXP_CATS.map(c => `<option value="${qEsc(c.key)}">${c.icon} ${qEsc(c.key)}</option>`).join('');
+    const projects = Array.from(new Set(rows.map(r => r.project).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ar'));
+    const projOpts = `<option value="all">كل المشاريع</option>
+      <option value="${EXPX_GENERAL}">مصروفات عامة (+ بدون مشروع)</option>
+      ${projects.map(p => `<option value="${qEsc(p)}">${qEsc(p)}</option>`).join('')}
+      <option value="__none__">بدون مشروع</option>`;
+    const dimField = cfg.dims ? `<div class="af-field"><label>${qEsc(cfg.dimLabel)}</label><select id="${P}-dim"><option value="all">الكل</option>${cfg.dims.map(c => `<option value="${c.key}">${qEsc(c.label)}</option>`).join('')}</select></div>` : '';
+    const catOpts = cfg.cats.map(c => `<option value="${qEsc(c.key)}">${c.icon} ${qEsc(c.key)}</option>`).join('');
+    const dowOpts = EXPX_AR_DAYS.map((d, i) => `<option value="${i}">${d}</option>`).join('');
+
     document.getElementById('content').innerHTML = `
-      <div class="adv-filter" id="carFilterBar">
-        <div class="af-field"><label>من تاريخ</label><input type="date" id="car-from" autocomplete="off" value="${_carFilters.from}"></div>
-        <div class="af-field"><label>لحد تاريخ</label><input type="date" id="car-to" autocomplete="off" value="${_carFilters.to}"></div>
-        <div class="af-field"><label>العربية</label><select id="car-car"><option value="all">كل العربيات</option>${carOpts}</select></div>
-        <div class="af-field"><label>نوع المصروف</label><select id="car-cat"><option value="all">كل الأنواع</option>${catOpts}</select></div>
-        <div class="af-field"><label>بحث في الوصف / المشروع</label><input type="text" id="car-q" autocomplete="off" placeholder="مثلا: زيت، كاوتش..."></div>
-        <div class="af-field af-actions"><button type="button" class="af-reset" id="car-reset">↺ مسح الفلاتر</button></div>
+      <div id="${P}-root">
+      <div class="adv-filter">
+        <div class="af-field"><label>من تاريخ</label><input type="date" id="${P}-from" autocomplete="off"></div>
+        <div class="af-field"><label>لحد تاريخ</label><input type="date" id="${P}-to" autocomplete="off"></div>
+        ${dimField}
+        <div class="af-field"><label>${qEsc(cfg.catLabel)}</label><select id="${P}-cat"><option value="all">الكل</option>${catOpts}</select></div>
+        <div class="af-field"><label>المشروع</label><select id="${P}-project">${projOpts}</select></div>
+        <div class="af-field"><label>اليوم</label><select id="${P}-dow"><option value="all">كل الأيام</option>${dowOpts}</select></div>
+        <div class="af-field"><label>المبلغ</label><div class="af-amount" style="flex:1;">
+          <input type="text" inputmode="decimal" id="${P}-min" autocomplete="off" placeholder="من">
+          <input type="text" inputmode="decimal" id="${P}-max" autocomplete="off" placeholder="لحد">
+        </div></div>
+        <div class="af-field" style="grid-column:span 2;"><label>بحث في الوصف / المشروع</label><input type="text" id="${P}-q" autocomplete="off" placeholder="مثلا: قهوة، خشب، كاوتش..."></div>
+        <div class="af-field af-actions" style="gap:6px;">
+          <button type="button" class="af-reset" data-act="reset">↺ مسح الفلاتر</button>
+          <button type="button" class="af-reset" data-act="csv" title="تنزيل الجدول بالفلاتر الحالية — يفتح على Excel">⬇ Excel</button>
+        </div>
       </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin:-4px 0 14px;" id="car-quick">
-        <button type="button" class="btn btn-outline btn-sm" data-range="month">الشهر ده</button>
-        <button type="button" class="btn btn-outline btn-sm" data-range="prev">الشهر اللي فات</button>
-        <button type="button" class="btn btn-outline btn-sm" data-range="3m">آخر 3 شهور</button>
-        <button type="button" class="btn btn-outline btn-sm" data-range="year">السنة دي</button>
-        <button type="button" class="btn btn-outline btn-sm" data-range="all">الكل</button>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin:-4px 0 14px;">
+        <button type="button" class="btn btn-outline btn-sm" data-act="range" data-v="today">النهارده</button>
+        <button type="button" class="btn btn-outline btn-sm" data-act="range" data-v="week">آخر 7 أيام</button>
+        <button type="button" class="btn btn-outline btn-sm" data-act="range" data-v="month">الشهر ده</button>
+        <button type="button" class="btn btn-outline btn-sm" data-act="range" data-v="prev">الشهر اللي فات</button>
+        <button type="button" class="btn btn-outline btn-sm" data-act="range" data-v="3m">آخر 3 شهور</button>
+        <button type="button" class="btn btn-outline btn-sm" data-act="range" data-v="year">السنة دي</button>
+        <button type="button" class="btn btn-outline btn-sm" data-act="range" data-v="all">الكل</button>
       </div>
-      <div class="adv-filter-count" id="carFilterNote"></div>
-      <div class="panel" id="car-summary-panel">
-        <h3>ملخص مصاريف السيارات</h3>
-        <div class="cards" id="carCardsBox" style="margin-bottom:0;"></div>
+      <div class="adv-filter-count" id="${P}-note"></div>
+      <div class="panel">
+        <h3>${qEsc(cfg.summaryTitle)}</h3>
+        <div class="cards" id="${P}-cards" style="margin-bottom:0;"></div>
       </div>
       <div class="grid2">
-        <div class="panel"><h3>حسب العربية ونوع المصروف</h3><div class="tbl-wrap" id="car-matrix"></div></div>
-        <div class="panel"><h3>إجمالي كل شهر</h3><div class="tbl-wrap tbl-wrap-scroll" id="car-monthly" style="max-height:420px;"></div></div>
+        <div class="panel"><h3>حسب ${qEsc(cfg.catLabel)}${cfg.dims ? ' و' + qEsc(cfg.dimLabel) : ''}</h3><div class="tbl-wrap tbl-wrap-scroll" id="${P}-matrix" style="max-height:460px;"></div></div>
+        <div class="panel"><h3>إجمالي كل شهر</h3><div class="tbl-wrap tbl-wrap-scroll" id="${P}-monthly" style="max-height:460px;"></div></div>
       </div>
+      ${cfg.showUnclassified ? `<div class="panel"><h3>أكتر بنود متصنفة "أخرى" — ابعتلي كلماتها عشان أضيفها لتصنيف</h3><div class="tbl-wrap tbl-wrap-scroll" id="${P}-uncls" style="max-height:360px;"></div></div>` : ''}
       <div class="panel">
         <h3>
           <span>كل المصاريف بالتفاصيل</span>
-          <select id="car-sort" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:12px;background:var(--white);">
-            <option value="date-desc">الأحدث الأول</option>
-            <option value="date-asc">الأقدم الأول</option>
-            <option value="amount-desc">الأعلى مبلغ</option>
-            <option value="amount-asc">الأقل مبلغ</option>
-          </select>
+          <span style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;font-weight:600;">
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="${P}-group" checked> تجميع بالأيام</label>
+            <select id="${P}-sort" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:12px;background:var(--white);">
+              <option value="date-desc">الأحدث الأول</option>
+              <option value="date-asc">الأقدم الأول</option>
+              <option value="amount-desc">الأعلى مبلغ</option>
+              <option value="amount-asc">الأقل مبلغ</option>
+              <option value="custom" disabled hidden>ترتيب من العناوين</option>
+            </select>
+          </span>
         </h3>
-        <div class="tbl-wrap tbl-wrap-scroll" id="car-detail" style="max-height:70vh;"></div>
+        <div style="font-size:11.5px;color:var(--muted);margin:-6px 0 8px;">دوس على عنوان أي عمود عشان ترتّب بيه</div>
+        <div class="tbl-wrap tbl-wrap-scroll" id="${P}-detail" style="max-height:70vh;"></div>
+      </div>
       </div>
     `;
-    const bind = (id, key, ev) => document.getElementById(id).addEventListener(ev || 'change', e => { _carFilters[key] = e.target.value; carRenderAll(); });
-    bind('car-from', 'from'); bind('car-to', 'to'); bind('car-car', 'car'); bind('car-cat', 'cat'); bind('car-q', 'q', 'input'); bind('car-sort', 'sort');
-    document.getElementById('car-reset').addEventListener('click', () => { _carFilters = _carDefaultFilters(); carSyncFilterInputs(); carRenderAll(); });
-    document.getElementById('car-quick').addEventListener('click', e => {
-      const b = e.target.closest('button[data-range]'); if (!b) return;
-      carApplyQuickRange(b.dataset.range);
+    _expxSyncInputs(id);
+    const root = document.getElementById(`${P}-root`);
+    const bind = (key, ev, conv) => {
+      const el = document.getElementById(`${P}-${key}`); if (!el) return;
+      el.addEventListener(ev || 'change', e => { st.f[key] = conv ? conv(e.target) : e.target.value; st.f.limit = EXPX_PAGE_SIZE; expxRenderAll(id); });
+    };
+    ['from', 'to', 'dim', 'cat', 'project', 'dow'].forEach(k => bind(k));
+    bind('min', 'input'); bind('max', 'input'); bind('q', 'input');
+    bind('group', 'change', el => el.checked);
+    document.getElementById(`${P}-sort`).addEventListener('change', e => {
+      const [s, d] = e.target.value.split('-'); st.f.sort = s; st.f.dir = d; expxRenderAll(id);
     });
-    carRenderAll();
+    root.addEventListener('click', e => {
+      const el = e.target.closest('[data-act]'); if (!el || !root.contains(el)) return;
+      const act = el.dataset.act, v = el.dataset.v;
+      if (act === 'reset'){ st.f = _expxDefaultFilters(st); _expxSyncInputs(id); }
+      else if (act === 'csv'){ expxDownloadCsv(id); return; }
+      else if (act === 'range'){ _expxApplyRange(st, v); _expxSyncInputs(id); }
+      else if (act === 'dim'){ st.f.dim = st.f.dim === v ? 'all' : v; _expxSyncInputs(id); }
+      else if (act === 'cat'){ st.f.cat = st.f.cat === v ? 'all' : v; _expxSyncInputs(id); }
+      else if (act === 'q'){ st.f.q = v; _expxSyncInputs(id); }
+      else if (act === 'sort'){
+        if (st.f.sort === v) st.f.dir = st.f.dir === 'asc' ? 'desc' : 'asc';
+        else { st.f.sort = v; st.f.dir = (v === 'amount' || v === 'date') ? 'desc' : 'asc'; }
+        _expxSyncInputs(id);
+      }
+      else if (act === 'more'){ st.f.limit += EXPX_PAGE_SIZE; }
+      else return;
+      if (act !== 'more' && act !== 'sort') st.f.limit = EXPX_PAGE_SIZE;
+      expxRenderAll(id);
+    });
+    expxRenderAll(id);
   } catch(err){ showError(err); }
 }
 
-function carSyncFilterInputs(){
-  const f = _carFilters;
-  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
-  set('car-from', f.from); set('car-to', f.to); set('car-car', f.car); set('car-cat', f.cat); set('car-q', f.q); set('car-sort', f.sort);
+function _expxSyncInputs(id){
+  const f = EXPX[id].f;
+  const set = (k, v) => { const el = document.getElementById(`${id}-${k}`); if (!el) return; if (el.type === 'checkbox') el.checked = !!v; else el.value = v; };
+  set('from', f.from); set('to', f.to); set('dim', f.dim); set('cat', f.cat); set('project', f.project); set('dow', f.dow);
+  set('min', f.min); set('max', f.max); set('q', f.q); set('group', f.groupDays);
+  const sortVal = `${f.sort}-${f.dir}`;
+  set('sort', ['date-desc', 'date-asc', 'amount-desc', 'amount-asc'].includes(sortVal) ? sortVal : 'custom');
 }
-function carApplyQuickRange(kind){
+function _expxApplyRange(st, kind){
   const now = new Date();
   const pad = n => String(n).padStart(2, '0');
   const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const today = todayStr();
-  if (kind === 'month'){ _carFilters.from = ymd(new Date(now.getFullYear(), now.getMonth(), 1)); _carFilters.to = today; }
-  else if (kind === 'prev'){ _carFilters.from = ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1)); _carFilters.to = ymd(new Date(now.getFullYear(), now.getMonth(), 0)); }
-  else if (kind === '3m'){ _carFilters.from = ymd(new Date(now.getFullYear(), now.getMonth() - 2, 1)); _carFilters.to = today; }
-  else if (kind === 'year'){ _carFilters.from = `${now.getFullYear()}-01-01`; _carFilters.to = today; }
-  else { const d = _carDefaultFilters(); _carFilters.from = d.from; _carFilters.to = d.to; }
-  carSyncFilterInputs();
-  carRenderAll();
+  const f = st.f;
+  if (kind === 'today'){ f.from = today; f.to = today; }
+  else if (kind === 'week'){ f.from = ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6)); f.to = today; }
+  else if (kind === 'month'){ f.from = ymd(new Date(now.getFullYear(), now.getMonth(), 1)); f.to = today; }
+  else if (kind === 'prev'){ f.from = ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1)); f.to = ymd(new Date(now.getFullYear(), now.getMonth(), 0)); }
+  else if (kind === '3m'){ f.from = ymd(new Date(now.getFullYear(), now.getMonth() - 2, 1)); f.to = today; }
+  else if (kind === 'year'){ f.from = `${now.getFullYear()}-01-01`; f.to = today; }
+  else { const d = _expxDefaultFilters(st); f.from = d.from; f.to = d.to; }
 }
-function carSelectCar(key){
-  _carFilters.car = (_carFilters.car === key) ? 'all' : key;
-  carSyncFilterInputs();
-  carRenderAll();
-}
-// الصفوف بعد فلتر التاريخ + البحث + نوع المصروف (من غير فلتر العربية) — بنستخدمها في
-// كروت العربيات عشان كل كارت يوري رقم العربية دي حتى لو في عربية تانية مختارة
-function _carBaseFiltered(){
-  const f = _carFilters;
-  const q = String(f.q || '').trim().toLowerCase();
-  return _carRows.filter(r =>
+// skip: اسم فلتر منتجاهلوش (عشان كروت العربيات وجدول التصنيف يفضلوا يوروا كل الاختيارات حتى لو واحد منهم متحدد)
+function _expxFilter(st, skip){
+  const f = st.f;
+  const q = expxNorm(f.q).trim();
+  const min = f.min === '' ? null : Number(String(f.min).replace(/,/g, ''));
+  const max = f.max === '' ? null : Number(String(f.max).replace(/,/g, ''));
+  return st.rows.filter(r =>
     (!f.from || !r.date || r.date >= f.from) &&
     (!f.to || !r.date || r.date <= f.to) &&
-    (f.cat === 'all' || r.cat === f.cat) &&
-    (!q || (r.desc + ' ' + r.project).toLowerCase().includes(q))
+    (skip === 'dim' || f.dim === 'all' || r.dim === f.dim) &&
+    (skip === 'cat' || f.cat === 'all' || r.cat === f.cat) &&
+    (f.project === 'all' ||
+      (f.project === EXPX_GENERAL ? (r.project === 'مصروفات عامة' || !r.project) :
+       f.project === '__none__' ? !r.project : r.project === f.project)) &&
+    (f.dow === 'all' || r.dow === Number(f.dow)) &&
+    (min === null || isNaN(min) || r.amount >= min) &&
+    (max === null || isNaN(max) || r.amount <= max) &&
+    (!q || expxNorm(r.desc + ' ' + r.project).includes(q))
   );
 }
-function _carFiltered(){
-  const base = _carBaseFiltered();
-  return _carFilters.car === 'all' ? base : base.filter(r => r.car === _carFilters.car);
+function _expxSorted(st, rows){
+  const f = st.f, dir = f.dir === 'asc' ? 1 : -1;
+  const byDate = (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (Number(a.id) || 0) - (Number(b.id) || 0));
+  const cmp = {
+    date: byDate,
+    day: (a, b) => (a.dow - b.dow) || byDate(a, b),
+    amount: (a, b) => (a.amount - b.amount) || byDate(a, b),
+    desc: (a, b) => a.desc.localeCompare(b.desc, 'ar') || byDate(a, b),
+    dim: (a, b) => String(a.dim).localeCompare(String(b.dim)) || byDate(a, b),
+    cat: (a, b) => a.cat.localeCompare(b.cat, 'ar') || byDate(a, b),
+    project: (a, b) => a.project.localeCompare(b.project, 'ar') || byDate(a, b)
+  }[f.sort] || byDate;
+  return rows.slice().sort((a, b) => dir * cmp(a, b));
 }
-function carRenderAll(){
-  if (!_carFilters) return;
-  const base = _carBaseFiltered();
-  const rows = _carFiltered();
-  const sum = arr => arr.reduce((s, r) => s + r.amount, 0);
-  const total = sum(rows);
-  const baseTotal = sum(base);
+
+function expxRenderAll(id){
+  const st = EXPX[id]; if (!st) return;
+  const { cfg, f } = st;
+  const P = id;
+  const rows = _expxFilter(st);
+  const total = _expxSum(rows);
+  const cats = cfg.cats;
 
   // ── ملاحظة الفلتر ──
-  const note = document.getElementById('carFilterNote');
+  const note = document.getElementById(`${P}-note`);
   if (note) {
-    const d = _carDefaultFilters();
+    const d = _expxDefaultFilters(st);
     const parts = [];
-    if (_carFilters.from !== d.from || _carFilters.to !== d.to) parts.push(`الفترة من ${_carFilters.from || 'البداية'} لحد ${_carFilters.to || 'النهارده'}`);
-    if (_carFilters.car !== 'all') parts.push(`العربية: ${_carFilters.car}`);
-    if (_carFilters.cat !== 'all') parts.push(`النوع: ${_carFilters.cat}`);
-    if (String(_carFilters.q || '').trim()) parts.push(`بحث: "${_carFilters.q.trim()}"`);
+    if (f.from !== d.from || f.to !== d.to) parts.push(`الفترة من ${f.from || 'البداية'} لحد ${f.to || 'النهارده'}`);
+    if (f.dim !== 'all') parts.push(`${cfg.dimLabel}: ${f.dim}`);
+    if (f.cat !== 'all') parts.push(`${cfg.catLabel}: ${f.cat}`);
+    if (f.project !== d.project) parts.push(`المشروع: ${f.project === 'all' ? 'كل المشاريع' : f.project === EXPX_GENERAL ? 'مصروفات عامة' : f.project === '__none__' ? 'بدون مشروع' : f.project}`);
+    if (f.dow !== 'all') parts.push(`يوم ${EXPX_AR_DAYS[+f.dow]}`);
+    if (f.min !== '' || f.max !== '') parts.push(`المبلغ ${f.min !== '' ? 'من ' + f.min : ''} ${f.max !== '' ? 'لحد ' + f.max : ''}`.trim());
+    if (String(f.q || '').trim()) parts.push(`بحث: "${f.q.trim()}"`);
     note.textContent = parts.length ? 'عرض ' + parts.join(' — ') : '';
   }
 
   // ── الكروت ──
   const daysCount = new Set(rows.map(r => r.date).filter(Boolean)).size;
-  const fuel = sum(rows.filter(r => r.cat === 'بنزين'));
-  const maint = sum(rows.filter(r => r.cat === 'صيانة'));
-  const carCards = CAR_EXP_CARS.map(c => {
-    const cr = base.filter(r => r.car === c.key);
-    const t = sum(cr);
-    const pct = baseTotal ? Math.round(t / baseTotal * 100) : 0;
-    const active = _carFilters.car === c.key;
-    return `<div class="card" onclick="carSelectCar('${c.key}')" title="دوس عشان تعرض العربية دي بس" style="cursor:pointer;${active ? 'border-color:var(--gold);box-shadow:0 0 0 2px var(--gold) inset;' : ''}">
-      <div class="label">${_carPill(c.key)}</div>
-      <div class="value red">${fmt(t)} ج</div>
-      <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">${cr.length} مصروف · ${pct}% من الإجمالي</div>
-    </div>`;
-  }).join('');
-  const cardsBox = document.getElementById('carCardsBox');
-  if (cardsBox) cardsBox.innerHTML = `
-    <div class="card"><div class="label">إجمالي مصاريف السيارات</div><div class="value red">${fmt(total)} ج</div><div style="font-size:11.5px;color:var(--muted);margin-top:4px;">${rows.length} مصروف في ${daysCount} يوم</div></div>
-    ${carCards}
-    <div class="card"><div class="label">⛽ بنزين</div><div class="value gold">${fmt(fuel)} ج</div></div>
-    <div class="card"><div class="label">🔧 صيانة</div><div class="value gold">${fmt(maint)} ج</div></div>
-  `;
+  let cardsHtml = `<div class="card"><div class="label">الإجمالي</div><div class="value red">${fmt(total)} ج</div><div style="font-size:11.5px;color:var(--muted);margin-top:4px;">${rows.length} مصروف في ${daysCount} يوم</div></div>`;
+  if (cfg.dims) {
+    const base = _expxFilter(st, 'dim');
+    const baseTotal = _expxSum(base);
+    cardsHtml += cfg.dims.map(c => {
+      const cr = base.filter(r => r.dim === c.key), t = _expxSum(cr);
+      const pct = baseTotal ? Math.round(t / baseTotal * 100) : 0;
+      const active = f.dim === c.key;
+      return `<div class="card" data-act="dim" data-v="${c.key}" title="دوس عشان تعرض دي بس" style="cursor:pointer;${active ? 'border-color:var(--gold);box-shadow:0 0 0 2px var(--gold) inset;' : ''}">
+        <div class="label">${_expxDimPill(cfg, c.key)}</div><div class="value red">${fmt(t)} ج</div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">${cr.length} مصروف · ${pct}% من الإجمالي</div></div>`;
+    }).join('');
+    cardsHtml += cfg.extraCards ? cfg.extraCards(rows) : '';
+  } else {
+    cardsHtml += `<div class="card"><div class="label">متوسط اليوم</div><div class="value">${fmt(daysCount ? total / daysCount : 0)} ج</div></div>`;
+    const top = cats.map(c => ({ c, t: _expxSum(rows.filter(r => r.cat === c.key)) })).filter(x => x.t > 0).sort((a, b) => b.t - a.t).slice(0, 4);
+    cardsHtml += top.map(x => `<div class="card" data-act="cat" data-v="${qEsc(x.c.key)}" style="cursor:pointer;${f.cat === x.c.key ? 'border-color:var(--gold);box-shadow:0 0 0 2px var(--gold) inset;' : ''}">
+        <div class="label">${x.c.icon} ${qEsc(x.c.key)}</div><div class="value gold">${fmt(x.t)} ج</div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">${total ? Math.round(x.t / total * 100) : 0}% من الإجمالي</div></div>`).join('');
+  }
+  const cardsBox = document.getElementById(`${P}-cards`);
+  if (cardsBox) cardsBox.innerHTML = cardsHtml;
 
-  // ── جدول العربية × النوع ──
-  const cars = _carFilters.car === 'all' ? CAR_EXP_CARS : CAR_EXP_CARS.filter(c => c.key === _carFilters.car);
-  const usedCats = CAR_EXP_CATS.filter(c => rows.some(r => r.cat === c.key));
-  const matrix = document.getElementById('car-matrix');
+  const dash = '<span style="color:var(--muted);">-</span>';
+  const dims = cfg.dims ? (f.dim === 'all' ? cfg.dims : cfg.dims.filter(c => c.key === f.dim)) : null;
+
+  // ── جدول التصنيفات (بيتجاهل فلتر التصنيف نفسه، والتصنيف المختار بيتعلّم) ──
+  const matrix = document.getElementById(`${P}-matrix`);
   if (matrix) {
-    matrix.innerHTML = !rows.length ? '<div class="empty">مفيش مصاريف مطابقة للفلاتر</div>' : `
-      <table>
-        <thead><tr><th>النوع</th>${cars.map(c => `<th>${qEsc(c.label)}</th>`).join('')}${cars.length > 1 ? '<th>الإجمالي</th>' : ''}</tr></thead>
+    const mRows = _expxFilter(st, 'cat');
+    const mTotal = _expxSum(mRows);
+    const used = cats.map(c => { const cr = mRows.filter(r => r.cat === c.key); return { c, cr, t: _expxSum(cr) }; }).filter(x => x.cr.length).sort((a, b) => b.t - a.t);
+    const selStyle = key => f.cat === key ? 'outline:2px solid var(--gold);outline-offset:-2px;' : '';
+    if (!mRows.length) matrix.innerHTML = '<div class="empty">مفيش مصاريف مطابقة للفلاتر</div>';
+    else if (dims) {
+      matrix.innerHTML = `<table>
+        <thead><tr><th>${qEsc(cfg.catLabel)}</th>${dims.map(c => `<th>${qEsc(c.label)}</th>`).join('')}${dims.length > 1 ? '<th>الإجمالي</th>' : ''}</tr></thead>
         <tbody>
-          ${usedCats.map(cat => {
-            const cr = rows.filter(r => r.cat === cat.key);
-            return `<tr><td style="text-align:right;font-weight:700;">${cat.icon} ${qEsc(cat.key)}</td>
-              ${cars.map(c => { const v = sum(cr.filter(r => r.car === c.key)); return `<td>${v ? fmt(v) : '<span style="color:var(--muted);">-</span>'}</td>`; }).join('')}
-              ${cars.length > 1 ? `<td style="font-weight:800;">${fmt(sum(cr))}</td>` : ''}</tr>`;
-          }).join('')}
-          <tr class="tbl-totals-row"><td>الإجمالي</td>${cars.map(c => `<td>${fmt(sum(rows.filter(r => r.car === c.key)))}</td>`).join('')}${cars.length > 1 ? `<td>${fmt(total)}</td>` : ''}</tr>
-        </tbody>
-      </table>`;
+          ${used.map(x => `<tr data-act="cat" data-v="${qEsc(x.c.key)}" style="cursor:pointer;${selStyle(x.c.key)}"><td style="text-align:right;font-weight:700;">${x.c.icon} ${qEsc(x.c.key)}</td>
+            ${dims.map(c => { const v = _expxSum(x.cr.filter(r => r.dim === c.key)); return `<td>${v ? fmt(v) : dash}</td>`; }).join('')}
+            ${dims.length > 1 ? `<td style="font-weight:800;">${fmt(x.t)}</td>` : ''}</tr>`).join('')}
+          <tr class="tbl-totals-row"><td>الإجمالي</td>${dims.map(c => `<td>${fmt(_expxSum(mRows.filter(r => r.dim === c.key)))}</td>`).join('')}${dims.length > 1 ? `<td>${fmt(mTotal)}</td>` : ''}</tr>
+        </tbody></table>`;
+    } else {
+      matrix.innerHTML = `<table>
+        <thead><tr><th>${qEsc(cfg.catLabel)}</th><th>العدد</th><th>الإجمالي</th><th style="min-width:120px;">النسبة</th><th>متوسط المصروف</th></tr></thead>
+        <tbody>
+          ${used.map(x => { const pct = mTotal ? x.t / mTotal * 100 : 0; return `<tr data-act="cat" data-v="${qEsc(x.c.key)}" style="cursor:pointer;${selStyle(x.c.key)}">
+            <td style="text-align:right;font-weight:700;white-space:nowrap;">${x.c.icon} ${qEsc(x.c.key)}</td>
+            <td>${x.cr.length}</td><td style="font-weight:800;">${fmt(x.t)}</td>
+            <td><div style="display:flex;align-items:center;gap:6px;"><div style="flex:1;height:8px;background:var(--cream);border-radius:4px;overflow:hidden;"><div style="width:${pct.toFixed(1)}%;height:100%;background:var(--gold);"></div></div><span style="font-size:11px;min-width:30px;">${Math.round(pct)}%</span></div></td>
+            <td>${fmt(x.t / x.cr.length)}</td></tr>`; }).join('')}
+          <tr class="tbl-totals-row"><td>الإجمالي</td><td>${mRows.length}</td><td>${fmt(mTotal)}</td><td>100%</td><td>${fmt(mRows.length ? mTotal / mRows.length : 0)}</td></tr>
+        </tbody></table>`;
+    }
   }
 
   // ── إجمالي كل شهر ──
-  const monthly = document.getElementById('car-monthly');
+  const monthly = document.getElementById(`${P}-monthly`);
   if (monthly) {
-    const months = Array.from(new Set(rows.map(r => (r.date || '').slice(0, 7)))).sort().reverse();
-    monthly.innerHTML = !rows.length ? '<div class="empty">مفيش مصاريف مطابقة للفلاتر</div>' : `
-      <table>
-        <thead><tr><th>الشهر</th>${cars.map(c => `<th>${qEsc(c.label)}</th>`).join('')}${cars.length > 1 ? '<th>الإجمالي</th>' : ''}</tr></thead>
+    const byMonth = new Map();
+    rows.forEach(r => { const k = (r.date || '').slice(0, 7); if (!byMonth.has(k)) byMonth.set(k, []); byMonth.get(k).push(r); });
+    const months = Array.from(byMonth.keys()).sort().reverse();
+    if (!rows.length) monthly.innerHTML = '<div class="empty">مفيش مصاريف مطابقة للفلاتر</div>';
+    else if (dims) {
+      monthly.innerHTML = `<table>
+        <thead><tr><th>الشهر</th>${dims.map(c => `<th>${qEsc(c.label)}</th>`).join('')}${dims.length > 1 ? '<th>الإجمالي</th>' : ''}</tr></thead>
+        <tbody>
+          ${months.map(ym => { const mr = byMonth.get(ym); return `<tr><td style="text-align:right;font-weight:700;white-space:nowrap;">${_expxMonthLabel(ym)}</td>
+            ${dims.map(c => { const v = _expxSum(mr.filter(r => r.dim === c.key)); return `<td>${v ? fmt(v) : dash}</td>`; }).join('')}
+            ${dims.length > 1 ? `<td style="font-weight:800;">${fmt(_expxSum(mr))}</td>` : ''}</tr>`; }).join('')}
+          <tr class="tbl-totals-row"><td>الإجمالي</td>${dims.map(c => `<td>${fmt(_expxSum(rows.filter(r => r.dim === c.key)))}</td>`).join('')}${dims.length > 1 ? `<td>${fmt(total)}</td>` : ''}</tr>
+        </tbody></table>`;
+    } else {
+      monthly.innerHTML = `<table>
+        <thead><tr><th>الشهر</th><th>العدد</th><th>الإجمالي</th><th>أكبر تصنيف</th></tr></thead>
         <tbody>
           ${months.map(ym => {
-            const mr = rows.filter(r => (r.date || '').slice(0, 7) === ym);
-            return `<tr><td style="text-align:right;font-weight:700;white-space:nowrap;">${_carMonthLabel(ym)}</td>
-              ${cars.map(c => { const v = sum(mr.filter(r => r.car === c.key)); return `<td>${v ? fmt(v) : '<span style="color:var(--muted);">-</span>'}</td>`; }).join('')}
-              ${cars.length > 1 ? `<td style="font-weight:800;">${fmt(sum(mr))}</td>` : ''}</tr>`;
+            const mr = byMonth.get(ym);
+            const top = cats.map(c => ({ c, t: _expxSum(mr.filter(r => r.cat === c.key)) })).sort((a, b) => b.t - a.t)[0];
+            return `<tr><td style="text-align:right;font-weight:700;white-space:nowrap;">${_expxMonthLabel(ym)}</td><td>${mr.length}</td><td style="font-weight:800;">${fmt(_expxSum(mr))}</td>
+              <td style="font-size:12px;white-space:nowrap;">${top && top.t ? `${top.c.icon} ${qEsc(top.c.key)} (${fmt(top.t)})` : dash}</td></tr>`;
           }).join('')}
-          <tr class="tbl-totals-row"><td>الإجمالي</td>${cars.map(c => `<td>${fmt(sum(rows.filter(r => r.car === c.key)))}</td>`).join('')}${cars.length > 1 ? `<td>${fmt(total)}</td>` : ''}</tr>
-        </tbody>
-      </table>`;
+          <tr class="tbl-totals-row"><td>الإجمالي</td><td>${rows.length}</td><td>${fmt(total)}</td><td></td></tr>
+        </tbody></table>`;
+    }
+  }
+
+  // ── البنود اللي اتصنفت "أخرى" — متجمعة بالوصف، عشان يبان إيه الكلمات اللي محتاجة تتضاف ──
+  const uncls = document.getElementById(`${P}-uncls`);
+  if (uncls) {
+    const other = _expxFilter(st, 'cat').filter(r => r.cat === 'أخرى');
+    const groups = new Map();
+    other.forEach(r => { const k = expxNorm(r.desc).replace(/\s+/g, ' ').trim(); const g = groups.get(k) || { desc: r.desc, n: 0, t: 0 }; g.n++; g.t += r.amount; groups.set(k, g); });
+    const list = Array.from(groups.values()).sort((a, b) => b.t - a.t).slice(0, 40);
+    uncls.innerHTML = !list.length ? '<div class="empty">كل البنود متصنفة 👌</div>' : `<table>
+      <thead><tr><th>الوصف</th><th>اتكرر</th><th>الإجمالي</th></tr></thead>
+      <tbody>${list.map(g => `<tr data-act="q" data-v="${qEsc(g.desc)}" style="cursor:pointer;" title="دوس عشان تعرض البند ده بس"><td style="text-align:right;">${qEsc(g.desc)}</td><td>${g.n}</td><td style="font-weight:800;">${fmt(g.t)}</td></tr>`).join('')}
+        <tr class="tbl-totals-row"><td>إجمالي "أخرى"</td><td>${other.length}</td><td>${fmt(_expxSum(other))}</td></tr></tbody></table>`;
   }
 
   // ── التفاصيل ──
-  const detail = document.getElementById('car-detail');
+  const detail = document.getElementById(`${P}-detail`);
   if (!detail) return;
   if (!rows.length) { detail.innerHTML = '<div class="empty">مفيش مصاريف مطابقة للفلاتر</div>'; return; }
-  const sorted = rows.slice();
-  const s = _carFilters.sort;
-  const byDate = (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (Number(a.id) || 0) - (Number(b.id) || 0));
-  if (s === 'date-asc') sorted.sort(byDate);
-  else if (s === 'amount-desc') sorted.sort((a, b) => b.amount - a.amount);
-  else if (s === 'amount-asc') sorted.sort((a, b) => a.amount - b.amount);
-  else sorted.sort((a, b) => byDate(b, a));
-  const groupByDay = s === 'date-desc' || s === 'date-asc';
+  const sorted = _expxSorted(st, rows);
+  const shown = sorted.slice(0, f.limit);
+  const groupByDay = f.groupDays && f.sort === 'date';
+  const th = (key, label, extra) => {
+    const arrow = f.sort === key ? (f.dir === 'asc' ? ' ▲' : ' ▼') : '';
+    return `<th data-act="sort" data-v="${key}" style="cursor:pointer;white-space:nowrap;${extra || ''}" title="ترتيب بالعمود ده">${label}${arrow}</th>`;
+  };
+  const cols = cfg.dims ? 8 : 7;
   const rowHtml = (r, i) => `<tr>
       <td style="color:var(--muted);font-size:11px;">${i + 1}</td>
       <td style="white-space:nowrap;">${qEsc(r.date || '-')}</td>
       <td style="white-space:nowrap;">${qEsc(r.day || '-')}</td>
       <td style="text-align:right;">${qEsc(r.desc)}</td>
-      <td>${_carPill(r.car)}</td>
-      <td style="white-space:nowrap;">${_carCatIcon(r.cat)} ${qEsc(r.cat)}</td>
+      ${cfg.dims ? `<td>${_expxDimPill(cfg, r.dim)}</td>` : ''}
+      <td style="white-space:nowrap;cursor:pointer;" data-act="cat" data-v="${qEsc(r.cat)}" title="فلتر على التصنيف ده">${_expxCatIcon(cfg, r.cat)} ${qEsc(r.cat)}</td>
       <td style="font-size:12px;color:var(--muted);">${qEsc(r.project || '-')}</td>
       <td style="font-weight:800;color:var(--red);white-space:nowrap;">${fmt(r.amount)}</td>
     </tr>`;
   let body = '';
   if (groupByDay) {
-    let n = 0, lastDate = null;
-    sorted.forEach(r => {
+    const dayTotals = new Map();
+    rows.forEach(r => { const d = dayTotals.get(r.date) || { n: 0, t: 0 }; d.n++; d.t += r.amount; dayTotals.set(r.date, d); });
+    let lastDate = null;
+    shown.forEach((r, i) => {
       if (r.date !== lastDate) {
         lastDate = r.date;
-        const dayRows = sorted.filter(x => x.date === r.date);
-        body += `<tr class="master-group-header"><td colspan="7" style="text-align:right;">${qEsc(r.day || '')} ${qEsc(r.date || 'بدون تاريخ')} — ${dayRows.length} مصروف</td><td style="white-space:nowrap;">${fmt(sum(dayRows))} ج</td></tr>`;
+        const d = dayTotals.get(r.date);
+        // ⚠️ الخلفية inline عشان قاعدة الصفوف الزوجية (tr:nth-child(even)) كانت بتفتّح نص عناوين الأيام
+        const hs = 'background:#3a2f22;color:var(--gold, #D4B483);';
+        body += `<tr class="master-group-header"><td colspan="${cols - 1}" style="text-align:right;${hs}">${qEsc(r.day || '')} ${qEsc(r.date || 'بدون تاريخ')} — ${d.n} مصروف</td><td style="white-space:nowrap;${hs}">${fmt(d.t)} ج</td></tr>`;
       }
-      body += rowHtml(r, n++);
+      body += rowHtml(r, i);
     });
   } else {
-    body = sorted.map(rowHtml).join('');
+    body = shown.map(rowHtml).join('');
   }
+  const moreBtn = sorted.length > shown.length
+    ? `<div style="text-align:center;margin-top:10px;"><button type="button" class="btn btn-outline btn-sm" data-act="more">عرض ${Math.min(EXPX_PAGE_SIZE, sorted.length - shown.length)} كمان (معروض ${shown.length} من ${sorted.length})</button></div>` : '';
   detail.innerHTML = `
-    <table style="min-width:820px;">
-      <thead><tr><th style="width:30px;">#</th><th>التاريخ</th><th>اليوم</th><th>الوصف</th><th>العربية</th><th>النوع</th><th>المشروع</th><th>المبلغ</th></tr></thead>
+    <table style="min-width:${cfg.dims ? 860 : 780}px;">
+      <thead><tr><th style="width:30px;">#</th>${th('date', 'التاريخ')}${th('day', 'اليوم')}${th('desc', 'الوصف')}${cfg.dims ? th('dim', qEsc(cfg.dimLabel)) : ''}${th('cat', qEsc(cfg.catLabel))}${th('project', 'المشروع')}${th('amount', 'المبلغ')}</tr></thead>
       <tbody>
         ${body}
-        <tr class="tbl-totals-row"><td colspan="7">الإجمالي (${rows.length} مصروف)</td><td style="white-space:nowrap;">${fmt(total)} ج</td></tr>
+        <tr class="tbl-totals-row"><td colspan="${cols - 1}">الإجمالي (${rows.length} مصروف)</td><td style="white-space:nowrap;">${fmt(total)} ج</td></tr>
       </tbody>
-    </table>`;
+    </table>${moreBtn}`;
+}
+
+// تنزيل الصفوف المعروضة (بكل الفلاتر والترتيب الحالي) كـ CSV بيفتح على Excel بالعربي مظبوط (BOM)
+function expxDownloadCsv(id){
+  const st = EXPX[id]; if (!st) return;
+  const rows = _expxSorted(st, _expxFilter(st));
+  if (!rows.length) { showToast('مفيش صفوف تتنزل', 'error'); return; }
+  const esc = v => { const s = String(v == null ? '' : v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const head = ['التاريخ', 'اليوم', 'الوصف'].concat(st.cfg.dims ? [st.cfg.dimLabel] : [], [st.cfg.catLabel, 'المشروع', 'المبلغ']);
+  const lines = [head.map(esc).join(',')].concat(rows.map(r =>
+    [r.date, r.day, r.desc].concat(st.cfg.dims ? [r.dim] : [], [r.cat, r.project, r.amount]).map(esc).join(',')));
+  lines.push(['', '', 'الإجمالي'].concat(st.cfg.dims ? [''] : [], ['', '', _expxSum(rows)]).map(esc).join(','));
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${st.cfg.fileName}_${st.f.from || ''}_${st.f.to || ''}.csv`;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
 
 async function renderFixedExp(token) {
