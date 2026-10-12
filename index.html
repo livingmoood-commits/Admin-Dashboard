@@ -9154,11 +9154,11 @@ const GEN_EXP_CATS = [
                                                         'نجار', 'اسطرجي', 'اسطورجي', 'مكنجي', 'قشرجي', 'صنايعي', 'نقاش', 'بواب', 'حارس', 'هيلبر'),
                                                     _gw('سلف', 'عامل', 'امن', 'جونيور', 'junior', 'اسطي', 'اسطا')) },
   { key:'سداد ديون',             icon:'📕', re:_gre(_gs('سداد', 'قسط', 'اقساط'), _gw('دين')) },
-  { key:'سيارات وبنزين',         icon:'🚗', re:_gre(_gs('بنزين', 'بانزين', 'سولار', 'وقود', 'جراج', 'سايس', 'مخالف', 'ترخيص', 'كاوتش', 'غسيل (?:ال)?عربي'), _gw('ركنه')) },
+  { key:'سيارات وبنزين',         icon:'🚗', re:_gre(_gs('بنزين', 'بانزين', 'سولار', 'وقود', 'جراج', 'سايس', 'مخالف', 'ترخيص', 'كاوتش', 'غسيل (?:ال)?عربي', 'غسيل (?:ال)?سيار', 'نضافه (?:ال)?عربي', 'نضافه (?:ال)?سيار', 'تلميع'), _gw('ركنه')) },
   { key:'إيجار',                 icon:'🏠', re:_gre(_gs('ايجار')) },
   { key:'فواتير ونت وموبايل',    icon:'💡', re:_gre(_gs('فاتور', 'كهربا(?!ئي)', 'انترنت', 'راوتر', 'رصيد', 'كارت شحن', 'موبايل', 'تليفون'), _gw('نور', 'نت', 'غاز')) },
   { key:'مواصلات ونقل',          icon:'🚚', re:_gre(_gs('مواصلات', 'توصيل', 'تاكسي', 'اوبر', 'uber', 'توكتوك', 'تكتك', 'تكاتك', 'ميكروباص', 'ونش', 'تروسيكل', 'اجره', 'مشوار', 'مشاوير', 'سكوتر'),
-                                                    _gw('نقل', 'نقله', 'شحن', 'كريم', 'توك', 'سياره', 'عربيه')) },
+                                                    _gw('نقل', 'نقله', 'شحن', 'careem', 'توك', 'سياره', 'عربيه')) },
   { key:'صيانة وتصليحات',        icon:'🔧', re:_gre(_gs('صيان', 'تصليح', 'اصلاح', 'سباك', 'كهربائي', 'ترميم'), _gw('فني')) },
   // الخامات والعدد والأدوات تصنيف واحد
   { key:'خامات وعدد',            icon:'🧱', re:_gre(
@@ -9226,32 +9226,76 @@ function _expxWordKey(t){
   return w;
 }
 
-/* ── أسماء الموظفين (من شيت المرتبات) → "مرتبات ومسحوبات" ──
- * بنجيب القايمة في الخلفية بعد ما الصفحة تفتح (من غير ما نأخر فتحها)، وأي بند لسه "أخرى" وفيه
- * اسم موظف بالكامل (زي "احمد هاشم") — أو الاسم الأول لوحده لو مفيش موظف تاني بنفس الاسم الأول —
- * بيتحسب مرتبات. الشركاء التلاتة مستبعدين (ليهم تصنيفهم). */
-let EXPX_EMP_RE = null, EXPX_EMP_LOADED = false;
-function _expxBuildEmpRe(names){
+/* ── أسماء الموظفين → "مرتبات ومسحوبات" ──
+ * ⚠️ تعديل 2026-10-12: الأسامي بتيجي من 3 مصادر (كلها في الخلفية من غير ما تأخر فتح الصفحة):
+ *   1) شيت المرتبات الحالي (listEmployees).
+ *   2) شيتات "تفاصيل" لكل شهر موجود في المصاريف (payrollListDetailsForMonth) — عشان اللي ساب الشغل
+ *      ومش موجود في شيت الشهر ده يتعرف برضه.
+ *   3) المصاريف نفسها: أي بند متصنف مرتبات زي "مرتب احمد هاشم" / "سلفه يوسف مجدي" بناخد الاسم اللي بعد
+ *      الكلمة (كلمتين) ونعتبره موظف.
+ * أي بند لسه "أخرى" وفيه اسم موظف (الاسم كامل، أو أول كلمتين منه، أو الاسم الأول لوحده لو مفيش موظف
+ * تاني بنفس الاسم الأول) بيتحسب مرتبات. الشركاء التلاتة مستبعدين (ليهم تصنيفهم). */
+let EXPX_EMP_RE = null, EXPX_EMP_LOADED = false, EXPX_EMP_SHEET = [];
+const EXPX_SAL_KEYS = ['مرتب', 'سلف', 'يوميه', 'يوميات', 'مسحوب', 'اسبوعيه', 'اجر', 'اجور', 'حافز', 'مكافاه', 'سهره', 'سهرات', 'باقي مرتب'];
+const EXPX_NAME_BAD = new Set(['شهر', 'الشهر', 'اسبوع', 'الاسبوع', 'يوم', 'ايام', 'باقي', 'جزء', 'من', 'عن', 'الي', 'مع', 'كامل', 'شهريه', 'اسبوعي', 'اسبوعيه',
+  'يناير', 'فبراير', 'مارس', 'ابريل', 'مايو', 'يونيو', 'يوليو', 'اغسطس', 'سبتمبر', 'اكتوبر', 'نوفمبر', 'ديسمبر', 'عم', 'اسطي', 'اسطا', 'استاذ', 'مهندس', 'م']);
+function _expxNameTok(t){ return (t.length >= 5 && t.startsWith('ل') && !t.startsWith('لل')) ? t.slice(1) : t; }
+function _expxHarvestNames(rows){
+  const out = new Set();
+  rows.filter(r => r.cat === 'مرتبات ومسحوبات').forEach(r => {
+    const toks = _expxPad(r.desc).trim().split(' ');
+    toks.forEach((t, i) => {
+      const w = _expxWordKey(t.replace(/^[وب]/, ''));
+      if (!EXPX_SAL_KEYS.some(k => w.startsWith(k) || t.startsWith(k))) return;
+      let j = i + 1;
+      while (j < toks.length && (EXPX_NAME_BAD.has(toks[j]) || EXPX_SAL_KEYS.some(k => toks[j].startsWith(k)) || /^\d+$/.test(toks[j]) || toks[j] === 'ل')) j++;
+      const n1 = toks[j] ? _expxNameTok(toks[j]) : '', n2 = toks[j + 1] || '';
+      if (n1.length < 3 || n2.length < 3 || /\d/.test(n1 + n2) || EXPX_NAME_BAD.has(n1) || EXPX_NAME_BAD.has(n2) || EXPX_STOPWORDS.has(n1) || (EXPX_STOPWORDS.has(n2) && n2 !== 'علي')) return;
+      const pair = n1 + ' ' + n2;
+      if (_expxCategory(GEN_EXP_CATS, pair) !== 'أخرى') return; // لو الكلمتين نفسهم كلام تصنيف (خامات/أكل...) يبقوا مش اسم
+      out.add(pair);
+    });
+  });
+  return Array.from(out);
+}
+function _expxBuildEmpRe(names, harvested){
   const partners = (typeof PW_PARTNERS !== 'undefined' ? PW_PARTNERS : ['عمر برعي', 'احمد خلف', 'محمود برعي']).map(p => expxNorm(p).trim());
   const partnerFirst = new Set(partners.map(p => p.split(' ')[0]));
+  const clean = n => expxNorm(n).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
   const full = new Set(), firstCount = new Map();
-  names.map(n => expxNorm(n).replace(/[^\p{L}\p{N}]+/gu, ' ').trim()).filter(Boolean).forEach(n => {
+  const addFull = n => { const parts = n.split(' '); if (parts.length < 2 || partners.includes(n) || partners.includes(parts.slice(0, 2).join(' '))) return;
+    full.add(n); full.add(parts.slice(0, 2).join(' ')); };
+  Array.from(new Set(names.map(clean).filter(Boolean))).forEach(n => {
     if (partners.includes(n)) return;
-    const parts = n.split(' ');
-    if (parts.length >= 2) full.add(n);
-    firstCount.set(parts[0], (firstCount.get(parts[0]) || 0) + 1);
+    addFull(n);
+    const f0 = n.split(' ')[0];
+    firstCount.set(f0, (firstCount.get(f0) || 0) + 1);
   });
+  (harvested || []).map(clean).filter(Boolean).forEach(addFull);
   const firsts = Array.from(firstCount.entries()).filter(([w, c]) => c === 1 && w.length >= 3 && !partnerFirst.has(w) && !EXPX_STOPWORDS.has(w)).map(([w]) => w);
-  const alts = Array.from(full).concat(firsts).map(_expxReEsc);
+  const alts = Array.from(full).sort((x, y) => y.length - x.length).concat(firsts).map(_expxReEsc);
   return alts.length ? new RegExp(' ' + _GP + '(?:' + alts.join('|') + ') ') : null;
 }
+// بيعيد بناء الـ regex من أسامي الشيتات + الأسامي اللي في المصاريف نفسها
+function _expxRebuildEmp(){
+  const st = EXPX.gen;
+  EXPX_EMP_RE = _expxBuildEmpRe(EXPX_EMP_SHEET, st ? _expxHarvestNames(st.rows) : []);
+}
 function _expxLoadEmployees(token){
+  const st = EXPX.gen;
+  // الأسامي اللي في المصاريف نفسها — فورًا من غير انتظار السيرفر
+  _expxRebuildEmp();
+  if (EXPX_EMP_RE && st) _expxReclassify('gen');
   if (EXPX_EMP_LOADED) return;
-  apiGet('listEmployees').then(res => {
-    EXPX_EMP_RE = _expxBuildEmpRe((res.employees || []).map(e => String(e.name || '')));
+  const months = st ? Array.from(new Set(st.rows.map(r => parseInt(String(r.date || '').slice(5, 7), 10)).filter(m => m >= 1 && m <= 12))) : [];
+  const reqs = [apiGet('listEmployees').then(res => res.employees || []).catch(() => [])]
+    .concat(months.map(m => apiGet('payrollListDetailsForMonth', { monthNum: m }).then(res => res.employees || []).catch(() => [])));
+  Promise.all(reqs).then(lists => {
+    EXPX_EMP_SHEET = Array.from(new Set([].concat(...lists).map(e => String(e.name || '')).filter(Boolean)));
     EXPX_EMP_LOADED = true;
+    _expxRebuildEmp();
     if (EXPX.gen && !isStaleNav(token)) _expxReclassify('gen');
-  }).catch(() => { /* مش حرج — التصنيف بالكلمات شغال عادي من غيرها */ });
+  });
 }
 
 const EXPX_AR_DAYS = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
