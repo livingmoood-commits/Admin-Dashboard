@@ -8010,9 +8010,9 @@ async function renderProjectsTab(token) {
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
           <h3 style="margin:0;">ملخص تكلفة المشاريع (${projects.length})</h3>
         </div>
-        ${fx ? `<p style="font-size:12.5px;color:var(--muted);margin:-6px 0 12px;">"إجمالي التكلفة" و"صافي الربح" شاملين نصيب كل مشروع من المصاريف الثابتة (إيجار + مصاريف عامة) — موزعة شهريًا بنسبة ساعات الشغل. <a href="#" onclick="event.preventDefault();goTo('fixedExp')" style="color:var(--gold);font-weight:700;">تفاصيل التوزيع ←</a></p>` : ''}
-        ${projects.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>ساعات العمالة</th><th>تكلفة العمالة</th><th>تكلفة الخامات</th><th>إجمالي المصاريف</th>${fx ? '<th>مصاريف ثابتة (نصيب)</th>' : ''}<th>إجمالي التكلفة</th><th>الإيرادات</th><th>صافي الربح</th></tr></thead>
-        <tbody>${projects.map(p => { const a = adj(p); return `<tr class="row-clickable" onclick="showProjectDetail('${p.project.replace(/'/g,"\\'")}')"><td>${p.project}</td><td>${fmt(p.laborHours)}</td><td>${fmt(p.laborCost)} ج</td><td>${fmt(p.materialsCost)} ج</td><td>${fmt(p.projectExpenses || 0)} ج</td>${fx ? `<td>${a.share ? fmt(a.share) + ' ج <span style="font-size:11px;color:var(--muted);">(' + fxPct(a.pctOfCost) + ')</span>' : '—'}</td>` : ''}<td><b>${fmt(a.total)} ج</b></td>
+        ${fx ? `<p style="font-size:12.5px;color:var(--muted);margin:-6px 0 12px;">إجمالي التكلفة = عمالة المشروع + مصاريف المشروع + ديون المشروع (الباقي) + نصيبه من الثابتة والعامة (إيجار + مصاريف عامة موزعة شهريًا بنسبة ساعات الشغل). <a href="#" onclick="event.preventDefault();goTo('fixedExp')" style="color:var(--gold);font-weight:700;">تفاصيل التوزيع ←</a></p>` : ''}
+        ${projects.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>ساعات العمالة</th><th>تكلفة العمالة</th>${fx ? '' : '<th>تكلفة الخامات</th>'}<th>مصاريف المشروع</th>${fx ? '<th>ديون المشروع</th><th>ثابتة وعامة (نصيب)</th>' : ''}<th>إجمالي التكلفة</th><th>الإيرادات</th><th>صافي الربح</th></tr></thead>
+        <tbody>${projects.map(p => { const a = adj(p); return `<tr class="row-clickable" onclick="showProjectDetail('${p.project.replace(/'/g,"\\'")}')"><td>${p.project}</td><td>${fmt(p.laborHours)}</td><td>${fmt(a.labor)} ج</td>${fx ? '' : `<td>${fmt(p.materialsCost)} ج</td>`}<td>${fmt(a.expenses)} ج</td>${fx ? `<td>${a.debt ? fmt(a.debt) + ' ج' : '—'}</td><td>${a.share ? fmt(a.share) + ' ج <span style="font-size:11px;color:var(--muted);">(' + fxPct(a.pctOfCost) + ')</span>' : '—'}</td>` : ''}<td><b>${fmt(a.total)} ج</b></td>
           <td>${p.financials ? fmt(p.financials.revenue)+' ج' : '—'}</td>
           <td>${a.net===null ? '—' : `<b style="color:${a.net>=0?'var(--green)':'var(--red)'}">${fmt(a.net)} ج</b>`}</td></tr>`; }).join('')}</tbody></table></div>`
         : `<div class="empty">مفيش مشاريع لسه — من صفحة "متابعة صرف المشاريع" دوس "+ مشروع جديد" عشان تضيف أول مشروع</div>`}
@@ -8197,22 +8197,22 @@ async function showProjectDetail(name){
   const box = document.getElementById('projectDetailBox');
   box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
-    const d = await apiGet('getProjectFullSummary', { name });
+    const [d, fx] = await Promise.all([apiGet('getProjectFullSummary', { name }), fxLoadModel().catch(() => null)]);
     _projectDetailCache = d;
+    const fa = fxAdjust(d, fx, d.project);
     box.innerHTML = `
       <div class="panel">
         <h3>تفاصيل مشروع: ${d.project}</h3>
+        ${fxCostEqHtml(fa)}
         <div class="cards">
-          <div class="card clickable" onclick="showProjectLaborModal_('${qEscJs(d.project)}')"><div class="label">تكلفة العمالة — دوس للتفاصيل</div><div class="value gold">${fmt(d.laborCost)} ج</div></div>
-          <div class="card clickable" onclick="showProjectLaborModal_('${qEscJs(d.project)}')"><div class="label">ساعات العمالة</div><div class="value">${fmt(d.laborHours)} س</div></div>
-          <div class="card clickable" onclick="showProjectMaterialsModal(_projectDetailCache)"><div class="label">تكلفة الخامات</div><div class="value gold">${fmt(d.materialsCost)} ج</div></div>
-          <div class="card clickable" title="اعرض البنود" onclick="showProjectExpensesModal_('${qEscJs(d.project)}')"><div class="label">إجمالي المصاريف (متابعة صرف المشاريع) — دوس للتفاصيل</div><div class="value gold">${fmt(d.projectExpenses || 0)} ج</div></div>
-          ${(d.costsTotal || 0) + (d.installCost || 0) + (d.productsLaborCost || 0) > 0 ? `<div class="card clickable" title="اعرض البنود" onclick="showProjectOtherCostsModal_(_projectDetailCache)"><div class="label">تكاليف تانية مسجلة (التكاليف/تركيب) — دوس للتفاصيل</div><div class="value gold">${fmt((d.costsTotal || 0) + (d.installCost || 0) + (d.productsLaborCost || 0))} ج</div></div>` : ''}
-          <div class="card"><div class="label">إجمالي التكلفة (عمالة + خامات + مصاريف + تكاليف)</div><div class="value green">${fmt(d.totalCost)} ج</div></div>
+          ${fxCostSrcCardsHtml(fa, d.project)}
+          ${fa.legacy ? `<div class="card clickable" onclick="showProjectMaterialsModal(_projectDetailCache)"><div class="label">تكلفة الخامات</div><div class="value gold">${fmt(d.materialsCost)} ج</div></div>` : ''}
+          <div class="card"><div class="label">إجمالي التكلفة</div><div class="value green">${fmt(fa.total)} ج</div>${fx ? `<div style="font-size:11.5px;color:var(--muted);margin-top:4px;">مباشرة ${fmt(fa.direct)} + ثابتة ${fmt(fa.share)}</div>` : ''}</div>
           ${d.financials ? `<div class="card clickable" onclick="showProjectRevenueModal_('${qEscJs(d.project)}')"><div class="label">الإيرادات المسجلة — دوس للتفاصيل والتعديل</div><div class="value green">${fmt(d.financials.revenue)} ج</div></div>` : ''}
-          ${d.netProfit!==null ? `<div class="card"><div class="label">صافي الربح</div><div class="value ${d.netProfit>=0?'green':'red'}">${fmt(d.netProfit)} ج</div></div>` : `<div class="card"><div class="label">صافي الربح</div><div class="value" style="color:var(--muted);font-size:13px;">لسه مفيش إيرادات مسجلة</div></div>`}
+          ${fa.net!==null ? `<div class="card"><div class="label">صافي الربح</div><div class="value ${fa.net>=0?'green':'red'}">${fmt(fa.net)} ج</div></div>` : `<div class="card"><div class="label">صافي الربح</div><div class="value" style="color:var(--muted);font-size:13px;">لسه مفيش إيرادات مسجلة</div></div>`}
         </div>
-        <h3 style="margin-top:6px;">آخر سجلات الساعات على المشروع</h3>
+        ${fx ? `<h3 style="margin-top:6px;">المصاريف الثابتة — نصيب ${qEsc(d.project)} شهر بشهر</h3>${fxProjectTableHtml(fx, d.project)}` : ''}
+        <h3 style="margin-top:14px;">آخر سجلات الساعات على المشروع</h3>
         ${d.recentHours.length ? `<div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>الموظف</th><th>ساعات</th><th>سهرة</th><th>التكلفة</th></tr></thead>
         <tbody>${d.recentHours.map(h=>`<tr><td>${h.date}</td><td>${h.employee}</td><td>${fmt(h.hours)}</td><td>${fmt(h.eveningAmount)} ج</td><td>${fmt(h.cost)} ج</td></tr>`).join('')}</tbody></table></div>`
         : `<div class="empty">مفيش سجلات ساعات على المشروع ده</div>`}
@@ -9310,12 +9310,9 @@ async function renderCostProjectSummary(project){
            الموحّدة/أرشيف قديم لو فيه). -->
       <div class="panel" style="background:var(--cream);border:1.5px dashed var(--border);margin-bottom:16px;">
         <h3 style="margin-bottom:10px;">تفصيل التكلفة حسب المصدر</h3>
+        ${fxCostEqHtml(fa)}
         <div class="cost-src-cards">
-          <div class="card clickable" onclick="showProjectLaborModal_('${qEscJs(project)}')"><div class="label">عمالة (ساعات وسهرات — من المرتبات)</div><div class="value gold">${fmt(d.laborCost)} ج</div></div>
-          <div class="card clickable" onclick="showProjectExpensesModal_('${qEscJs(project)}')"><div class="label">إجمالي المصاريف (متابعة صرف المشاريع)</div><div class="value gold">${fmt(d.projectExpenses || 0)} ج</div></div>
-          <div class="card clickable" onclick="showProjectOtherCostsModal_(window._costSumD)"><div class="label">التكاليف الموحّدة (بنود + عمالة مسجلة هنا)</div><div class="value gold">${fmt(d.costsTotal)} ج</div></div>
-          ${fx ? `<div class="card clickable" onclick="fxShowProjectModal('${qEscJs(project)}')"><div class="label">مصاريف ثابتة (نصيب المشروع — ${fxPct(fa.pctOfCost)} من التكلفة)</div><div class="value gold">${fmt(fa.share)} ج</div></div>` : ''}
-          ${archiveCost > 0.01 ? `<div class="card clickable" onclick="showProjectOtherCostsModal_(window._costSumD)"><div class="label">أرشيف قديم (خامات/تركيب)</div><div class="value gold">${fmt(archiveCost)} ج</div></div>` : ''}
+          ${fxCostSrcCardsHtml(fa, project)}
         </div>
       </div>
 
@@ -9661,13 +9658,9 @@ async function renderCostSummaryBody_(){
 
       <div class="panel" style="background:var(--cream);border:1.5px dashed var(--border);margin-bottom:16px;">
         <h3 style="margin-bottom:10px;">تفصيل التكلفة حسب المصدر</h3>
+        ${fxCostEqHtml(fa)}
         <div class="cost-src-cards">
-          <div class="card clickable" onclick="showProjectLaborModal_('${qEscJs(project)}')"><div class="label">عمالة (ساعات وسهرات)</div><div class="value gold">${fmt(d.laborCost)} ج</div></div>
-          <div class="card clickable" onclick="showProjectMaterialsModal(window._costSumD)"><div class="label">خامات (المنتجات)</div><div class="value gold">${fmt(d.materialsCost)} ج</div></div>
-          <div class="card clickable" onclick="showProjectExpensesModal_('${qEscJs(project)}')"><div class="label">إجمالي المصاريف (متابعة صرف المشاريع)</div><div class="value gold">${fmt(d.projectExpenses || 0)} ج</div></div>
-          <div class="card clickable" onclick="showProjectOtherCostsModal_(window._costSumD)"><div class="label">التكاليف الموحّدة (بنود + عمالة يدوية)</div><div class="value gold">${fmt(d.costsTotal)} ج</div></div>
-          ${archiveCost > 0.01 ? `<div class="card clickable" onclick="showProjectOtherCostsModal_(window._costSumD)"><div class="label">أرشيف قديم</div><div class="value gold">${fmt(archiveCost)} ج</div></div>` : ''}
-          ${fx ? `<div class="card clickable" onclick="fxShowProjectModal('${qEscJs(project)}')"><div class="label">مصاريف ثابتة (نصيب — ${fxPct(fa.pctOfCost)} من التكلفة)</div><div class="value gold">${fmt(fa.share)} ج</div></div>` : ''}
+          ${fxCostSrcCardsHtml(fa, project)}
         </div>
       </div>
 
@@ -11358,8 +11351,9 @@ async function fxLoadModel(force){
   if (!force && FX_MODEL && Date.now() - FX_MODEL_AT < FX_TTL_MS) return FX_MODEL;
   if (FX_MODEL_P) return FX_MODEL_P;
   FX_MODEL_P = (async () => {
-    const [movesData, fixedRes, hoursRes, projRes] = await Promise.all([
-      apiGet('getTreasuryMoves', {}), apiGet('listFixedExpenses'), apiGet('listHoursEntries', { filters: {} }), apiGet('listProjects')
+    const [movesData, fixedRes, hoursRes, projRes, debtsRes] = await Promise.all([
+      apiGet('getTreasuryMoves', {}), apiGet('listFixedExpenses'), apiGet('listHoursEntries', { filters: {} }), apiGet('listProjects'),
+      apiGet('listDebts').catch(() => ({ debts: [] }))
     ]);
     // ── تصنيف كل مصاريف الخزنة بنفس محرك صفحة "تصنيف المصروفات" (شامل أسامي الموظفين → مرتبات) ──
     _expxRefreshGenCats();
@@ -11426,7 +11420,14 @@ async function fxLoadModel(force){
       return { key, label: fxMonthLabel(key), manual: manualM, overhead: ohTotal, total, rows: oh, byCat: Object.values(byCat).sort((a, b) => b.t - a.t),
         totalHours, shares, allocated: totalHours ? total : 0, unallocated: totalHours ? 0 : total };
     });
-    FX_MODEL = { months, byProject, manual, manualTotal, selCats, cfgItems, general,
+    // ديون كل مشروع (عمود "المشروع" في شيت الديون) — بيتحسب الباقي بس، لأن اللي اتسدد من الخزنة على المشروع داخل أصلًا في مصاريفه
+    const debtsByProject = {};
+    ((debtsRes && debtsRes.debts) || []).forEach(x => {
+      const pj = String(x.project || '').trim(); if (!pj) return;
+      const b = debtsByProject[pj] || (debtsByProject[pj] = { total: 0, paid: 0, remaining: 0, items: [] });
+      b.total += Number(x.total) || 0; b.paid += Number(x.paid) || 0; b.remaining += Math.max(0, Number(x.remaining) || 0); b.items.push(x);
+    });
+    FX_MODEL = { months, byProject, debtsByProject, manual, manualTotal, selCats, cfgItems, general,
       grandTotal: months.reduce((s, m) => s + m.total, 0), grandAllocated: months.reduce((s, m) => s + m.allocated, 0),
       grandUnallocated: months.reduce((s, m) => s + m.unallocated, 0) };
     FX_MODEL_AT = Date.now();
@@ -11649,8 +11650,8 @@ function fxProjectTableHtml(fx, project){
   const p = fx && fx.byProject[String(project || '').trim()];
   if (!p || !p.months.length) return `<div class="empty">مفيش نصيب مصاريف ثابتة للمشروع ده (مفيش ساعات شغل متسجلة عليه)</div>`;
   const ms = p.months.slice().sort((a, b) => b.key.localeCompare(a.key));
-  return `<div class="tbl-wrap"><table><thead><tr><th>الشهر</th><th>ساعات المشروع</th><th>ساعات كل المشاريع</th><th>النسبة</th><th>إجمالي ثابت الشهر</th><th>نصيب المشروع</th></tr></thead><tbody>
-    ${ms.map(m => `<tr><td>${fxMonthLabel(m.key)}</td><td>${fmt(m.hours)} س</td><td>${fmt(m.totalHours)} س</td><td>${fxPct(m.pct)}</td><td>${fmt(m.monthTotal)} ج</td><td><b>${fmt(m.share)} ج</b></td></tr>`).join('')}
+  return `<p style="font-size:12px;color:var(--muted);margin:0 0 8px;">🔍 دوس على أي شهر تشوف بنوده بالظبط (إيجار، مصاريف الخزنة سطر سطر) وساعات كل مشروع وإزاي النصيب اتحسب.</p><div class="tbl-wrap"><table><thead><tr><th>الشهر</th><th>ساعات المشروع</th><th>ساعات كل المشاريع</th><th>النسبة</th><th>إجمالي ثابت الشهر</th><th>نصيب المشروع</th></tr></thead><tbody>
+    ${ms.map(m => `<tr class="fx-prow" style="cursor:pointer;" title="دوس عشان تشوف بنود الشهر وطريقة الحساب" onclick="fxShowMonthModal('${m.key}','${qEscJs(p.project)}')"><td><span style="color:var(--gold);font-weight:800;text-decoration:underline;">${fxMonthLabel(m.key)}</span> 🔍</td><td>${fmt(m.hours)} س</td><td>${fmt(m.totalHours)} س</td><td>${fxPct(m.pct)}</td><td>${fmt(m.monthTotal)} ج</td><td><b>${fmt(m.share)} ج</b></td></tr>`).join('')}
   </tbody><tfoot><tr class="tbl-totals-row"><td>الإجمالي</td><td>${fmt(p.hours)} س</td><td colspan="3"></td><td>${fmt(p.total)} ج</td></tr></tfoot></table></div>`;
 }
 async function fxShowProjectModal(project){
@@ -11662,12 +11663,94 @@ async function fxShowProjectModal(project){
       <div style="display:flex;justify-content:flex-end;margin-top:12px;"><button type="button" class="btn btn-outline" onclick="closeCardModal()">قفل</button></div>`);
   } catch(err){ showToast('خطأ: ' + (err.message || err), 'error'); }
 }
-// كروت التكلفة (إجمالي/ربح) بعد إضافة نصيب الثابتة — بترجع { total, net, share, pctOfCost }
+// مودال تفاصيل شهر واحد: البنود اليدوي + كل سطر من الخزنة + ساعات كل مشروع + معادلة نصيب المشروع (لو متبعت)
+async function fxShowMonthModal(key, project){
+  try {
+    const fx = await fxLoadModel();
+    const m = fx.months.find(x => x.key === key);
+    if (!m) { showToast('الشهر ده مش موجود', 'error'); return; }
+    project = String(project || '').trim();
+    const me = project ? m.shares.find(s => s.project === project) : null;
+    const tdR = 'style="text-align:right;"';
+    const manual = m.manual ? fx.manual : [];
+    const rows = m.rows.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.amount - a.amount);
+    const calc = me ? `<div style="background:rgba(201,162,92,.16);border-right:4px solid var(--gold);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:14px;line-height:1.9;">
+        <b>إزاي نصيب ${qEsc(project)} اتحسب؟</b><br>
+        إجمالي ثابت الشهر <b>${fmt(m.total)} ج</b> × (ساعات المشروع <b>${fmt(me.hours)} س</b> ÷ ساعات كل المشاريع <b>${fmt(m.totalHours)} س</b> = <b>${fxPct(me.pct)}</b>)
+        = <b style="color:var(--gold);font-size:16px;">${fmt(me.share)} ج</b></div>` : '';
+    openCardModal(`<h3 style="margin-bottom:6px;">تفاصيل المصاريف الثابتة — ${qEsc(m.label)}</h3>
+      ${calc}
+      <div class="cards" style="margin-bottom:10px;">
+        <div class="card"><div class="label">بنود ثابتة يدوي</div><div class="value gold">${fmt(m.manual)} ج</div></div>
+        <div class="card"><div class="label">مصاريف عامة من الخزنة</div><div class="value gold">${fmt(m.overhead)} ج</div><div style="font-size:11.5px;color:var(--muted);margin-top:4px;">${rows.length} بند</div></div>
+        <div class="card"><div class="label">إجمالي ثابت الشهر</div><div class="value red">${fmt(m.total)} ج</div></div>
+      </div>
+      <h4 style="margin:12px 0 6px;">1) البنود الثابتة اليدوي (إيجار وغيره)</h4>
+      ${manual.length ? `<div class="tbl-wrap"><table><thead><tr><th>البند</th><th>ملاحظات</th><th>المبلغ</th></tr></thead><tbody>
+        ${manual.map(i => `<tr><td ${tdR}>${qEsc(i.name)}</td><td ${tdR}>${qEsc(i.notes || '—')}</td><td>${fmt(i.amount)} ج</td></tr>`).join('')}
+      </tbody><tfoot><tr class="tbl-totals-row"><td colspan="2">الإجمالي</td><td>${fmt(m.manual)} ج</td></tr></tfoot></table></div>` : `<div class="empty">مفيش بنود يدوي في الشهر ده</div>`}
+      <h4 style="margin:14px 0 6px;">2) المصاريف العامة من الخزنة — حسب التصنيف</h4>
+      ${m.byCat.length ? `<div class="tbl-wrap"><table><thead><tr><th>التصنيف</th><th>العدد</th><th>المبلغ</th><th>من الشهر</th></tr></thead><tbody>
+        ${m.byCat.map(c => `<tr><td ${tdR}>${_expxCatIcon(EXPX_CFG.gen, c.cat)} ${qEsc(c.cat)}</td><td>${c.n}</td><td>${fmt(c.t)} ج</td><td>${m.total ? fxPct(c.t / m.total) : '—'}</td></tr>`).join('')}
+      </tbody></table></div>` : `<div class="empty">مفيش مصاريف عامة داخلة في الشهر ده</div>`}
+      ${rows.length ? `<h4 style="margin:14px 0 6px;">3) كل سطر من الخزنة (${rows.length} بند)</h4>
+      <div class="tbl-wrap" style="max-height:340px;overflow:auto;"><table><thead><tr><th>التاريخ</th><th>الوصف</th><th>التصنيف</th><th>المبلغ</th></tr></thead><tbody>
+        ${rows.map(r => `<tr><td style="white-space:nowrap;">${qEsc(r.date)}</td><td ${tdR}>${qEsc(r.desc)}</td><td>${_expxCatIcon(EXPX_CFG.gen, r.cat)} ${qEsc(r.cat)}</td><td>${fmt(r.amount)} ج</td></tr>`).join('')}
+      </tbody><tfoot><tr class="tbl-totals-row"><td colspan="3">الإجمالي</td><td>${fmt(m.overhead)} ج</td></tr></tfoot></table></div>` : ''}
+      <h4 style="margin:14px 0 6px;">${rows.length ? 4 : 3}) التوزيع على المشاريع (حسب ساعات الشغل العادية في الشهر)</h4>
+      ${m.shares.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>الساعات</th><th>النسبة</th><th>النصيب</th></tr></thead><tbody>
+        ${m.shares.map(s => `<tr${s.project === project ? ' style="background:rgba(201,162,92,.18);font-weight:800;"' : ''}><td ${tdR}>${qEsc(s.project)}${s.project === project ? ' ◀' : ''}</td><td>${fmt(s.hours)} س</td><td>${fxPct(s.pct)}</td><td><b>${fmt(s.share)} ج</b></td></tr>`).join('')}
+      </tbody><tfoot><tr class="tbl-totals-row"><td>الإجمالي</td><td>${fmt(m.totalHours)} س</td><td>100%</td><td>${fmt(m.allocated)} ج</td></tr></tfoot></table></div>`
+      : `<div class="empty">مفيش ساعات شغل على مشاريع في الشهر ده — المبلغ مش متوزع</div>`}
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
+        ${project ? `<button type="button" class="btn btn-outline" onclick="fxShowProjectModal('${qEscJs(project)}')">→ رجوع لكل الشهور</button>` : ''}
+        <button type="button" class="btn btn-outline" onclick="closeCardModal()">قفل</button>
+      </div>`);
+    document.getElementById('cardDetailBody').classList.add('cd-wide');
+  } catch(err){ showToast('خطأ: ' + (err.message || err), 'error'); }
+}
+// تكلفة المشروع = عمالة المشروع + مصاريف المشروع + ديون المشروع (الباقي) + نصيبه من الثابتة والعامة (بالساعات)
+// بترجع { labor, expenses, debt, share, direct, total, net, pctOfCost } — لو موديل الثابتة مش متاح بترجع أرقام السيرفر زي ما هي
 function fxAdjust(d, fx, project){
-  const share = fxShareOf(fx, project);
-  const total = (Number(d.totalCost) || 0) + share;
-  const net = d.netProfit === null || d.netProfit === undefined ? null : d.netProfit - share;
-  return { share, total, net, pctOfCost: total ? share / total : 0, direct: Number(d.totalCost) || 0 };
+  if (!fx) return { share: 0, total: Number(d.totalCost) || 0, net: d.netProfit === undefined ? null : d.netProfit, pctOfCost: 0, direct: Number(d.totalCost) || 0,
+    labor: (Number(d.laborCost) || 0) + (Number(d.costsLaborCost) || 0), expenses: Number(d.projectExpenses) || 0, debt: 0, legacy: true };
+  const key = String(project || '').trim();
+  const share = fxShareOf(fx, key);
+  const labor = (Number(d.laborCost) || 0) + (Number(d.costsLaborCost) || 0);
+  const expenses = Number(d.projectExpenses) || 0;
+  const db = fx.debtsByProject && fx.debtsByProject[key];
+  const debt = db ? db.remaining : 0;
+  const direct = labor + expenses + debt;
+  const total = direct + share;
+  const net = d.financials ? (Number(d.financials.revenue) || 0) - total : null;
+  return { share, total, net, pctOfCost: total ? share / total : 0, direct, labor, expenses, debt };
+}
+// سطر المعادلة اللي بيشرح الإجمالي
+function fxCostEqHtml(fa){
+  if (fa.legacy) return '';
+  return `<div style="font-size:12.5px;color:var(--muted);margin:-2px 0 12px;line-height:1.9;">إجمالي التكلفة = عمالة <b>${fmt(fa.labor)}</b> + مصاريف المشروع <b>${fmt(fa.expenses)}</b> + ديون المشروع <b>${fmt(fa.debt)}</b> + ثابتة وعامة <b>${fmt(fa.share)}</b> = <b style="color:var(--gold);">${fmt(fa.total)} ج</b></div>`;
+}
+// الكروت الأربعة لمصادر التكلفة (كل كارت بيفتح تفاصيله)
+function fxCostSrcCardsHtml(fa, project){
+  const pj = qEscJs(project);
+  return `<div class="card clickable" title="اعرض التفاصيل" onclick="showProjectLaborModal_('${pj}')"><div class="label">عمالة المشروع (ساعات وسهرات) — دوس للتفاصيل</div><div class="value gold">${fmt(fa.labor)} ج</div></div>
+    <div class="card clickable" title="اعرض البنود" onclick="showProjectExpensesModal_('${pj}')"><div class="label">مصاريف المشروع — دوس للتفاصيل</div><div class="value gold">${fmt(fa.expenses)} ج</div></div>
+    ${fa.legacy ? '' : `<div class="card clickable" title="اعرض الديون" onclick="fxShowProjectDebtsModal('${pj}')"><div class="label">ديون المشروع (الباقي) — دوس للتفاصيل</div><div class="value ${fa.debt ? 'red' : 'gold'}">${fmt(fa.debt)} ج</div></div>
+    <div class="card clickable" title="اعرض النصيب شهر بشهر" onclick="fxShowProjectModal('${pj}')"><div class="label">ثابتة وعامة (نصيب بالساعات — ${fxPct(fa.pctOfCost)}) — دوس للتفاصيل</div><div class="value gold">${fmt(fa.share)} ج</div></div>`}`;
+}
+async function fxShowProjectDebtsModal(project){
+  try {
+    const fx = await fxLoadModel();
+    const b = fx.debtsByProject[String(project || '').trim()];
+    const tdR = 'style="text-align:right;"';
+    openCardModal(`<h3 style="margin-bottom:6px;">ديون ${qEsc(project)}</h3>
+      <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">من صفحة الديون (البنود اللي عمود "المشروع" فيها = ${qEsc(project)}). اللي بيدخل في التكلفة هو <b>الباقي</b> بس — المسدد بيكون اتصرف من الخزنة على المشروع وداخل في مصاريفه.</p>
+      ${b && b.items.length ? `<div class="tbl-wrap"><table><thead><tr><th>التاريخ</th><th>الجهة</th><th>الوصف</th><th>الإجمالي</th><th>المسدد</th><th>الباقي</th></tr></thead><tbody>
+        ${b.items.map(x => `<tr><td style="white-space:nowrap;">${qEsc(x.date || '')}</td><td ${tdR}>${qEsc(x.creditor || '')}</td><td ${tdR}>${qEsc(x.desc || '')}</td><td>${fmt(x.total)} ج</td><td>${fmt(x.paid)} ج</td><td><b>${fmt(Math.max(0, x.remaining))} ج</b></td></tr>`).join('')}
+      </tbody><tfoot><tr class="tbl-totals-row"><td colspan="3">الإجمالي</td><td>${fmt(b.total)} ج</td><td>${fmt(b.paid)} ج</td><td>${fmt(b.remaining)} ج</td></tr></tfoot></table></div>`
+      : `<div class="empty">مفيش ديون متسجلة على المشروع ده</div>`}
+      <div style="display:flex;justify-content:flex-end;margin-top:12px;"><button type="button" class="btn btn-outline" onclick="closeCardModal()">قفل</button></div>`);
+  } catch(err){ showToast('خطأ: ' + (err.message || err), 'error'); }
 }
 
 async function renderFixedExp(token) { return fxRenderPage(token); } // الصفحة الجديدة (شهري + مصاريف عامة من الخزنة) — شوف قسم FX
