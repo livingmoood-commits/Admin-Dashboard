@@ -1277,6 +1277,7 @@
       </div>
       <button type="submit" class="btn btn-primary" id="loginBtn" style="width:100%;">دخول</button>
       <div class="msg" id="loginMsg"></div>
+      <button type="button" class="btn btn-outline" onclick="demoStart()" style="width:100%;margin-top:10px;">🎮 جرّب نسخة تجريبية (أرقام وهمية)</button>
     </form>
   </div>
 </div>
@@ -1845,6 +1846,7 @@ function _isUnknownActionError(msg){ return /Unknown (GET|POST) action/i.test(St
 
 async function apiGet(action, params, opts) {
   params = params || {};
+  if (DEMO_MODE) return demoApiGet(action, params); // النسخة التجريبية — مفيش أي طلب للسيرفر
   const priority = (opts && opts.priority) || 'high';
   const key = _apiCacheKey(action, params);
 
@@ -1888,6 +1890,7 @@ function _genRequestId(){
   return 'rid-' + Date.now() + '-' + Math.random().toString(36).slice(2);
 }
 async function apiPost(action, payload) {
+  if (DEMO_MODE) return demoApiPost(action, payload); // النسخة التجريبية — مفيش أي حفظ حقيقي
   const actor = sessionStorage.getItem('lm_userName') || '';
   // ⚠️ requestId ثابت لنفس الطلب — نفس القيمة بتتبعت في كل محاولات الإعادة
   // التلقائية جوه _apiFetch لأنها بتستخدم نفس الـ body، فلو الطلب كان فعلاً
@@ -1909,6 +1912,1246 @@ async function apiPost(action, payload) {
   if (data && !data.error) _clearAllDrafts_();
   return data;
 }
+/* DEMO-BEGIN */
+/* ================= النسخة التجريبية — التشغيل =================
+ * زرار "جرّب نسخة تجريبية" في صفحة الدخول بيفتح الموقع كله بأرقام وهمية (DEMO تحت).
+ * في الوضع ده apiGet/apiPost مش بيكلموا السيرفر خالص — كل القراءة من الداتا الوهمية،
+ * وأي حفظ/حذف بيترد عليه "تم" من غير ما يتكتب أي حاجة في الشيت الحقيقي. */
+const DEMO_MODE = (() => { try { return sessionStorage.getItem('lm_demo') === '1'; } catch(e){ return false; } })();
+function demoStart(){
+  try {
+    sessionStorage.clear();
+    sessionStorage.setItem('lm_demo', '1');
+    sessionStorage.setItem('lm_loggedIn', '1');
+    sessionStorage.setItem('lm_userName', 'تجربة');
+    sessionStorage.setItem('lm_userRole', 'Lead');
+  } catch(e){}
+  location.reload();
+}
+function demoExit(){ try { sessionStorage.clear(); } catch(e){} location.reload(); }
+async function demoApiGet(action, params){
+  await new Promise(r => setTimeout(r, 90)); // إحساس تحميل بسيط
+  const h = DEMO_H[action];
+  if (!h) { console.warn('[demo] مفيش داتا تجريبية لـ', action); return {}; }
+  return JSON.parse(JSON.stringify(h(params || {})));
+}
+let _demoToastAt = 0;
+async function demoApiPost(action, payload){
+  await new Promise(r => setTimeout(r, 150));
+  if (action === 'login') return { success: true, role: 'Lead' };
+  if (Date.now() - _demoToastAt > 2500) { _demoToastAt = Date.now(); showToast('🎮 نسخة تجريبية — أي تعديل مش بيتحفظ', 'info'); }
+  return { success: true, id: 'demo-' + Date.now() };
+}
+// شريط صغير ثابت يوضح إنك في النسخة التجريبية + زرار خروج
+function _demoBadge(){
+  if (!DEMO_MODE || document.getElementById('demoBadge')) return;
+  const b = document.createElement('div');
+  b.id = 'demoBadge';
+  b.innerHTML = '🎮 نسخة تجريبية — الأرقام وهمية <button type="button" onclick="demoExit()">خروج</button>';
+  b.style.cssText = 'position:fixed;bottom:14px;left:14px;z-index:9999;background:#1E1A15;color:#D4B483;font:700 12.5px Cairo,sans-serif;padding:8px 10px 8px 14px;border-radius:30px;box-shadow:0 6px 20px rgba(0,0,0,.35);display:flex;align-items:center;gap:10px;direction:rtl;';
+  const btn = b.querySelector('button');
+  btn.style.cssText = 'all:unset;cursor:pointer;background:#D4B483;color:#1E1A15;padding:4px 12px;border-radius:20px;font-weight:800;';
+  document.body.appendChild(b);
+}
+if (DEMO_MODE) setTimeout(_demoBadge, 0);
+/* ================= النسخة التجريبية (Demo) — الداتا الأساسية =================
+ * كل حاجة هنا وهمية ومتولدة في المتصفح. مفيش أي طلب بيروح للسيرفر في الوضع ده. */
+const DEMO = (() => {
+  let seed = 20261012;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  const pick = a => a[Math.floor(rnd() * a.length)];
+  const int = (a, b) => Math.floor(a + rnd() * (b - a + 1));
+  const round = (n, s) => Math.round(n / s) * s;
+  const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const today = new Date(); today.setHours(12, 0, 0, 0);
+  const dayISO = back => { const d = new Date(today); d.setDate(d.getDate() - back); return iso(d); };
+  const uid = (() => { let n = 1000; return p => (p || 'd') + (n++); })();
+
+  const projects = ['Palm Hills Villa', 'Zayed Office', 'Marassi Chalet', 'Tagamoa Clinic', 'New Capital Apt', 'Sheikh Zayed Cafe'];
+  const projectInfo = projects.map((p, i) => ({ project: p, client: ['م. كريم سامي', 'شركة نوفا', 'أ. منى عادل', 'د. هشام فؤاد', 'أ. ياسر نبيل', 'كافيه بلو'][i],
+    contract: [480000, 260000, 350000, 190000, 310000, 220000][i], start: dayISO(150 - i * 18) }));
+  const employees = [
+    { name: 'محمد عبد الله', paymentType: 'اسبوعي', dailyRate: 450, hourlyRate: 50, eveningRate: 200, monthlyPay: 0, weeklyPay: 2700, joinDate: dayISO(700) },
+    { name: 'احمد سعيد', paymentType: 'اسبوعي', dailyRate: 400, hourlyRate: 44, eveningRate: 180, monthlyPay: 0, weeklyPay: 2400, joinDate: dayISO(500) },
+    { name: 'محمود حسن', paymentType: 'اسبوعي', dailyRate: 380, hourlyRate: 42, eveningRate: 170, monthlyPay: 0, weeklyPay: 2280, joinDate: dayISO(420) },
+    { name: 'كريم عادل', paymentType: 'اسبوعي', dailyRate: 350, hourlyRate: 39, eveningRate: 150, monthlyPay: 0, weeklyPay: 2100, joinDate: dayISO(300) },
+    { name: 'يوسف طارق', paymentType: 'اسبوعي', dailyRate: 300, hourlyRate: 33, eveningRate: 130, monthlyPay: 0, weeklyPay: 1800, joinDate: dayISO(200) },
+    { name: 'سارة مجدي', paymentType: 'شهري', dailyRate: 0, hourlyRate: 0, eveningRate: 0, monthlyPay: 9000, weeklyPay: 0, joinDate: dayISO(380) },
+    { name: 'عمرو جمال', paymentType: 'شهري', dailyRate: 0, hourlyRate: 0, eveningRate: 0, monthlyPay: 12000, weeklyPay: 0, joinDate: dayISO(600) }
+  ];
+  const workers = employees.filter(e => e.paymentType === 'اسبوعي');
+
+  // ── ساعات الشغل: آخر 120 يوم، كل يوم شغل (مش جمعة) كل صنايعي على مشروع ──
+  const hours = [];
+  for (let back = 120; back >= 0; back--) {
+    const d = new Date(today); d.setDate(d.getDate() - back);
+    if (d.getDay() === 5) continue;
+    workers.forEach(w => {
+      if (rnd() < 0.12) return;
+      const proj = projects[Math.min(projects.length - 1, Math.floor(rnd() * Math.min(projects.length, 2 + (120 - back) / 30)))];
+      const h = pick([9, 9, 9, 8, 6]);
+      const ev = rnd() < 0.15 ? pick([2, 3]) : 0;
+      const eveningAmount = ev ? w.eveningRate : 0;
+      hours.push({ id: uid('h'), date: iso(d), employee: w.name, project: proj, hours: h, eveningHours: ev, eveningAmount, cost: round(h * w.hourlyRate, 1) + eveningAmount, loggedAt: iso(d) });
+    });
+  }
+
+  // ── حركات الخزنة: مصاريف عامة + مصاريف مشاريع + إيداعات ──
+  const genItems = [['قهوة', 60, 250], ['شاي وسكر', 40, 120], ['فطار العمال', 150, 400], ['غدا', 200, 600], ['بنزين BYD', 400, 900], ['بنزين KIA', 300, 700], ['بنزين سكودا', 300, 700],
+    ['مياه', 30, 80], ['فاتورة نت', 450, 450], ['كارت شحن', 100, 200], ['اوبر', 80, 250], ['شيبسي وبسكويت', 40, 150], ['مناديل وصابون', 60, 200], ['سجاير', 100, 300], ['طباعة ورق', 80, 300],
+    ['صيانة KIA', 800, 2500], ['غسيل عربية BYD', 150, 250], ['اعلان ممول فيسبوك', 1000, 3000], ['ميتينج مع عميل', 200, 700], ['ايجار المصنع', 20000, 20000], ['فاتورة كهربا', 1500, 3500]];
+  const projItems = [['خشب زان', 2000, 9000], ['ابلكاش', 1500, 6000], ['مفصلات ومجاري', 500, 2500], ['دهانات', 1000, 4000], ['قشرة', 2000, 7000], ['نقل خامات', 300, 900], ['رخام', 3000, 12000], ['زجاج', 1500, 5000]];
+  const moves = [];
+  let bal = 150000;
+  for (let back = 120; back >= 0; back--) {
+    const d = new Date(today); d.setDate(d.getDate() - back);
+    const date = iso(d);
+    const n = int(1, 4);
+    for (let i = 0; i < n; i++) {
+      const [desc, a, b] = pick(genItems.filter(g => !/ايجار|كهربا/.test(g[0])));
+      const amount = round(int(a, b), 10);
+      moves.push({ id: uid('m'), date, desc, type: 'مصروف', project: 'مصروفات عامة', amount });
+    }
+    if (d.getDate() === 1) { moves.push({ id: uid('m'), date, desc: 'ايجار المصنع', type: 'مصروف', project: 'مصروفات عامة', amount: 20000 }); moves.push({ id: uid('m'), date, desc: 'فاتورة كهربا', type: 'مصروف', project: 'مصروفات عامة', amount: round(int(1500, 3500), 50) }); }
+    if (rnd() < 0.5) { const [desc, a, b] = pick(projItems); moves.push({ id: uid('m'), date, desc, type: 'مصروف', project: pick(projects), amount: round(int(a, b), 50) }); }
+    if (d.getDay() === 4) workers.forEach(w => moves.push({ id: uid('m'), date, desc: 'مرتب ' + w.name, type: 'مصروف', project: 'مصروفات عامة', amount: w.weeklyPay }));
+    if (rnd() < 0.08) moves.push({ id: uid('m'), date, desc: 'سلفه ' + pick(workers).name, type: 'مصروف', project: 'مصروفات عامة', amount: round(int(200, 1000), 50) });
+    if (rnd() < 0.06) moves.push({ id: uid('m'), date, desc: 'شخصي ' + pick(['عمر برعي', 'احمد خلف', 'محمود برعي']), type: 'مصروف', project: 'مصروفات عامة', amount: round(int(1000, 5000), 100) });
+    if (rnd() < 0.12) moves.push({ id: uid('m'), date, desc: 'دفعة من ' + pick(projectInfo).client, type: 'إيداع', project: pick(projects), amount: round(int(20000, 80000), 1000) });
+  }
+  moves.forEach(m => { bal += m.type === 'إيداع' ? m.amount : -m.amount; m.balance = bal; });
+  moves.reverse(); // الأحدث الأول
+
+  const revenues = {};
+  projects.forEach(p => { revenues[p] = moves.filter(m => m.type === 'إيداع' && m.project === p).map(m => ({ id: uid('r'), date: m.date, desc: m.desc, amount: m.amount })); });
+
+  return { rnd, pick, int, round, iso, today, dayISO, uid, projects, projectInfo, employees, workers, hours, moves, revenues,
+    fixed: [{ id: 'fx1', name: 'ايجار المصنع', amount: 20000, notes: 'نسخة تجريبية' }] };
+})();
+// مساعدات مشتركة لكل الـ handlers
+const DEMO_H = {};
+const demoSum = (arr, f) => arr.reduce((s, x) => s + (Number(f ? f(x) : x) || 0), 0);
+function demoProjectTotals(p){
+  const hrs = DEMO.hours.filter(h => h.project === p);
+  const exp = DEMO.moves.filter(m => m.type === 'مصروف' && m.project === p);
+  const laborCost = demoSum(hrs, h => h.cost), laborHours = demoSum(hrs, h => h.hours);
+  const projectExpenses = demoSum(exp, m => m.amount);
+  const materialsCost = 0, costsTotal = 0;
+  const totalCost = laborCost + projectExpenses + materialsCost + costsTotal;
+  const revenue = demoSum(DEMO.revenues[p] || [], r => r.amount);
+  return { project: p, laborHours, laborCost, materialsCost, projectExpenses, costsTotal, totalCost, revenue, netProfit: revenue - totalCost };
+}
+/* ================= النسخة التجريبية — مجموعة A: الداشبورد/الخزنة/المصاريف/المشاريع/التكاليف/الساعات/الديون/الشركاء =================
+ * كل الأرقام مشتقة من DEMO (core.js) عشان تفضل متسقة بين الصفحات. مفيش عشوائية وقت النداء. */
+
+// ── مساعدات خاصة ──
+function _dAObj(v) { if (!v) return {}; if (typeof v === 'string') { try { return JSON.parse(v) || {}; } catch (e) { return {}; } } return v; }
+function _dAName(params) { return String((params && (params.name || params.project)) || '').trim(); }
+function _dADate(s) { const p = String(s || '').split('-').map(Number); return new Date(p[0], (p[1] || 1) - 1, p[2] || 1, 12); }
+const _dADayNames = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+const _dARnd = (() => { let s = 777123; return () => { s = (s * 1103515245 + 12345) % 2147483648; return s / 2147483648; }; })();
+const _dAInt = (a, b) => Math.floor(a + _dARnd() * (b - a + 1));
+const _dAPick = a => a[Math.floor(_dARnd() * a.length)];
+const _dARate = {}; DEMO.employees.forEach(e => { _dARate[e.name] = e.hourlyRate; });
+
+// حركات الخزنة بالصيغة اللي السيرفر بيرجّعها (الأحدث الأول)
+const _dAMoves = DEMO.moves.map(m => ({ id: m.id, date: m.date, desc: m.desc, type: m.type, project: m.project, amount: m.amount, balanceAfter: m.balance }));
+const _dACapital = 150000;
+
+// سجلات الساعات بالصيغة الكاملة (الأحدث تسجيلًا الأول)
+const _dAHours = DEMO.hours.slice().reverse().map(h => ({
+  id: h.id, date: h.date, employee: h.employee, project: h.project, hours: h.hours, eveningHours: h.eveningHours,
+  eveningAmount: h.eveningAmount, hourlyRate: _dARate[h.employee] || 0, cost: h.cost, notes: h.eveningHours ? 'سهرة' : '', loggedAt: h.date + 'T18:00:00.000Z'
+}));
+function _dAHoursFilter(f) {
+  f = _dAObj(f);
+  let e = _dAHours;
+  if (f.employee) e = e.filter(x => x.employee === f.employee);
+  if (f.project) e = e.filter(x => x.project === f.project);
+  if (f.from) e = e.filter(x => x.date >= f.from);
+  if (f.to) e = e.filter(x => x.date <= f.to);
+  e = e.map(x => Object.assign({}, x));
+  const lim = Number(f.limit) || 0;
+  return lim ? e.slice(0, lim) : e;
+}
+
+// بنود "التكاليف" الموحّدة (يدوية) — 2-4 بنود صغيرة لكل مشروع، متولدة مرة واحدة
+const _dACosts = (() => {
+  const catalog = [['مسامير وبراغي', 'علبة', 60, 180], ['سيليكون وغراء', 'كرتونة', 250, 600], ['لمبات LED', 'قطعة', 90, 250], ['مقابض ستانلس', 'قطعة', 45, 140],
+    ['قماش تنجيد', 'متر', 180, 450], ['ورق صنفرة', 'رزمة', 80, 160], ['شريط حرف PVC', 'لفة', 300, 700], ['ستوبر وكوالين', 'قطعة', 120, 350]];
+  const out = []; let n = 1;
+  DEMO.projectInfo.forEach(pi => {
+    const k = _dAInt(2, 4);
+    for (let i = 0; i < k; i++) {
+      const lines = [];
+      const m = _dAInt(1, 3);
+      for (let j = 0; j < m; j++) { const c = _dAPick(catalog); lines.push({ name: c[0], qty: _dAInt(2, 20), unit: c[1], unitPrice: _dAInt(c[2], c[3]) }); }
+      const itemsCost = lines.reduce((s, l) => s + l.qty * l.unitPrice, 0);
+      const back = Math.max(0, Math.round((150 - DEMO.projectInfo.indexOf(pi) * 18) * _dARnd()));
+      out.push({ id: 'cst' + (n++), project: pi.project, date: DEMO.dayISO(back), name: lines[0].name, items: lines, itemsCost,
+        labor: [], laborCost: 0, totalCost: itemsCost, notes: i === 0 ? 'شراء من المورد مباشرة' : '', row: 9 + i });
+    }
+  });
+  return out.sort((a, b) => (a.date < b.date ? 1 : (a.date > b.date ? -1 : 0)));
+})();
+function _dACostsFor(p) { return _dACosts.filter(c => !p || c.project === p).map(c => Object.assign({}, c, { items: c.items.map(x => Object.assign({}, x)) })); }
+
+// مالية المشروع (نفس _projectFinancials في السيرفر) — null لو مفيش إيراد ولا مصروف
+function _dAFinancials(p) {
+  const t = demoProjectTotals(p);
+  const cash = t.revenue, cashExpenses = t.projectExpenses;
+  if (!(cash > 0 || cashExpenses > 0)) return null;
+  return { revenue: cash, cashRevenue: cash, costsRevenue: cash, revenueSource: cash > 0 ? 'مصاريف' : 'لا يوجد', cashExpenses, netProfitCash: cash - cashExpenses };
+}
+function _dAProjectRow(p) {
+  const t = demoProjectTotals(p);
+  const costs = _dACostsFor(p);
+  const costsTotal = demoSum(costs, c => c.totalCost);
+  const financials = _dAFinancials(p);
+  const totalCost = t.laborCost + t.projectExpenses + costsTotal;
+  return {
+    project: p, laborHours: t.laborHours, laborCost: t.laborCost, materialsCost: 0, productsCount: 0, installCost: 0, installCount: 0,
+    costsTotal, costsCount: costs.length, projectExpenses: t.projectExpenses, totalCost, financials,
+    netProfit: financials ? financials.revenue - totalCost : null,
+    netProfitCosts: (financials && financials.costsRevenue > 0) ? financials.costsRevenue - totalCost : null
+  };
+}
+function _dAProjectsSummary() { return DEMO.projects.slice().sort().map(_dAProjectRow).sort((a, b) => b.totalCost - a.totalCost); }
+
+// عملاء الـ Payment Statements — لو مجموعة تانية عرّفت payListCustomers بنستخدمها، وإلا قايمة افتراضية من المشاريع
+const _dAAreas = ['بالم هيلز - اكتوبر', 'الشيخ زايد - الحي 16', 'مراسي - الساحل', 'التجمع الخامس', 'العاصمة الادارية - R7', 'الشيخ زايد - بيفرلي هيلز'];
+const _dAFallbackCustomers = DEMO.projectInfo.map((pi, i) => {
+  const rev = DEMO.revenues[pi.project] || [];
+  const received = demoSum(rev, r => r.amount);
+  // لو الدفعات المستلمة عدّت قيمة العقد (داتا عشوائية) بنكبّر العقد عشان يفضل فيه باقي منطقي
+  const total = Math.max(pi.contract, Math.ceil(received * 1.2 / 10000) * 10000);
+  return { name: pi.project, engineer: pi.client, address: _dAAreas[i], total, received,
+    lastPayment: rev.length ? 'الدفعة رقم ' + rev.length : '', completed: false, date: pi.start };
+}).concat([
+  { name: 'Maadi Kitchen', engineer: 'أ. نهى رمزي', address: 'المعادي - دجلة', total: 145000, received: 145000, lastPayment: 'الدفعة رقم 3', completed: true, date: DEMO.dayISO(260) },
+  { name: 'Rehab Dressing', engineer: 'م. طارق منصور', address: 'الرحاب - المرحلة 4', total: 98000, received: 98000, lastPayment: 'الدفعة رقم 2', completed: true, date: DEMO.dayISO(230) }
+]);
+function _dACustomers() {
+  try { if (DEMO_H['payListCustomers']) { const r = DEMO_H['payListCustomers']({}); if (r && Array.isArray(r.customers)) return r.customers; } } catch (e) { /* fallback */ }
+  return _dAFallbackCustomers.map(c => Object.assign({}, c));
+}
+function _dAPaymentsSummary(customers) {
+  const totalAgreed = demoSum(customers, c => c.total), totalReceived = demoSum(customers, c => c.received);
+  const completedCount = customers.filter(c => c.completed).length;
+  const topOutstanding = customers.map(c => Object.assign({}, c, { remaining: (Number(c.total) || 0) - (Number(c.received) || 0) }))
+    .filter(c => c.remaining > 0.01).sort((a, b) => b.remaining - a.remaining).slice(0, 5);
+  return { customersCount: customers.length, completedCount, incompleteCount: customers.length - completedCount, totalAgreed, totalReceived, totalRemaining: totalAgreed - totalReceived, topOutstanding };
+}
+
+// الديون
+const _dADebts = [
+  { id: 'dbt1', creditor: 'معرض الأخشاب الحديثة', desc: 'خشب زان وابلكاش — فاتورة آجل', total: 68000, paid: 40000, date: DEMO.dayISO(75), lastPayment: DEMO.dayISO(20), notes: 'باقي على دفعتين', project: 'Palm Hills Villa' },
+  { id: 'dbt2', creditor: 'مصنع الرخام المصري', desc: 'رخام كرارة للمطبخ', total: 36500, paid: 15000, date: DEMO.dayISO(48), lastPayment: DEMO.dayISO(30), notes: '', project: 'Marassi Chalet' },
+  { id: 'dbt3', creditor: 'شركة الزجاج والمرايا', desc: 'زجاج سيكوريت للواجهات', total: 22000, paid: 22000, date: DEMO.dayISO(95), lastPayment: DEMO.dayISO(60), notes: 'اتسددت بالكامل', project: 'Tagamoa Clinic' },
+  { id: 'dbt4', creditor: 'معرض الأخشاب الحديثة', desc: 'قشرة أرو + MDF', total: 18500, paid: 5000, date: DEMO.dayISO(12), lastPayment: DEMO.dayISO(5), notes: '', project: 'New Capital Apt' }
+];
+function _dADebtsList() {
+  return _dADebts.map(d => Object.assign({}, d, { remaining: d.total - d.paid, settled: d.total - d.paid <= 0.01 })).reverse();
+}
+
+// مسحوبات الشركاء — من حركات "شخصي ..." في الخزنة
+const _dAPartners = ['عمر برعي', 'احمد خلف', 'محمود برعي'];
+const _dAPWItems = (() => {
+  const texts = ['سحب نقدي', 'مصاريف شخصية', 'تحويل للبيت', 'سحب على الحساب'];
+  return DEMO.moves.filter(m => /^شخصي /.test(m.desc)).map((m, i) => ({ id: 'pw' + m.id, partner: m.desc.replace(/^شخصي\s+/, '').trim(), date: m.date, item: texts[i % texts.length], amount: m.amount }));
+})();
+function _dAPartnerWithdrawals() {
+  const partners = _dAPartners.map(name => {
+    const items = _dAPWItems.filter(it => it.partner === name).map(it => Object.assign({}, it)).sort((a, b) => b.date.localeCompare(a.date));
+    return { name, items, count: items.length, total: demoSum(items, it => it.amount) };
+  });
+  return { partners, grandTotal: demoSum(partners, p => p.total), grandCount: demoSum(partners, p => p.count) };
+}
+
+function _dATreasurySummary() {
+  const totalDeposits = demoSum(DEMO.moves.filter(m => m.type === 'إيداع'), m => m.amount);
+  const totalExpenses = demoSum(DEMO.moves.filter(m => m.type === 'مصروف'), m => m.amount);
+  const t = DEMO.today;
+  const lastEdit = String(t.getDate()).padStart(2, '0') + '/' + String(t.getMonth() + 1).padStart(2, '0') + '/' + t.getFullYear() + ' 11:42';
+  return { balance: DEMO.moves.length ? DEMO.moves[0].balance : _dACapital, capital: _dACapital, totalDeposits, totalExpenses, lastEdit };
+}
+function _dATreasuryMoves(limit, filters) {
+  const f = _dAObj(filters);
+  let m = _dAMoves;
+  if (f.type) m = m.filter(x => x.type === f.type);
+  if (f.project) m = m.filter(x => x.project === f.project);
+  if (f.from) m = m.filter(x => x.date >= f.from);
+  if (f.to) m = m.filter(x => x.date <= f.to);
+  m = m.map(x => Object.assign({}, x));
+  limit = Number(limit) || 0;
+  return limit ? m.slice(0, limit) : m;
+}
+
+// ═════════════ الـ handlers ═════════════
+
+DEMO_H['getBuildInfo'] = (params) => { return { version: 'demo-2026-10-12' }; };
+
+DEMO_H['getTreasurySummary'] = (params) => { return _dATreasurySummary(); };
+
+DEMO_H['getTreasuryMoves'] = (params) => { params = params || {}; return { moves: _dATreasuryMoves(params.limit, params.filters) }; };
+
+DEMO_H['getDeposits'] = (params) => {
+  const f = _dAObj((params || {}).filters);
+  let moves = DEMO.moves.filter(m => m.type === 'إيداع').map(m => ({ id: m.id, date: m.date, desc: m.desc, project: m.project, amount: m.amount }));
+  if (f.project) moves = moves.filter(m => m.project === f.project);
+  if (f.from) moves = moves.filter(m => m.date >= f.from);
+  if (f.to) moves = moves.filter(m => m.date <= f.to);
+  return { total: demoSum(moves, m => m.amount), moves };
+};
+
+DEMO_H['getDashboardBundle'] = (params) => {
+  const projects = _dAProjectsSummary();
+  const customers = _dACustomers();
+  const totalCostsNew = demoSum(_dACosts, c => c.totalCost);
+  const dashboard = {
+    employeesCount: DEMO.employees.length,
+    projectsCount: DEMO.projects.length,
+    treasuryBalance: _dATreasurySummary().balance,
+    totalLaborCost: demoSum(DEMO.hours, h => h.cost),
+    totalLaborHours: demoSum(DEMO.hours, h => h.hours),
+    totalProductsCost: 0, totalInstallCost: 0, totalCostsNew,
+    topProjectsByCost: projects.slice(0, 5).map(p => ({ project: p.project, cost: p.totalCost, hours: p.laborHours })),
+    recentHoursEntries: _dAHoursFilter({ limit: 6 }),
+    recentTreasuryMoves: _dATreasuryMoves(6, {}),
+    paymentsSummary: _dAPaymentsSummary(customers)
+  };
+  return { dashboard, customers, debts: _dADebtsList(), projects, partnerWithdrawals: _dAPartnerWithdrawals() };
+};
+
+DEMO_H['payGetCashFlow'] = (params) => {
+  const name = _dAName(params);
+  if (!name) return { rows: [] };
+  const c = _dACustomers().find(x => String(x.name).trim() === name);
+  if (!c) return { rows: [] };
+  const methods = ['كاش', 'تحويل بنكي', 'انستاباي', 'شيك'];
+  const toGB = iso => { const p = iso.split('-'); return p[2] + '/' + p[1] + '/' + p[0]; };
+  let rows;
+  const rev = DEMO.revenues[name];
+  if (rev && rev.length) {
+    rows = rev.slice().sort((a, b) => a.date.localeCompare(b.date)).map((r, i) => ({ name: 'الدفعة رقم ' + (i + 1), amount: r.amount, date: toGB(r.date), method: methods[i % methods.length] }));
+  } else {
+    // نقسم المبلغ المستلم على 1-3 دفعات بشكل ثابت
+    const received = Number(c.received) || 0;
+    const k = received > 100000 ? 3 : (received > 0 ? 2 : 0);
+    rows = [];
+    let left = received;
+    const start = c.date && /^\d{4}-\d{2}-\d{2}$/.test(c.date) ? _dADate(c.date) : _dADate(DEMO.dayISO(200));
+    for (let i = 0; i < k; i++) {
+      const amt = i === k - 1 ? left : Math.round(received / k / 1000) * 1000;
+      left -= amt;
+      const d = new Date(start); d.setDate(d.getDate() + i * 30);
+      rows.push({ name: 'الدفعة رقم ' + (i + 1), amount: amt, date: toGB(DEMO.iso(d)), method: methods[i % methods.length] });
+    }
+  }
+  return { rows, completed: !!c.completed, engineer: c.engineer || '', address: c.address || '', total: Number(c.total) || 0 };
+};
+
+DEMO_H['getDailyExpenses'] = (params) => {
+  const dateStr = String((params && params.date) || DEMO.dayISO(0));
+  const d = _dADate(dateStr);
+  const sheetName = DEMO.iso(d) + ' ' + _dADayNames[d.getDay()];
+  const dText = d.getDate() + '-' + (d.getMonth() + 1) + '-' + d.getFullYear();
+  const notes = { 'اعلان ممول فيسبوك': 'حملة الاسبوع ده', 'صيانة KIA': 'تغيير زيت وفرامل' };
+  const rows = DEMO.moves.filter(m => m.date === DEMO.iso(d) && m.type === 'مصروف').slice().reverse()
+    .map((m, i) => ({ row: i + 2, desc: m.desc, amount: m.amount, date: dText, project: m.project, note: notes[m.desc] || '' }));
+  return { rows, sheetName, total: demoSum(rows, r => r.amount) };
+};
+
+DEMO_H['listDailyExpenseDays'] = (params) => {
+  const cutoff = DEMO.dayISO(120);
+  const seen = new Set(); const days = [];
+  DEMO.moves.forEach(m => {
+    if (m.type !== 'مصروف' || m.date < cutoff || seen.has(m.date)) return;
+    seen.add(m.date);
+    days.push({ date: m.date, dayName: _dADayNames[_dADate(m.date).getDay()] });
+  });
+  days.sort((a, b) => (b.date < a.date ? -1 : (b.date > a.date ? 1 : 0)));
+  return { days };
+};
+
+DEMO_H['listProjects'] = (params) => { return { projects: DEMO.projects.slice().sort() }; };
+
+DEMO_H['listProjectsSummary'] = (params) => { return { projects: _dAProjectsSummary() }; };
+
+DEMO_H['listArchivedProjects'] = (params) => { return { projects: ['Maadi Kitchen'] }; };
+
+DEMO_H['getProjectFullSummary'] = (params) => {
+  const name = _dAName(params);
+  if (!name) return { error: 'اسم المشروع مطلوب' };
+  const laborEntries = _dAHoursFilter({ project: name });
+  const laborCost = demoSum(laborEntries, e => e.cost), laborHours = demoSum(laborEntries, e => e.hours);
+  const costs = _dACostsFor(name);
+  const costsItemsCost = demoSum(costs, c => c.itemsCost), costsLaborCost = demoSum(costs, c => c.laborCost);
+  const costsTotal = costsItemsCost + costsLaborCost;
+  const financials = _dAFinancials(name);
+  const projectExpenses = financials ? financials.cashExpenses : 0;
+  const totalCost = laborCost + costsTotal + projectExpenses;
+  return {
+    project: name, laborCost, laborHours, materialsCost: 0, productsLaborCost: 0, totalCost, projectExpenses, costsSyncedFromExpenses: 0,
+    installItemsCost: 0, installLaborCost: 0, installCost: 0, installCount: 0,
+    productsCount: 0, costsItemsCost, costsLaborCost, costsTotal, costsCount: costs.length,
+    financials, netProfit: financials ? financials.revenue - totalCost : null,
+    recentHours: laborEntries.slice(0, 8), products: [], installItems: [], costs
+  };
+};
+
+DEMO_H['getProjectExpensesDetail'] = (params) => {
+  const name = _dAName(params);
+  if (!name) return { error: 'اسم المشروع مطلوب' };
+  if (DEMO.projects.indexOf(name) === -1) return { project: name, weeks: [], revenue: 0, expense: 0, net: 0, expenseRatio: 0 };
+  const chron = DEMO.moves.filter(m => m.project === name).slice().reverse();
+  const startD = _dADate(chron[0] ? chron[0].date : DEMO.dayISO(0));
+  const weeks = [];
+  chron.forEach(m => {
+    const idx = Math.max(0, Math.floor((_dADate(m.date) - startD) / (7 * 864e5)));
+    while (weeks.length <= idx) weeks.push({ label: 'الاسبوع ' + (weeks.length + 1), weekExpense: 0, weekRevenue: 0, weekNet: 0, items: [] });
+    const w = weeks[idx];
+    if (m.type === 'إيداع') w.weekRevenue += m.amount;
+    else { w.weekExpense += m.amount; w.items.push({ desc: m.desc, amount: m.amount, date: m.date }); }
+  });
+  weeks.forEach(w => { w.weekNet = w.weekRevenue - w.weekExpense; });
+  const revenue = demoSum(weeks, w => w.weekRevenue), expense = demoSum(weeks, w => w.weekExpense);
+  return { project: name, weeks, revenue, expense, net: revenue - expense, expenseRatio: revenue > 0 ? Math.round(expense / revenue * 1000) / 10 : 0 };
+};
+
+DEMO_H['listProjectRevenueEntries'] = (params) => {
+  const name = _dAName(params);
+  if (!name) return { error: 'اسم المشروع مطلوب' };
+  const entries = (DEMO.revenues[name] || []).map((r, i) => ({ id: r.id, date: r.date, desc: r.desc, amount: r.amount, row: 5 + i }))
+    .sort((a, b) => (a.date < b.date ? 1 : (a.date > b.date ? -1 : 0)));
+  const total = demoSum(entries, e => e.amount);
+  return { project: name, entries, loggedTotal: total, total };
+};
+
+DEMO_H['listCosts'] = (params) => {
+  const f = _dAObj((params || {}).filters);
+  return { costs: _dACostsFor(f.project || '') };
+};
+
+DEMO_H['listFixedExpenses'] = (params) => { return { items: DEMO.fixed.map(x => Object.assign({}, x)) }; };
+
+DEMO_H['previewBackfillHours'] = (params) => { return { items: [] }; };
+
+DEMO_H['listHoursEntries'] = (params) => { return { entries: _dAHoursFilter((params || {}).filters) }; };
+
+DEMO_H['listDebts'] = (params) => { return { debts: _dADebtsList() }; };
+
+DEMO_H['listPartnerWithdrawals'] = (params) => { return _dAPartnerWithdrawals(); };
+/* ================= النسخة التجريبية — المجموعة B: الموظفين / المرتبات =================
+ * كل الأرقام مبنية على DEMO.employees + DEMO.hours + DEMO.moves (سلف) عشان تتطابق مع باقي الصفحات. */
+
+const _dB_AR_MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+const _dB_AR_DAYS = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+const _dB_WEEK_SUM = ['ساعات الأوفر','قيمة الأوفر','أيام الغياب','خصم أيام (خ ي)','إضافات (ج)','خصومات (خ)','مسحوبات (م)','صافي الأسبوع'];
+const _dB_MONTH_SUM = ['ساعات الأوفر','قيمة الأوفر','أيام الغياب','خصم أيام (خ ي)','إضافات (ج)','خصومات (خ)','مسحوبات (م)','سلفة شهر قادم (ش ق)','صافي الشهر'];
+const _dB_CODE_LABELS = { 'ج': 'إضافة', 'خ': 'خصم', 'خي': 'خصم يوم', 'م': 'مسحوبات', 'غ': 'غياب' };
+const _dB_cache = {};
+
+// هاش ثابت (FNV-1a) → رقم بين 0 و1 — عشان العشوائية تفضل ثابتة ومستقلة عن ترتيب النداءات
+function _dBHash(s){ let h = 2166136261; s = String(s); for (let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return ((h >>> 0) % 100000) / 100000; }
+function _dBInt(v, def){ const n = parseInt(v, 10); return isNaN(n) ? def : n; }
+function _dBDate(y, m, d){ return new Date(y, m, d, 12, 0, 0, 0); }
+function _dBAddDays(dt, n){ const d = new Date(dt); d.setDate(d.getDate() + n); return d; }
+function _dBNum(v){ return Math.round((Number(v) || 0) * 100) / 100; }
+function _dBStr(v){ return String(_dBNum(v)); }
+function _dBFmtDM(dt){ return dt.getDate() + '/' + (dt.getMonth() + 1); }
+function _dBEmpFields(e){
+  return { name: e.name, paymentType: e.paymentType, monthlyPay: e.monthlyPay || 0, weeklyPay: e.weeklyPay || 0,
+    dailyRate: e.dailyRate || 0, hourlyRate: e.hourlyRate || 0, joinDate: e.joinDate || '', eveningRate: e.eveningRate || 0 };
+}
+function _dBEmp(name){ return DEMO.employees.find(e => e.name === name) || null; }
+
+// الشهور اللي ليها شيتات "مبنية" في الديمو: من أول شهر كامل فيه داتا ساعات لحد الشهر الحالي
+function _dBMonthRange(){
+  if (_dB_cache.range) return _dB_cache.range;
+  const first = DEMO.hours.length ? DEMO.hours.reduce((a, h) => h.date < a ? h.date : a, DEMO.hours[0].date) : DEMO.iso(DEMO.today);
+  const fy = parseInt(first.slice(0, 4), 10), fm = parseInt(first.slice(5, 7), 10) - 1, fd = parseInt(first.slice(8, 10), 10);
+  let minKey = fy * 12 + fm + (fd > 1 ? 1 : 0);
+  const maxKey = DEMO.today.getFullYear() * 12 + DEMO.today.getMonth();
+  if (minKey > maxKey) minKey = maxKey;
+  return (_dB_cache.range = { minKey, maxKey });
+}
+function _dBMonthExists(year, monthIndex){
+  const r = _dBMonthRange(); const k = year * 12 + monthIndex;
+  return k >= r.minKey && k <= r.maxKey;
+}
+function _dBMonthNumExists(monthNum){
+  const r = _dBMonthRange();
+  for (let k = r.minKey; k <= r.maxKey; k++) if ((k % 12) + 1 === monthNum) return true;
+  return false;
+}
+
+// فهارس سريعة: ساعات كل (موظف|تاريخ) + سلف كل (موظف|تاريخ) من الخزنة
+function _dBIndex(){
+  if (_dB_cache.idx) return _dB_cache.idx;
+  const hours = {}, advances = {};
+  DEMO.hours.forEach(h => { const k = h.employee + '|' + h.date; (hours[k] = hours[k] || []).push(h); });
+  DEMO.moves.forEach(m => {
+    const mm = /^سلفه (.+)$/.exec(m.desc || '');
+    if (mm && m.type === 'مصروف') { const k = mm[1].trim() + '|' + m.date; advances[k] = (advances[k] || 0) + m.amount; }
+  });
+  return (_dB_cache.idx = { hours, advances });
+}
+
+/* محتوى خلية يوم واحد + النوت بتاعها، بنفس أكواد PAYCODE_SUM:
+ * "0" = غياب يوم كامل، "200ج" = إضافة/سهرة، "300م" = مسحوبات. الجمعة إجازة. */
+function _dBDayCell(emp, dt){
+  const iso = DEMO.iso(dt);
+  const todayIso = DEMO.iso(DEMO.today);
+  if (iso > todayIso) return { v: '', note: '' };
+  if (emp.joinDate && iso < emp.joinDate) return { v: dt.getDay() === 5 ? '' : '0', note: '' };
+  const idx = _dBIndex();
+  const tokens = [], notes = [];
+  const isFri = dt.getDay() === 5;
+  if (emp.paymentType === 'اسبوعي') {
+    const hrs = idx.hours[emp.name + '|' + iso] || [];
+    if (!hrs.length && !isFri) tokens.push('0');
+    hrs.forEach(h => {
+      if (h.eveningAmount) {
+        tokens.push(h.eveningAmount + 'ج');
+        notes.push(`سهرة مشروع ${h.project} — ${h.eveningAmount}` + (h.eveningHours ? ` (${h.eveningHours} ساعة)` : ''));
+      }
+    });
+    const adv = idx.advances[emp.name + '|' + iso];
+    if (adv) tokens.push(adv + 'م');
+  } else if (!isFri) {
+    const r = _dBHash(emp.name + '|' + iso);
+    if (r < 0.025) tokens.push('0');
+    else if (r < 0.06) tokens.push(DEMO.round(300 + _dBHash(iso + emp.name) * 900, 50) + 'م');
+    else if (r < 0.08) { tokens.push('500ج'); notes.push('مكافأة متابعة موقع'); }
+    else if (r < 0.09) { tokens.push('0.5خي'); notes.push('استأذن نص يوم'); }
+  }
+  return { v: tokens.join(','), note: notes.join('\n') };
+}
+
+// بتفكّك محتوى خلية زي "700ج,300م" — نفس _parsePayCellCodes_ في السيرفر
+function _dBParseCodes(cellStr){
+  const out = []; const re = /(\d+(?:\.\d+)?)\s*([ء-ي]+)/g; let m;
+  while ((m = re.exec(String(cellStr || '')))) out.push({ amount: parseFloat(m[1]) || 0, code: m[2], label: _dB_CODE_LABELS[m[2]] || m[2] });
+  return out;
+}
+function _dBIsAbsZero(cellStr){ return /(^|[\n,،])[ ]*0[ ]*($|[\n,،])/.test(String(cellStr || '')); }
+function _dBSumCells(cells, dates){
+  const s = { hrs: 0, abs: 0, dayDed: 0, add: 0, ded: 0, wd: 0, nextAdv: 0 };
+  cells.forEach((c, i) => {
+    String(c || '').split(/[\n,،]/).map(t => t.trim()).filter(Boolean).forEach(t => {
+      if (/^0+(\.0+)?$/.test(t)) { if (!dates || dates[i].getDay() !== 5) s.abs += 1; return; }
+      const m = /^(\d+(?:\.\d+)?)\s*([ء-ي]*)$/.exec(t); if (!m) return;
+      const a = parseFloat(m[1]) || 0, code = m[2];
+      if (!code) s.hrs += a; else if (code === 'غ') s.abs += a; else if (code === 'خي') s.dayDed += a;
+      else if (code === 'ج') s.add += a; else if (code === 'خ') s.ded += a; else if (code === 'م') s.wd += a; else if (code === 'شق') s.nextAdv += a;
+    });
+  });
+  return s;
+}
+
+// الأسابيع اللي بتبدأ جوه الشهر (fri7: جمعة→خميس)
+function _dBWeeks(year, monthIndex){
+  const weeks = []; const end = _dBDate(year, monthIndex + 1, 0);
+  let d = _dBDate(year, monthIndex, 1);
+  while (d.getDay() !== 5) d = _dBAddDays(d, 1);
+  while (d <= end) { weeks.push({ start: d, end: _dBAddDays(d, 6), dates: Array.from({ length: 7 }, (_, i) => _dBAddDays(d, i)) }); d = _dBAddDays(d, 7); }
+  return weeks;
+}
+function _dBMonthDates(year, monthIndex){
+  const n = new Date(year, monthIndex + 1, 0).getDate();
+  return Array.from({ length: n }, (_, i) => _dBDate(year, monthIndex, i + 1));
+}
+
+/* ── شيت "حضور شهر" (الشهريين) ── */
+function _dBMonthlySheet(year, monthIndex){
+  const key = 'm' + year + '-' + monthIndex;
+  if (_dB_cache[key]) return _dB_cache[key];
+  const dates = _dBMonthDates(year, monthIndex);
+  const emps = DEMO.employees.filter(e => e.paymentType === 'شهري');
+  const rows = emps.map((e, i) => {
+    const cells = dates.map(dt => _dBDayCell(e, dt));
+    const dayCells = cells.map(c => c.v);
+    const s = _dBSumCells(dayCells, dates);
+    const perDay = (e.monthlyPay || 0) / 26;
+    const overVal = s.hrs * (e.hourlyRate || 0);
+    const net = Math.round((e.monthlyPay || 0) - s.abs * perDay - s.dayDed * perDay + overVal + s.add - s.ded - s.wd - s.nextAdv);
+    return { row: 3 + i, name: e.name, dayCells, dayNotes: cells.map(c => c.note),
+      _sum: [s.hrs, overVal, s.abs, s.dayDed, s.add, s.ded, s.wd, s.nextAdv, net] };
+  });
+  const totalsNum = _dB_MONTH_SUM.map((_, i) => demoSum(rows, r => r._sum[i]));
+  const out = {
+    exists: true,
+    sheetName: `حضور شهر ${_dB_AR_MONTHS[monthIndex]} ${year}`,
+    kind: 'monthly',
+    dayHeaders: dates.map(dt => `${_dB_AR_DAYS[dt.getDay()]}\n${dt.getDate()}`),
+    dayDates: dates.map(dt => DEMO.iso(dt)),
+    summaryHeaders: _dB_MONTH_SUM.slice(),
+    dayStart: 3,
+    rows: rows.map(r => ({ row: r.row, name: r.name, dayCells: r.dayCells, summaryCells: r._sum.map(_dBStr), dayNotes: r.dayNotes })),
+    totals: totalsNum.map(_dBStr),
+    _raw: rows
+  };
+  return (_dB_cache[key] = out);
+}
+
+/* ── شيت "كشف الحضور الاسبوعي" (الاسبوعيين) ── */
+function _dBWeeklySheet(year, monthIndex){
+  const key = 'w' + year + '-' + monthIndex;
+  if (_dB_cache[key]) return _dB_cache[key];
+  const weeks = _dBWeeks(year, monthIndex);
+  const emps = DEMO.employees.filter(e => e.paymentType === 'اسبوعي');
+  let col = 3;
+  const weekHeaderBlocks = weeks.map(wk => {
+    const dayStartCol = col; col += 7 + _dB_WEEK_SUM.length;
+    return {
+      label: _dBFmtDM(wk.start) + '–' + _dBFmtDM(wk.end),
+      dayHeaders: wk.dates.map(dt => `${_dB_AR_DAYS[dt.getDay()]}\n${_dBFmtDM(dt)}`),
+      dayDates: wk.dates.map(dt => DEMO.iso(dt)),
+      sumHeaders: _dB_WEEK_SUM.slice(),
+      dayStartCol
+    };
+  });
+  const rows = emps.map((e, i) => {
+    const wkData = weeks.map(wk => {
+      const cells = wk.dates.map(dt => _dBDayCell(e, dt));
+      const dayCells = cells.map(c => c.v);
+      const s = _dBSumCells(dayCells, wk.dates);
+      const overVal = s.hrs * (e.hourlyRate || 0);
+      const net = Math.round((6 - s.abs) * e.dailyRate - s.dayDed * e.dailyRate + overVal + s.add - s.ded - s.wd);
+      return { dayCells, dayNotes: cells.map(c => c.note), _sum: [s.hrs, overVal, s.abs, s.dayDed, s.add, s.ded, s.wd, net], _nextAdv: s.nextAdv };
+    });
+    const m = [0, 1, 2, 3, 4, 5, 6].map(k => demoSum(wkData, w => w._sum[k]));
+    const nextAdv = demoSum(wkData, w => w._nextAdv);
+    const monthNet = demoSum(wkData, w => w._sum[7]) - nextAdv;
+    return { row: 3 + i, name: e.name, wkData, _month: m.concat([nextAdv, monthNet]) };
+  });
+  const out = {
+    exists: true,
+    sheetName: `كشف الحضور الاسبوعي ${_dB_AR_MONTHS[monthIndex]} ${year}`,
+    kind: 'weekly',
+    weekHeaderBlocks,
+    monthSummaryHeaders: _dB_MONTH_SUM.slice(),
+    rows: rows.map(r => ({
+      row: r.row, name: r.name,
+      weeks: r.wkData.map(w => ({ dayCells: w.dayCells, summaryCells: w._sum.map(_dBStr), dayNotes: w.dayNotes })),
+      monthSummaryCells: r._month.map(_dBStr)
+    })),
+    totals: {
+      weeks: weeks.map((_, wi) => _dB_WEEK_SUM.map((__, k) => _dBStr(demoSum(rows, r => r.wkData[wi]._sum[k])))),
+      monthSummaryCells: _dB_MONTH_SUM.map((_, k) => _dBStr(demoSum(rows, r => r._month[k])))
+    },
+    _weeks: weeks
+  };
+  return (_dB_cache[key] = out);
+}
+
+function _dBParams(params){
+  params = params || {};
+  return { year: _dBInt(params.year, DEMO.today.getFullYear()), monthIndex: _dBInt(params.monthIndex, DEMO.today.getMonth()) };
+}
+function _dBStrip(o){ const c = Object.assign({}, o); Object.keys(c).forEach(k => { if (k[0] === '_') delete c[k]; }); return JSON.parse(JSON.stringify(c)); }
+
+/* ── التقرير الأسبوعي — نفس منطق getWeeklyReport في السيرفر ── */
+function _dBWeeklyReport(year, monthIndex, weekIndex, onlyNames){
+  if (!_dBMonthExists(year, monthIndex)) return { exists: false, error: 'شيت الأسبوع ده مش موجود لسه — ابني الشهر الأول' };
+  const sh = _dBWeeklySheet(year, monthIndex);
+  const wb = sh.weekHeaderBlocks[weekIndex];
+  const wk = sh._weeks[weekIndex];
+  if (!wb || !wk) return { exists: false, error: 'الأسبوع ده مش موجود' };
+  const filter = Array.isArray(onlyNames) && onlyNames.length ? new Set(onlyNames.map(n => String(n || '').trim()).filter(Boolean)) : null;
+  const employees = [];
+  sh.rows.forEach(r => {
+    if (filter && !filter.has(r.name)) return;
+    const e = _dBEmp(r.name) || {};
+    const dailyRate = e.dailyRate || 0;
+    const w = r.weeks[weekIndex];
+    const totals = { add: 0, deduct: 0, deductDays: 0, withdraw: 0, absent: 0, fullAbsenceDays: 0, fridayWork: 0 };
+    const days = [];
+    w.dayCells.forEach((cellStr, d) => {
+      const note = w.dayNotes[d] || '';
+      const isFridayCol = wk.dates[d].getDay() === 5;
+      const isFullAbsence = !isFridayCol && _dBIsAbsZero(cellStr);
+      const parts = _dBParseCodes(cellStr);
+      const sumCode = c => parts.filter(p => p.code === c).reduce((s, p) => s + p.amount, 0);
+      const add = sumCode('ج'), deduct = sumCode('خ'), deductDays = sumCode('خي'), withdraw = sumCode('م'), absent = sumCode('غ');
+      totals.add += add; totals.deduct += deduct; totals.deductDays += deductDays; totals.withdraw += withdraw; totals.absent += absent;
+      if (isFullAbsence) totals.fullAbsenceDays++;
+      const isAttendedOnly = !String(cellStr).trim() && !note;
+      if (isFridayCol && isAttendedOnly) return;
+      days.push({ date: wb.dayDates[d], label: wb.dayHeaders[d], raw: cellStr, note, parts, add, deduct, deductDays,
+        deductDaysMoney: deductDays * dailyRate, withdraw, absent, isFullAbsence, isAttendedOnly });
+    });
+    const weekSummary = wb.sumHeaders.map((h, si) => ({ label: h, value: w.summaryCells[si] }));
+    employees.push({ name: r.name, dailyRate, days, totals, weekSummary });
+  });
+  return { exists: true, weekLabel: wb.label, from: wb.dayDates[0], to: wb.dayDates[wb.dayDates.length - 1], employees };
+}
+
+/* ================= الـ handlers ================= */
+
+DEMO_H['listEmployees'] = (params) => {
+  return { employees: DEMO.employees.map(_dBEmpFields) };
+};
+
+DEMO_H['getEmployeesBreakdown'] = (params) => {
+  const list = DEMO.employees.map(_dBEmpFields);
+  const weekly = list.filter(e => e.paymentType === 'اسبوعي');
+  const monthly = list.filter(e => e.paymentType === 'شهري');
+  return {
+    total: list.length,
+    weeklyCount: weekly.length,
+    monthlyCount: monthly.length,
+    weeklyList: weekly.map(e => ({ name: e.name, pay: e.weeklyPay, dailyRate: e.dailyRate })).sort((a, b) => a.name.localeCompare(b.name, 'ar')),
+    monthlyList: monthly.map(e => ({ name: e.name, pay: e.monthlyPay, dailyRate: e.dailyRate })).sort((a, b) => a.name.localeCompare(b.name, 'ar'))
+  };
+};
+
+DEMO_H['getEveningRates'] = (params) => {
+  const rates = {}; DEMO.employees.forEach(e => { rates[e.name] = e.eveningRate || 0; });
+  return { rates };
+};
+
+DEMO_H['getDailyRates'] = (params) => {
+  const rates = {}; DEMO.employees.forEach(e => { rates[e.name] = e.dailyRate || 0; });
+  return { rates };
+};
+
+DEMO_H['payrollGetSheet'] = (params) => {
+  const { year, monthIndex } = _dBParams(params);
+  const kind = (params && params.kind) === 'weekly' ? 'weekly' : 'monthly';
+  const sheetName = kind === 'monthly' ? `حضور شهر ${_dB_AR_MONTHS[monthIndex] || ''} ${year}` : `كشف الحضور الاسبوعي ${_dB_AR_MONTHS[monthIndex] || ''} ${year}`;
+  if (monthIndex < 0 || monthIndex > 11 || !_dBMonthExists(year, monthIndex)) return { exists: false, sheetName };
+  return _dBStrip(kind === 'monthly' ? _dBMonthlySheet(year, monthIndex) : _dBWeeklySheet(year, monthIndex));
+};
+
+DEMO_H['payrollGetMaster'] = (params) => {
+  const { year, monthIndex } = _dBParams(params);
+  const sheetName = `Master ${_dB_AR_MONTHS[monthIndex] || ''} ${year}`;
+  if (monthIndex < 0 || monthIndex > 11 || !_dBMonthExists(year, monthIndex)) return { exists: false, sheetName };
+  const headers = ['اسم الموظف', 'إجمالي ساعات الأوفر', 'إجمالي الإضافات', 'إجمالي الخصومات', 'إجمالي المسحوبات', 'إجمالي خصم الأيام', 'إجمالي سلفة شهر قادم', 'صافي الشهر'];
+  const nums = [];
+  // الشهريين: من ملخص "حضور شهر" — ترتيب [أوفر، إضافات، خصومات، مسحوبات، خصم أيام، ش ق، صافي]
+  _dBMonthlySheet(year, monthIndex)._raw.forEach(r => {
+    const s = r._sum; nums.push([r.name, s[0], s[4], s[5], s[6], s[3], s[7], s[8]]);
+  });
+  // الاسبوعيين: أيام الشهر الميلادي بس (زي معادلات الماستر الحقيقية) — الجمعة إجازة
+  const dates = _dBMonthDates(year, monthIndex);
+  const paidDays = dates.filter(d => d.getDay() !== 5).length;
+  DEMO.employees.filter(e => e.paymentType === 'اسبوعي').forEach(e => {
+    const cells = dates.map(dt => _dBDayCell(e, dt).v);
+    const s = _dBSumCells(cells, dates);
+    const overVal = s.hrs * (e.hourlyRate || 0);
+    const net = Math.round((paidDays - s.abs) * e.dailyRate - s.dayDed * e.dailyRate + overVal + s.add - s.ded - s.wd);
+    nums.push([e.name, s.hrs, s.add, s.ded, s.wd, s.dayDed, s.nextAdv, net]);
+  });
+  const rows = nums.map(r => [r[0]].concat(r.slice(1).map(_dBStr)));
+  const totalsRow = ['الإجمالي الكلي'].concat([1, 2, 3, 4, 5, 6, 7].map(k => _dBStr(demoSum(nums, r => r[k]))));
+  const monthlyCount = DEMO.employees.filter(e => e.paymentType === 'شهري').length;
+  return { exists: true, sheetName, headers, rows, totalsRow, monthlyCount };
+};
+
+DEMO_H['payrollListDetailsForMonth'] = (params) => {
+  const monthNum = _dBInt(params && params.monthNum, DEMO.today.getMonth() + 1);
+  if (!monthNum || monthNum < 1 || monthNum > 12) return { error: 'رقم شهر غير صحيح: ' + (params && params.monthNum) };
+  const sheetName = 'تفاصيل المرتبات شهر ' + monthNum;
+  if (!_dBMonthNumExists(monthNum)) return { sheetName, exists: false, created: false, copiedFromName: null, employees: [] };
+  return { sheetName, exists: true, created: false, copiedFromName: null, employees: DEMO.employees.map(_dBEmpFields) };
+};
+
+DEMO_H['getWeeklyReport'] = (params) => {
+  const { year, monthIndex } = _dBParams(params);
+  const weekIndex = _dBInt(params && params.weekIndex, 0);
+  let names = params && params.employees;
+  if (typeof names === 'string') { try { names = JSON.parse(names); } catch (e) { names = names ? [names] : []; } }
+  return _dBWeeklyReport(year, monthIndex, weekIndex, Array.isArray(names) ? names : null);
+};
+
+DEMO_H['getEmployeeWeekAdditions'] = (params) => {
+  const { year, monthIndex } = _dBParams(params);
+  const weekIndex = _dBInt(params && params.weekIndex, 0);
+  const employeeName = String((params && params.employeeName) || '');
+  const base = _dBWeeklyReport(year, monthIndex, weekIndex, [employeeName]);
+  if (!base.exists || !base.employees || !base.employees.length) return base;
+  const idx = _dBIndex();
+  base.employees[0].days.forEach(d => {
+    const projs = [];
+    (idx.hours[employeeName + '|' + d.date] || []).forEach(h => { if (h.project && !projs.includes(h.project)) projs.push(h.project); });
+    d.projects = projs;
+  });
+  return base;
+};
+
+DEMO_H['getMonthlyReportForWeeklyEmployees'] = (params) => {
+  const year = _dBInt(params && params.year, DEMO.today.getFullYear());
+  const monthNum = _dBInt(params && params.monthNum, DEMO.today.getMonth() + 1);
+  const monthIndex = monthNum - 1;
+  if (monthIndex < 0 || monthIndex > 11 || !_dBMonthExists(year, monthIndex)) return { exists: false, error: 'شيت الشهر ده مش موجود لسه — ابني الشهر الأول' };
+  const weeks = _dBWeeks(year, monthIndex);
+  if (!weeks.length) return { exists: false, error: 'مفيش أسابيع محسوبة للشهر ده' };
+  const empMap = {}, order = [], weekLabels = [];
+  weeks.forEach((_, wi) => {
+    const wr = _dBWeeklyReport(year, monthIndex, wi, null);
+    if (!wr.exists) return;
+    weekLabels.push(wr.weekLabel);
+    wr.employees.forEach(e => {
+      if (!empMap[e.name]) {
+        empMap[e.name] = { name: e.name, dailyRate: e.dailyRate, totalWorkDays: 0, totalDayWages: 0, totalAdditions: 0,
+          totalWithdrawals: 0, totalDeductions: 0, absenceDaysCount: 0, weeksCount: 0, actionDays: [] };
+        order.push(e.name);
+      }
+      const rec = empMap[e.name];
+      const t = e.totals;
+      const absenceDays = (t.fullAbsenceDays || 0) + (t.absent || 0);
+      const workedFriday = e.days.some(d => d.isFridayWork);
+      const workDays = Math.max(0, 6 - absenceDays + (workedFriday ? 1 : 0));
+      rec.totalWorkDays += workDays;
+      rec.totalDayWages += workDays * (e.dailyRate || 0);
+      rec.totalAdditions += t.add || 0;
+      rec.totalWithdrawals += t.withdraw || 0;
+      rec.totalDeductions += (t.deduct || 0) + (t.deductDays || 0) * (e.dailyRate || 0);
+      rec.absenceDaysCount += absenceDays;
+      rec.weeksCount++;
+      e.days.forEach(d => {
+        if (d.isFridayWork || !d.isAttendedOnly) rec.actionDays.push({ week: wr.weekLabel, date: d.date, label: d.label,
+          isFullAbsence: !!d.isFullAbsence, isFridayWork: !!d.isFridayWork, workAmount: d.workAmount || 0,
+          add: d.add || 0, deduct: d.deduct || 0, withdraw: d.withdraw || 0, absent: d.absent || 0, note: d.note || '' });
+      });
+    });
+  });
+  const employees = order.map(n => { const r = empMap[n]; r.net = r.totalDayWages + r.totalAdditions - r.totalWithdrawals - r.totalDeductions; return r; });
+  return { exists: true, year, monthNum, monthLabel: _dB_AR_MONTHS[monthIndex] + ' ' + year, weekLabels, employees };
+};
+/* ================= النسخة التجريبية (Demo) — Group C =================
+ * Work Flow / تنظيم المهام / بنود المشاريع / الخامات / المنتجات / التركيب /
+ * الكوتيشنات / Payment Statements. كله مبني على DEMO (نفس المشاريع والصنايعية
+ * وأيام الساعات) وبمولّد عشوائي خاص بيه عشان النتيجة تفضل ثابتة مهما كان
+ * ترتيب نداء الـ handlers. */
+
+const _dCRng = (() => { let s = 777123; return () => { s = (s * 1103515245 + 12345) % 2147483648; return s / 2147483648; }; })();
+const _dCPick = a => a[Math.floor(_dCRng() * a.length)];
+const _dCInt = (a, b) => Math.floor(a + _dCRng() * (b - a + 1));
+const _dCCopy = o => JSON.parse(JSON.stringify(o));
+const _dCParse = v => { if (!v) return {}; if (typeof v === 'object') return v; try { return JSON.parse(v) || {}; } catch (e) { return {}; } };
+const _dCAddDays = (isoStr, n) => { const p = isoStr.split('-').map(Number); const d = new Date(p[0], p[1] - 1, p[2], 12); d.setDate(d.getDate() + n); return DEMO.iso(d); };
+const _dCDMY = isoStr => { const p = isoStr.split('-').map(Number); return p[2] + '-' + p[1] + '-' + p[0]; };       // صيغة الكوتيشن d-M-yyyy
+const _dCEnGB = isoStr => { const p = isoStr.split('-'); return p[2] + '/' + p[1] + '/' + p[0]; };                  // صيغة الدفعات dd/mm/yyyy
+const _dCStamp = (isoStr, hh, mm) => { const p = isoStr.split('-').map(Number); return new Date(Date.UTC(p[0], p[1] - 1, p[2], hh - 3, mm)).toISOString(); }; // وقت القاهرة → ISO
+const _dCToday = DEMO.iso(DEMO.today);
+
+/* ───────────── 1) سجل الشغل اليومي (متطابق مع DEMO.hours) ───────────── */
+const _dCSpecialty = { 'محمد عبد الله': 'نجار', 'احمد سعيد': 'نجار', 'محمود حسن': 'دهان', 'كريم عادل': 'استورجي', 'يوسف طارق': 'عامل' };
+const _dCAreas = {
+  'Palm Hills Villa': ['المطبخ', 'غرفة النوم الرئيسية', 'الريسبشن', 'الدريسنج', 'غرفة الأطفال'],
+  'Zayed Office': ['مكتب المدير', 'الاستقبال', 'غرفة الاجتماعات', 'الأوبن سبيس'],
+  'Marassi Chalet': ['المطبخ', 'الليفنج', 'غرفة النوم', 'التراس'],
+  'Tagamoa Clinic': ['الاستقبال', 'غرفة الكشف 1', 'غرفة الكشف 2', 'غرفة الانتظار'],
+  'New Capital Apt': ['المطبخ', 'الريسبشن', 'غرفة النوم الرئيسية', 'الدريسنج'],
+  'Sheikh Zayed Cafe': ['البار', 'منطقة الجلوس', 'الكاشير', 'الواجهة']
+};
+const _dCTasks = {
+  'نجار': [['تقطيع ألواح MDF', 'MDF 18 مم مستورد', '244×122 سم', 6], ['تجميع وحدات سفلية', 'كونتر 18 مم + ظهر 8 مم', '60×85 سم', 4], ['تركيب ضلف', 'ضلف لاكيه + مفصلات بلوم', '45×70 سم', 8],
+    ['تصنيع باب خشب زان', 'زان أحمر + حلق 12 سم', '90×220 سم', 1], ['تركيب وحدة التلفزيون', 'قشرة جوز + إضاءة LED مخفية', '280×45 سم', 1], ['تجميع مكتب', 'قشرة أرو + رجول معدن', '180×80 سم', 1],
+    ['تركيب كاونتر', 'خشب + سطح كوريان', '320×110 سم', 1], ['تفصيل سرير', 'زان + ظهر منجد', '200×180 سم', 1], ['تركيب بانوهات حائط', 'MDF مفرز شرائح', 'ط:300 × ا:270', 12], ['تركيب مجاري أدراج', 'مجاري تلسكوبي 45 سم', '', 10]],
+  'دهان': [['معجون وصنفرة', 'معجون + صنفرة 180 و240', '', 10], ['سيلر وتأسيس', 'سيلر شفاف وجهين', '', 8], ['دهان لاكيه أبيض مطفي', 'لاكيه بولي يوريثان 3 أوجه', '', 6],
+    ['تشطيب قشرة جوز بالبوليستر', 'بوليستر لامع', '', 4], ['رتوش بعد التركيب', 'تصليح خدوش وحروف', '', 0]],
+  'استورجي': [['تجليد قشرة أرو على البانوهات', 'قشرة طبيعي 0.6 مم', 'ط:240 × ع:120', 6], ['تنجيد ظهر السرير', 'إسفنج 5 سم + قماش كتان', '180×120 سم', 1],
+    ['تنجيد كنب الريسبشن', 'قماش قطيفة بيج', '3+2+1', 3], ['تجليد كراسي', 'جلد صناعي بني', '', 12]],
+  'عامل': [['نقل ألواح من المخزن للمكن', 'كونتر + MDF', '', 20], ['تحميل قطع للموقع', 'تغليف بالنايلون والفلين', '', 0], ['تنضيف الموقع بعد التركيب', '', '', 0],
+    ['مساعدة في التركيب', '', '', 0], ['تغليف القطع قبل النقل', 'فلين + كرتون', '', 15]]
+};
+const _dCFeedback = ['الشغل نضيف والمقاسات مظبوطة', 'محتاج يراجع استقامة الضلف', 'العميل مبسوط من اللون', 'اتأخر ساعة في البداية', 'تمام — جاهز للدهان', 'في ضلفة محتاجة تتعدل'];
+const _dCBlocked = ['مستني خامات — القشرة لسه ماوصلتش', 'العميل طلب تعديل في المقاس', 'الموقع مقفول النهاردة', 'مستني الرخام يتركب الأول', 'الكهربا قاطعة في الموقع'];
+
+const _dCWorkflow = (() => {
+  const out = [];
+  let n = 5000;
+  const id = () => 'wf' + (n++);
+  const workDays = Array.from(new Set(DEMO.hours.map(h => h.date))).sort();
+  const daysBack = d => Math.round((new Date(_dCToday + 'T12:00:00') - new Date(d + 'T12:00:00')) / 86400000);
+  const makeStatus = date => {
+    const back = daysBack(date);
+    if (back <= 0) return _dCRng() < 0.1 ? 'blocked' : 'working';
+    if (back <= 3) { const r = _dCRng(); return r < 0.08 ? 'blocked' : r < 0.55 ? 'done' : 'working'; }
+    return _dCRng() < 0.04 ? 'blocked' : 'done';
+  };
+  const taskFor = (spec, project) => {
+    const t = _dCPick(_dCTasks[spec] || _dCTasks['عامل']);
+    const area = _dCPick(_dCAreas[project] || ['المصنع']);
+    const atFactory = spec !== 'عامل' && _dCRng() < 0.45;
+    return { title: t[0] + ' — ' + area, details: t[1], sizes: t[2], qty: t[3] || '', location: atFactory ? 'المصنع — العبور' : area };
+  };
+  const byDay = {};
+  DEMO.hours.forEach(h => { (byDay[h.date] = byDay[h.date] || []).push(h); });
+  workDays.forEach(date => {
+    const rows = byDay[date] || [];
+    rows.forEach(h => {
+      const spec = _dCSpecialty[h.employee] || 'عامل';
+      const t = taskFor(spec, h.project);
+      const status = makeStatus(date);
+      out.push({
+        id: id(), date, craftsman: h.employee, specialty: spec, project: h.project, location: t.location,
+        title: t.title, details: t.details, sizes: t.sizes, qty: t.qty,
+        attendance: h.hours >= 9 ? 'حضر 8:00' : h.hours === 8 ? 'حضر 9:00' : 'نص يوم',
+        notes: h.hours < 8 ? 'مشي بدري بإذن' : '', supervision: _dCRng() < 0.6 ? 'م. عمرو جمال' : '',
+        feedback: _dCRng() < 0.25 ? _dCPick(_dCFeedback) : '', loggedAt: _dCStamp(date, 17, _dCInt(0, 50)),
+        status, blockedNote: status === 'blocked' ? _dCPick(_dCBlocked) : '', hours: h.hours, eveningHours: ''
+      });
+      if (h.eveningHours > 0) {
+        out.push({
+          id: id(), date, craftsman: h.employee, specialty: spec, project: h.project, location: '', title: '',
+          details: '', sizes: '', qty: '', attendance: '', notes: 'سهرة — ' + _dCPick(['تشطيب عشان التسليم', 'تركيب في الموقع بعد مواعيد العميل', 'تقفيل الدهان']),
+          supervision: '', feedback: '', loggedAt: _dCStamp(date, 22, _dCInt(0, 50)),
+          status: 'done', blockedNote: '', hours: '', eveningHours: h.eveningHours
+        });
+      }
+    });
+    // غياب/إجازة للصنايعية اللي مالهمش ساعات في اليوم ده
+    DEMO.workers.forEach(w => {
+      if (rows.some(h => h.employee === w.name)) return;
+      if (_dCRng() < 0.5) return;
+      out.push({
+        id: id(), date, craftsman: w.name, specialty: _dCSpecialty[w.name] || '', project: 'إجازة', location: '', title: '',
+        details: '', sizes: '', qty: '', attendance: 'غائب', notes: _dCPick(['غياب', 'إجازة عارضة', 'إجازة مرضي']), supervision: '', feedback: '',
+        loggedAt: _dCStamp(date, 10, _dCInt(0, 50)), status: 'blocked', blockedNote: 'غياب/إجازة', hours: '', eveningHours: ''
+      });
+    });
+  });
+  // خطة بكرة (من غير ساعات لسه) — على آخر مشروع كل صنيعي كان شغال عليه
+  const tmr = _dCAddDays(_dCToday, 1);
+  if (new Date(tmr + 'T12:00:00').getDay() !== 5) {
+    DEMO.workers.forEach(w => {
+      const last = DEMO.hours.filter(h => h.employee === w.name).slice(-1)[0];
+      if (!last) return;
+      const spec = _dCSpecialty[w.name] || 'عامل';
+      const t = taskFor(spec, last.project);
+      out.push({
+        id: id(), date: tmr, craftsman: w.name, specialty: spec, project: last.project, location: t.location, title: t.title,
+        details: t.details, sizes: t.sizes, qty: t.qty, attendance: '', notes: 'خطة بكرة', supervision: '', feedback: '',
+        loggedAt: _dCStamp(_dCToday, 18, _dCInt(0, 50)), status: 'working', blockedNote: '', hours: '', eveningHours: ''
+      });
+    });
+  }
+  out.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : (a.craftsman < b.craftsman ? -1 : a.craftsman > b.craftsman ? 1 : (a.loggedAt < b.loggedAt ? -1 : a.loggedAt > b.loggedAt ? 1 : 0)));
+  return out;
+})();
+
+DEMO_H['listWorkflowEntries'] = (params) => {
+  const f = _dCParse(params && params.filters);
+  let rows = _dCWorkflow.slice();
+  if (f.date) rows = rows.filter(r => r.date === f.date);
+  if (f.from) rows = rows.filter(r => r.date >= f.from);
+  if (f.to) rows = rows.filter(r => r.date <= f.to);
+  if (f.project) rows = rows.filter(r => r.project === f.project);
+  if (f.craftsman) rows = rows.filter(r => r.craftsman === f.craftsman);
+  rows.reverse();
+  if (f.limit) rows = rows.slice(0, Number(f.limit));
+  return { entries: _dCCopy(rows) };
+};
+
+DEMO_H['getWorkflowWeek'] = (params) => {
+  params = params || {};
+  const from = String(params.from || _dCToday), to = String(params.to || from);
+  const entries = _dCWorkflow.filter(e => e.date >= from && e.date <= to);
+  entries.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+  return { from, to, entries: _dCCopy(entries) };
+};
+
+DEMO_H['getWorkflowDailyReport'] = (params) => {
+  const date = String((params && params.date) || _dCToday);
+  const entries = DEMO_H['listWorkflowEntries']({ filters: { date } }).entries;
+  const map = {}, order = [];
+  entries.forEach(e => {
+    if (!map[e.craftsman]) { map[e.craftsman] = { craftsman: e.craftsman, specialty: e.specialty, items: [] }; order.push(e.craftsman); }
+    map[e.craftsman].items.push(e);
+  });
+  return { date, craftsmen: order.map(n => map[n]), entriesCount: entries.length };
+};
+
+DEMO_H['getWorkflowMeta'] = () => {
+  const set = {};
+  _dCWorkflow.forEach(e => { if (e.craftsman) set[e.craftsman] = e.specialty || set[e.craftsman] || ''; });
+  const craftsmen = Object.keys(set).sort((a, b) => a.localeCompare(b, 'ar')).map(name => ({ name, specialty: set[name] }));
+  return { craftsmen, specialties: ['نجار', 'دهان', 'ألوميتال', 'جبس بورد', 'كهربائي', 'سباك', 'استورجي', 'عامل', 'أخرى'],
+    units: ['قطعة', 'متر طولي', 'متر مربع', 'متر مكعب', 'كجم', 'يوم', 'دفعة'] };
+};
+
+const _dCCraftsmenList = () => DEMO.employees.map(e => ({ name: e.name, paymentType: e.paymentType === 'شهري' ? 'شهري' : 'اسبوعي' }));
+DEMO_H['getTaskOrganizeCraftsmen'] = (params) => {
+  if (!params || !params.months) return { craftsmen: _dCCraftsmenList() };
+  const toks = [];
+  String(params.months).split(',').forEach(s => {
+    const m = String(s).trim().match(/^(?:(\d{4})-)?(\d{1,2})$/);
+    if (!m) return;
+    const month = parseInt(m[2], 10), year = m[1] ? parseInt(m[1], 10) : null;
+    if (month < 1 || month > 12) return;
+    if (!toks.some(t => t.month === month && t.year === year)) toks.push({ year, month });
+  });
+  if (!toks.length) return { craftsmen: _dCCraftsmenList(), months: [], missingMonths: [], fallback: false };
+  const curKey = DEMO.today.getFullYear() * 12 + DEMO.today.getMonth();
+  const used = [], missing = [], seen = {}, list = [];
+  toks.forEach(t => {
+    const y = t.year || DEMO.today.getFullYear();
+    const key = y * 12 + (t.month - 1);
+    if (key > curKey || key < curKey - 12) { missing.push(t.month); return; }   // شهر لسه ماتبناش في المرتبات
+    used.push(t.month);
+    const monthEnd = DEMO.iso(new Date(y, t.month, 0, 12));
+    ['اسبوعي', 'شهري'].forEach(pt => DEMO.employees.forEach(e => {
+      if (e.paymentType !== pt || seen[e.name] || e.joinDate > monthEnd) return;
+      seen[e.name] = true; list.push({ name: e.name, paymentType: pt });
+    }));
+  });
+  if (!used.length) return { craftsmen: _dCCraftsmenList(), months: [], missingMonths: missing, fallback: true };
+  return { craftsmen: list, months: used, missingMonths: missing, fallback: false };
+};
+
+/* ───────────── 2) بنود المشاريع (تايم بلاننج) ───────────── */
+const _dCMiCatalog = [
+  ['دولاب مطبخ سفلي', 'ط:320 × ا:85 × عمق:60', 'متر طولي', 3.2], ['دولاب مطبخ علوي', 'ط:280 × ا:70 × عمق:35', 'متر طولي', 2.8], ['باب غرفة نوم', 'ع:90 × ا:220', 'قطعة', 3],
+  ['دريسنج روم', 'ط:350 × ا:270', 'متر طولي', 3.5], ['وحدة تلفزيون', 'ط:280 × ا:45', 'قطعة', 1], ['بانوهات حائط قشرة', 'ط:400 × ا:270', 'متر مربع', 10.8],
+  ['سرير ماستر', 'ط:200 × ع:180', 'قطعة', 1], ['كومودينو', 'ط:50 × ا:55 × عمق:40', 'قطعة', 2], ['كاونتر استقبال', 'ط:320 × ا:110', 'قطعة', 1],
+  ['مكتب مدير', 'ط:180 × ع:80', 'قطعة', 1], ['ترابيزة اجتماعات', 'ط:300 × ع:120', 'قطعة', 1], ['وحدة حوض حمام', 'ط:120 × ا:55', 'قطعة', 2],
+  ['شماعة مدخل', 'ط:120 × ا:200', 'قطعة', 1], ['رفوف مكتبة', 'ط:240 × ا:220', 'متر طولي', 2.4], ['بار خشب', 'ط:450 × ا:110', 'متر طولي', 4.5],
+  ['كراسي كافيه', '', 'قطعة', 24], ['ديكور سقف خشب', 'ط:500 × ع:300', 'متر مربع', 15], ['جزامة', 'ط:120 × ا:100 × عمق:35', 'قطعة', 1]
+];
+const _dCMiNotes = ['اللون حسب العينة المعتمدة', 'العميل عايز مقابض مخفية', 'مستني اعتماد الـ 3D', 'القشرة أرو طبيعي', 'إضاءة LED جوه الرفوف', ''];
+const _dCFinishedMi = ['Palm Hills Villa'];
+const _dCMissing = (() => {
+  const items = [], notes = [];
+  let n = 3000;
+  DEMO.projectInfo.forEach((pi, idx) => {
+    const count = _dCInt(5, 8);
+    const home = [0, 1, 2, 3, 4, 5, 6, 7, 12, 13, 16, 17], biz = { 'Zayed Office': [2, 5, 8, 9, 10, 13, 16, 11], 'Tagamoa Clinic': [2, 8, 9, 11, 12, 13, 16], 'Sheikh Zayed Cafe': [8, 11, 14, 15, 16, 13, 5] };
+    const pool = (biz[pi.project] || home).map(k => _dCMiCatalog[k]);
+    for (let i = 0; i < count && pool.length; i++) {
+      const c = pool.splice(Math.floor(_dCRng() * pool.length), 1)[0];
+      const added = _dCAddDays(pi.start, _dCInt(0, 25));
+      const allDone = _dCFinishedMi.indexOf(pi.project) !== -1;
+      const done = allDone || _dCRng() < Math.max(0.15, 0.75 - idx * 0.12);
+      const doneDate = done ? _dCAddDays(added, _dCInt(10, 60)) : '';
+      const id = 'mi' + (n++);
+      items.push({ id, project: pi.project, name: c[0], size: c[1], unit: c[2], qty: c[3], done,
+        notes: _dCPick(_dCMiNotes), addedDate: added, doneDate: doneDate && doneDate > _dCToday ? _dCToday : doneDate });
+      if (_dCRng() < 0.3) notes.push({ id: 'note' + (n++), itemId: id, text: _dCPick(['اتكلمنا مع العميل ووافق', 'الخامة اتطلبت من المورد', 'محتاج زيارة موقع للمقاسات', 'اتعدل المقاس بعد الرفع']),
+        author: _dCPick(['عمرو جمال', 'سارة مجدي']), date: _dCAddDays(added, _dCInt(1, 7)) });
+    }
+  });
+  items.sort((a, b) => a.addedDate < b.addedDate ? -1 : a.addedDate > b.addedDate ? 1 : 0);
+  return { items, notes };
+})();
+
+DEMO_H['listMissingItems'] = (params) => {
+  const f = _dCParse(params && params.filters);
+  let rows = _dCCopy(_dCMissing.items);
+  if (f.project) rows = rows.filter(r => r.project === f.project);
+  if (f.done === true || f.done === false) rows = rows.filter(r => r.done === f.done);
+  rows.reverse();
+  rows.forEach(r => {
+    const thread = _dCCopy(_dCMissing.notes.filter(x => x.itemId === r.id)).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+    if (r.notes) thread.unshift({ id: '', text: r.notes, author: '(ملاحظة أصلية)', date: r.addedDate || '' });
+    r.notesList = thread;
+  });
+  return { items: rows };
+};
+
+DEMO_H['getMissingItemsSummary'] = () => {
+  const map = {};
+  _dCMissing.items.forEach(r => {
+    if (!map[r.project]) map[r.project] = { project: r.project, pending: 0, done: 0, total: 0 };
+    map[r.project].total++;
+    if (r.done) map[r.project].done++; else map[r.project].pending++;
+  });
+  return { summary: Object.values(map).sort((a, b) => b.pending - a.pending) };
+};
+
+DEMO_H['listMiProjects'] = () => ({ projects: DEMO.projects.slice() });
+DEMO_H['listFinishedMiProjects'] = () => ({ projects: _dCFinishedMi.slice() });
+
+/* ───────────── 3) الخامات ───────────── */
+const _dCMaterials = (() => {
+  const defs = [
+    ['بويه لاكيه أبيض مطفي', 'لتر', 40, 285], ['سيلر شفاف', 'لتر', 30, 160], ['تنر', 'لتر', 25, 55], ['غرا بيضا', 'كجم', 20, 95],
+    ['مفصلات بلوم سوفت كلوز', 'قطعة', 120, 145], ['مجاري أدراج تلسكوبي 45 سم', 'جوز', 40, 210], ['قشرة أرو طبيعي', 'متر مربع', 60, 320],
+    ['كونتر 18 مم', 'لوح', 30, 1450], ['شريط حرف PVC أبيض', 'متر', 300, 9], ['صنفرة 180', 'فرخ', 100, 12], ['مسامير دبوس 25 مم', 'علبة', 15, 85], ['معجون خشب', 'كجم', 12, 70]
+  ];
+  const finishedIdx = [2, 9];
+  const mats = [], usage = [];
+  let n = 7000;
+  defs.forEach((d, i) => {
+    const id = 'mat' + (100 + i);
+    const added = DEMO.dayISO(_dCInt(40, 110));
+    const original = d[2];
+    const finish = finishedIdx.indexOf(i) !== -1;
+    let remaining = original, date = added;
+    const target = finish ? 0 : Math.round(original * (0.2 + _dCRng() * 0.6));
+    while (remaining > target) {
+      date = _dCAddDays(date, _dCInt(2, 9));
+      if (date > _dCToday) break;
+      let amt = Math.max(1, Math.round(original * (0.05 + _dCRng() * 0.15)));
+      if (remaining - amt < target) amt = remaining - target;
+      if (amt <= 0) break;
+      remaining -= amt;
+      const proj = _dCPick(DEMO.projects.slice(0, 4));
+      usage.push({ id: 'mu' + (n++), materialId: id, date, materialName: d[0], amount: amt,
+        description: _dCPick(['دهان ضلف المطبخ', 'تجميع دواليب', 'تشطيب وحدة التلفزيون', 'تركيب الدريسنج', 'تصليح بعد التركيب', 'تجليد بانوهات']),
+        project: proj, by: _dCPick(['عمرو جمال', 'سارة مجدي']), notes: _dCRng() < 0.2 ? 'اتصرف من المخزن الرئيسي' : '' });
+    }
+    if (remaining > target) {   // لو التواريخ خلصت قبل ما توصل للهدف — استخدام أخير
+      const last = _dCAddDays(date, 1) > _dCToday ? _dCToday : _dCAddDays(date, 1);
+      usage.push({ id: 'mu' + (n++), materialId: id, date: last, materialName: d[0], amount: remaining - target, description: 'تشطيب نهائي',
+        project: DEMO.projects[0], by: 'عمرو جمال', notes: '' });
+      remaining = target;
+    }
+    const usedPct = original > 0 ? Math.min(100, Math.round(((original - remaining) / original) * 1000) / 10) : 0;
+    mats.push({ id, row: i + 2, name: d[0], unit: d[1], originalQty: original, remainingQty: remaining, status: remaining <= 0 ? 'خلصت' : 'شغالة',
+      usedPct, addedDate: added, unitPrice: d[3], remainingValue: remaining * d[3], originalValue: original * d[3] });
+  });
+  return { mats, usage };
+})();
+
+DEMO_H['listMaterials'] = () => {
+  const rows = _dCCopy(_dCMaterials.mats);
+  rows.sort((a, b) => (a.status === b.status) ? 0 : (a.status === 'خلصت' ? 1 : -1));
+  return { materials: rows };
+};
+DEMO_H['listMaterialUsage'] = (params) => {
+  const mid = String((params && params.materialId) || '').trim();
+  if (!mid) return { usage: [] };
+  return { usage: _dCCopy(_dCMaterials.usage.filter(u => u.materialId === mid)).map(u => { delete u.materialId; return u; }).reverse() };
+};
+
+/* ───────────── 4) تكلفة المنتجات + التركيب ───────────── */
+const _dCLabor = specs => specs.map(([employee, hours, eveningHours, eveningAmount]) => {
+  const emp = DEMO.employees.find(e => e.name === employee);
+  const rate = emp ? emp.hourlyRate : 0;
+  return { employee, hours, eveningHours, eveningAmount, rate, cost: hours * rate + eveningAmount };
+});
+const _dCLine = (name, qty, unit, unitPrice) => ({ name, qty, unit, unitPrice });
+const _dCCostRec = (id, name, project, back, lines, labor, notes, linesKey, costKey) => {
+  const linesCost = lines.reduce((s, m) => s + m.qty * m.unitPrice, 0);
+  const lab = _dCLabor(labor);
+  const laborCost = lab.reduce((s, l) => s + l.cost, 0);
+  return { id, name, project, date: DEMO.dayISO(back), [linesKey]: lines, [costKey]: linesCost, labor: lab, laborCost, totalCost: linesCost + laborCost, notes };
+};
+const _dCProducts = [
+  _dCCostRec('pr1', 'مطبخ كامل (سفلي + علوي)', 'Palm Hills Villa', 104, [_dCLine('كونتر 18 مم', 14, 'لوح', 1450), _dCLine('MDF لاكيه', 10, 'لوح', 1900), _dCLine('مفصلات بلوم', 36, 'قطعة', 145), _dCLine('مجاري أدراج', 8, 'جوز', 210)],
+    [['محمد عبد الله', 36, 3, 200], ['احمد سعيد', 30, 0, 0], ['محمود حسن', 24, 0, 0]], 'لون أبيض مطفي — مقابض جولا', 'materials', 'materialsCost'),
+  _dCCostRec('pr2', 'دولاب غرفة نوم ماستر', 'Palm Hills Villa', 92, [_dCLine('كونتر 18 مم', 9, 'لوح', 1450), _dCLine('قشرة أرو', 18, 'متر مربع', 320), _dCLine('مفصلات بلوم', 16, 'قطعة', 145)],
+    [['محمد عبد الله', 27, 0, 0], ['كريم عادل', 12, 0, 0]], '', 'materials', 'materialsCost'),
+  _dCCostRec('pr3', 'وحدة تلفزيون بإضاءة مخفية', 'Zayed Office', 75, [_dCLine('MDF 18 مم', 4, 'لوح', 1250), _dCLine('قشرة جوز', 8, 'متر مربع', 340), _dCLine('شريط LED', 6, 'متر', 120)],
+    [['احمد سعيد', 18, 0, 0], ['محمود حسن', 9, 0, 0]], '', 'materials', 'materialsCost'),
+  _dCCostRec('pr4', 'مكتب مدير + كريدينزا', 'Zayed Office', 61, [_dCLine('قشرة أرو', 12, 'متر مربع', 320), _dCLine('كونتر 18 مم', 5, 'لوح', 1450), _dCLine('رجول معدن', 4, 'قطعة', 650)],
+    [['محمد عبد الله', 22, 2, 200], ['كريم عادل', 8, 0, 0]], 'سطح جلد طبيعي', 'materials', 'materialsCost'),
+  _dCCostRec('pr5', 'كاونتر استقبال', 'Tagamoa Clinic', 44, [_dCLine('MDF 18 مم', 6, 'لوح', 1250), _dCLine('كوريان', 3, 'متر طولي', 4200), _dCLine('دهانات', 1, 'دفعة', 2200)],
+    [['احمد سعيد', 27, 0, 0], ['محمود حسن', 18, 2, 170]], '', 'materials', 'materialsCost'),
+  _dCCostRec('pr6', 'دولاب مطبخ شاليه', 'Marassi Chalet', 38, [_dCLine('كونتر مقاوم للرطوبة', 10, 'لوح', 1700), _dCLine('مفصلات بلوم', 24, 'قطعة', 145)],
+    [['محمد عبد الله', 30, 0, 0], ['يوسف طارق', 12, 0, 0]], 'خامات مقاومة للرطوبة عشان الساحل', 'materials', 'materialsCost'),
+  _dCCostRec('pr7', 'بار خشب + رفوف', 'Sheikh Zayed Cafe', 12, [_dCLine('خشب زان', 0.6, 'متر مكعب', 38000), _dCLine('قشرة جوز', 10, 'متر مربع', 340)],
+    [['احمد سعيد', 24, 3, 180], ['كريم عادل', 10, 0, 0]], '', 'materials', 'materialsCost'),
+  _dCCostRec('pr8', 'دريسنج روم', 'New Capital Apt', 20, [_dCLine('كونتر 18 مم', 12, 'لوح', 1450), _dCLine('مجاري أدراج', 10, 'جوز', 210), _dCLine('مرايات', 2, 'قطعة', 1800)],
+    [['محمد عبد الله', 33, 0, 0], ['محمود حسن', 15, 0, 0]], '', 'materials', 'materialsCost')
+];
+const _dCInstall = [
+  _dCCostRec('in1', 'تركيب مطبخ + نقل', 'Palm Hills Villa', 88, [_dCLine('نقل ربع نقل', 2, 'نقلة', 900), _dCLine('تحميل وتنزيل', 1, 'دفعة', 600)],
+    [['محمد عبد الله', 9, 0, 0], ['يوسف طارق', 9, 0, 0]], '', 'items', 'itemsCost'),
+  _dCCostRec('in2', 'تركيب مكاتب الدور التاني', 'Zayed Office', 55, [_dCLine('نقل جامبو', 1, 'نقلة', 1800), _dCLine('ونش رفع', 1, 'مرة', 1500)],
+    [['احمد سعيد', 9, 3, 180], ['يوسف طارق', 9, 0, 0]], 'الأسانسير كان عطلان — اتطلب ونش', 'items', 'itemsCost'),
+  _dCCostRec('in3', 'تركيب مطبخ الشاليه', 'Marassi Chalet', 30, [_dCLine('نقل للساحل', 1, 'نقلة', 4500), _dCLine('مبيت الفنيين', 2, 'ليلة', 800)],
+    [['محمد عبد الله', 18, 0, 0], ['يوسف طارق', 18, 0, 0]], '', 'items', 'itemsCost'),
+  _dCCostRec('in4', 'تركيب كاونتر الاستقبال', 'Tagamoa Clinic', 28, [_dCLine('نقل ربع نقل', 1, 'نقلة', 900), _dCLine('تحميل وتنزيل', 1, 'دفعة', 500)],
+    [['احمد سعيد', 8, 0, 0], ['يوسف طارق', 8, 0, 0]], '', 'items', 'itemsCost'),
+  _dCCostRec('in5', 'تركيب البار', 'Sheikh Zayed Cafe', 4, [_dCLine('نقل جامبو', 1, 'نقلة', 1800), _dCLine('تحميل وتنزيل', 1, 'دفعة', 700)],
+    [['احمد سعيد', 9, 2, 180], ['كريم عادل', 6, 0, 0]], 'بعد مواعيد الكافيه', 'items', 'itemsCost')
+];
+
+DEMO_H['listProducts'] = (params) => {
+  const f = _dCParse(params && params.filters);
+  let rows = _dCCopy(_dCProducts);
+  if (f.project) rows = rows.filter(p => p.project === f.project);
+  rows.reverse();
+  return { products: rows };
+};
+DEMO_H['listInstall'] = (params) => {
+  const f = _dCParse(params && params.filters);
+  let rows = _dCCopy(_dCInstall);
+  if (f.project) rows = rows.filter(p => p.project === f.project);
+  rows.reverse();
+  return { items: rows };
+};
+
+/* ───────────── 5) الكوتيشنات ───────────── */
+const _dCQ = (cat, unit, desc, qty, price, notes) => ({ category: cat, unit, description: desc, qty, price, notes: notes || '' });
+const _dCQuotes = [
+  { engineer: 'م. كريم سامي', address: 'Palm Hills Villa', back: 165, discount: { percent: 5, amount: 0 }, rows: [
+    _dCQ('Kitchen', 'م.ط', 'مطبخ سفلي وعلوي MDF لاكيه أبيض مطفي + اكسسوارات بلوم', 6.1, 18500), _dCQ('Doors', 'قطعة', 'باب غرفة نوم خشب زان مدهون لاكيه بالحلق والكالون', 5, 14500),
+    _dCQ('Dressing', 'م.ط', 'دريسنج قشرة أرو بإضاءة LED', 3.5, 16000), _dCQ('Bedroom', 'قطعة', 'سرير ماستر بظهر منجد + 2 كومودينو', 1, 42000), _dCQ('TV Unit', 'قطعة', 'وحدة تلفزيون قشرة جوز', 1, 38000, 'شامل الإضاءة') ] },
+  { engineer: 'م. كريم سامي', address: 'Palm Hills Villa - ملحق', back: 40, discount: { percent: 0, amount: 0 }, rows: [
+    _dCQ('Pergola', 'م2', 'برجولة خشب موسكي معالج للحديقة', 24, 3200), _dCQ('maintenance', 'دفعة', 'صيانة وضبط ضلف المطبخ', 1, 2500) ] },
+  { engineer: 'شركة نوفا', address: 'Zayed Office', back: 148, discount: { percent: 3, amount: 0 }, rows: [
+    _dCQ('Office', 'قطعة', 'مكتب مدير قشرة أرو + كريدينزا', 1, 56000), _dCQ('Office', 'قطعة', 'مكتب موظف 140 سم', 12, 9500), _dCQ('Table', 'قطعة', 'ترابيزة اجتماعات 300×120', 1, 34000),
+    _dCQ('Reception', 'قطعة', 'كاونتر استقبال بسطح كوريان', 1, 48000) ] },
+  { engineer: 'أ. منى عادل', address: 'Marassi Chalet', back: 130, discount: { percent: 0, amount: 0 }, rows: [
+    _dCQ('Kitchen', 'م.ط', 'مطبخ كونتر مقاوم للرطوبة', 4.2, 17000), _dCQ('Living Room', 'قطعة', 'وحدة تلفزيون + رفوف', 1, 32000), _dCQ('Bedroom', 'قطعة', 'غرفة نوم كاملة', 2, 65000),
+    _dCQ('Veneers', 'م2', 'تجليد حوائط بقشرة طبيعي', 18, 2400) ] },
+  { engineer: 'د. هشام فؤاد', address: 'Tagamoa Clinic', back: 112, discount: { percent: 0, amount: 0 }, rows: [
+    _dCQ('Reception', 'قطعة', 'كاونتر استقبال', 1, 45000), _dCQ('Office', 'قطعة', 'مكتب كشف + دولاب ملفات', 2, 26000), _dCQ('Doors', 'قطعة', 'باب HPL للعيادات', 4, 11000),
+    _dCQ('Toilet', 'قطعة', 'وحدة حوض حمام مقاومة للمياه', 2, 9000) ] }
+];
+_dCQuotes.forEach(q => {
+  q.name = q.engineer + ' - ' + q.address;
+  q.date = _dCDMY(DEMO.dayISO(q.back));
+  const sub = q.rows.reduce((s, r) => s + r.qty * r.price, 0);
+  if (q.discount.percent) q.discount.amount = Math.round(sub * q.discount.percent / 100);
+});
+
+DEMO_H['quoteListCustomers'] = () => ({
+  customers: _dCQuotes.slice().sort((a, b) => b.back - a.back).map(q => ({ name: q.name, engineer: q.engineer, address: q.address, date: q.date })).reverse()
+});
+DEMO_H['quoteGetQuotation'] = (params) => {
+  const name = String((params && params.name) || '').trim();
+  const q = _dCQuotes.find(x => x.name === name);
+  if (!q) return { rows: [] };
+  return { rows: _dCCopy(q.rows), discount: _dCCopy(q.discount), engineer: q.engineer, address: q.address };
+};
+
+/* ───────────── 6) Payment Statements (الدفعات) ───────────── */
+const _dCOrd = ['الأولى', 'الثانية', 'الثالثة', 'الرابعة', 'الخامسة', 'السادسة', 'السابعة', 'الثامنة', 'التاسعة', 'العاشرة'];
+const _dCPayName = i => 'الدفعة ' + (_dCOrd[i] || String(i + 1)) + ' (' + (i + 1) + ')';
+const _dCPay = (() => {
+  const recs = [];
+  DEMO.projectInfo.forEach(pi => {
+    const revs = (DEMO.revenues[pi.project] || []).slice().sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+    const rows = [];
+    let sum = 0;
+    revs.forEach(r => {
+      if (sum >= pi.contract) return;
+      const amt = Math.min(r.amount, pi.contract - sum);
+      sum += amt;
+      rows.push({ name: _dCPayName(rows.length), amount: amt, date: _dCEnGB(r.date), method: _dCPick(['كاش', 'تحويل بنكي', 'شيك', 'إنستاباي']) });
+    });
+    // لو مفيش ولا دفعة متسجلة — مقدم التعاقد
+    if (!rows.length) { const a = Math.round(pi.contract * 0.3 / 1000) * 1000; sum = a; rows.push({ name: _dCPayName(0), amount: a, date: _dCEnGB(pi.start), method: 'تحويل بنكي' }); }
+    recs.push({ name: pi.client + ' - ' + pi.project, engineer: pi.client, address: pi.project, total: pi.contract, received: sum,
+      lastPayment: rows[rows.length - 1].name, completed: sum >= pi.contract, date: _dCEnGB(pi.start), rows });
+  });
+  // سجل قديم مكتمل الدفع
+  const oldRows = [[0.4, 220], [0.3, 195], [0.3, 175]].map((x, i) => ({ name: _dCPayName(i), amount: Math.round(145000 * x[0]), date: _dCEnGB(DEMO.dayISO(x[1])), method: i ? 'كاش' : 'تحويل بنكي' }));
+  recs.unshift({ name: 'أ. منى عادل - شاليه العين السخنة', engineer: 'أ. منى عادل', address: 'شاليه العين السخنة', total: 145000, received: 145000,
+    lastPayment: oldRows[2].name, completed: true, date: _dCEnGB(DEMO.dayISO(230)), rows: oldRows });
+  return recs;
+})();
+
+DEMO_H['payListCustomers'] = () => ({
+  customers: _dCPay.map(c => ({ name: c.name, engineer: c.engineer, address: c.address, total: c.total, received: c.received, lastPayment: c.lastPayment, completed: c.completed, date: c.date }))
+});
+// payGetCashFlow مش من الأكشنات بتاعتي — بنعرّفه بس لو محدش عرّفه، عشان فتح سجل من القائمة يطلع متسق
+if (!DEMO_H['payGetCashFlow']) DEMO_H['payGetCashFlow'] = (params) => {
+  const c = _dCPay.find(x => x.name === String((params && params.name) || '').trim());
+  if (!c) return { rows: [] };
+  return { rows: _dCCopy(c.rows), completed: c.completed, engineer: c.engineer, address: c.address, total: c.total };
+};
+
+/* DEMO-END */
 function fmt(n){ return (Number(n)||0).toLocaleString('en-US', {maximumFractionDigits:0}); }
 
 /* ═══════════════ حماية النصوص المكتوبة (Draft Auto-Save) ═══════════════
@@ -10141,10 +11384,14 @@ async function fxLoadModel(force){
     const manual = items.filter(i => !_fxIsCfg(i)).map(i => ({ id: i.id, name: String(i.name || ''), amount: Number(i.amount) || 0, notes: i.notes || '' }));
     const manualTotal = manual.reduce((s, i) => s + i.amount, 0);
 
-    const general = all.filter(r => (r.project === 'مصروفات عامة' || !r.project) && _fxMonthKey(r.date));
-    const overhead = general.filter(r => selCats.includes(r.cat));
     const projects = ((projRes && projRes.projects) || []).map(p => String(p).trim());
     const projSet = new Set(projects);
+    // المصاريف العامة بس: المشروع "مصروفات عامة" أو فاضي — وكمان لو الوصف فيه اسم مشروع (زي "نقل خامات Hyde park")
+    // بيتشال، لأنه مصروف يخص المشروع ده مش مصروف عام
+    const projNames = projects.map(p => expxNorm(p).replace(/[^\p{L}\p{N}]+/gu, ' ').trim()).filter(p => p.length >= 3);
+    const projRe = projNames.length ? new RegExp(' ' + _GP + '(?:' + projNames.map(_expxReEsc).join('|') + ') ') : null;
+    const general = all.filter(r => (r.project === 'مصروفات عامة' || !r.project) && _fxMonthKey(r.date) && !(projRe && projRe.test(_expxPad(r.desc))));
+    const overhead = general.filter(r => selCats.includes(r.cat));
     const hours = ((hoursRes && hoursRes.entries) || []).map(e => ({ project: String(e.project || '').trim(), month: _fxMonthKey(e.date), hours: Number(e.hours) || 0 }))
       .filter(h => h.month && h.hours > 0 && projSet.has(h.project));
 
@@ -10229,7 +11476,7 @@ async function fxRenderPage(token){
             <span id="fx-range" style="display:none;gap:6px;align-items:center;"><label style="font-size:12px;color:var(--muted);">من</label><input type="date" id="fx-from"><label style="font-size:12px;color:var(--muted);">لحد</label><input type="date" id="fx-to"></span>
           </div>
         </div>
-        <p style="font-size:12.5px;color:var(--muted);margin:8px 0 14px;">إجمالي كل شهر = البنود الثابتة اليدوي + المصاريف العامة من الخزنة (بتتحدث لوحدها أول بأول)، وبيتوزع على المشاريع بنسبة ساعات شغل كل مشروع في نفس الشهر — ونصيب كل مشروع بيظهر في صفحة التكاليف.</p>
+        <p style="font-size:12.5px;color:var(--muted);margin:8px 0 14px;">إجمالي كل شهر = البنود الثابتة اليدوي + المصاريف العامة بس من الخزنة (اللي مش متسجلة على مشروع ومفيش اسم مشروع في وصفها — بتتحدث لوحدها أول بأول)، وبيتوزع على المشاريع بنسبة ساعات شغل كل مشروع في نفس الشهر — ونصيب كل مشروع بيظهر في صفحة التكاليف.</p>
         <div id="fx-cards"></div>
       </div>
       <div class="panel" style="margin-bottom:16px;">
@@ -14819,7 +16066,8 @@ function toToggleTpCards(){
 }
 function toRenderPlanBody(items) {
   // ⚠️ حماية 2026-10-07: طلب سيرفر لتاب تاني ممكن يخلص بعد ما المستخدم غيّر التاب — منرسمش فوق التاب المفتوح دلوقتي
-  if (TO_STATE.activeTab !== 'plan') return;
+  // ⚠️ إصلاح 2026-10-12: صفحة "بنود المشاريع" المستقلة كانت بتفضل "جاري التحميل" للأبد لأن التاب المحفوظ مش 'plan'
+  if (TO_STATE.activeTab !== 'plan' && _currentPage !== 'projectPlanning') return;
   const box = document.getElementById('to-tab-content'); if (!box) return;
   const summaryMap = {};
   TO_STATE.missingSummary.forEach(s => { summaryMap[s.project] = s; });
