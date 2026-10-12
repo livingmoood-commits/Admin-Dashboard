@@ -9097,7 +9097,7 @@ function expxNorm(s){
   // وبعدين بنوحّد الحروف الفارسي/الأوردي اللي بعض الكيبوردات بتكتبها (ی ک ہ ە) ونشيل الحروف الخفية.
   let t = String(s || '');
   try { t = t.normalize('NFKC'); } catch(e) {}
-  return t.replace(/[​-‏‪-‮⁦-⁩﻿]/g, '')
+  return t.replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '')
     .replace(/[أإآٱ]/g, 'ا').replace(/[ةۃ]/g, 'ه').replace(/[ہەۀ]/g, 'ه').replace(/[ىیې]/g, 'ي').replace(/ک/g, 'ك')
     .replace(/[ً-ْـ]/g, '').toLowerCase();
 }
@@ -9705,7 +9705,7 @@ function expxDownloadCsv(id){
   const lines = [head.map(esc).join(',')].concat(rows.map(r =>
     [r.date, r.day, r.desc].concat(st.cfg.dims ? [r.dim] : [], [r.cat, r.project, r.amount]).map(esc).join(',')));
   lines.push(['', '', 'الإجمالي'].concat(st.cfg.dims ? [''] : [], ['', '', _expxSum(rows)]).map(esc).join(','));
-  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `${st.cfg.fileName}_${st.f.from || ''}_${st.f.to || ''}.csv`;
