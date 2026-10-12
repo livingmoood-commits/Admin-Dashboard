@@ -4226,12 +4226,19 @@ function openPaymentPreviewModal(c){
 }
 
 /* ================= Card detail modal (drill-down) ================= */
-function openCardModal(html){
-  document.getElementById('cardDetailBody').classList.remove('cd-wide');
-  document.getElementById('cardDetailBody').innerHTML = html;
+// ⚠️ إضافة 2026-10-12: زرار "رجوع" — لو المودال اتفتح من جوا مودال تاني (زي تفاصيل المشروع) أي مودال فرعي بيتفتح بعده
+// بياخد زرار يرجّعك للمودال الأصلي بدل ما يقفل وخلاص. _cdBack = { label, run }
+let _cdBack = null;
+function openCardModal(html, opts){
+  const body = document.getElementById('cardDetailBody');
+  body.classList.remove('cd-wide');
+  const back = _cdBack && !(opts && opts.root) ? `<button type="button" class="btn btn-outline btn-sm" style="margin-bottom:10px;" onclick="_cdBackRun()">→ رجوع لـ ${qEsc(_cdBack.label)}</button>` : '';
+  body.innerHTML = back + html;
   document.getElementById('cardDetailModal').classList.add('open');
 }
+function _cdBackRun(){ const b = _cdBack; if (b) b.run(); }
 function closeCardModal(){
+  _cdBack = null;
   document.getElementById('cardDetailModal').classList.remove('open');
 }
 document.getElementById('cardDetailModal').addEventListener('click', e => {
@@ -8016,7 +8023,7 @@ async function renderProjectsTab(token) {
         </div>
         ${fx ? `<p style="font-size:12.5px;color:var(--muted);margin:-6px 0 12px;">إجمالي التكلفة = عمالة المشروع + مصاريف المشروع + ديون المشروع (الباقي) + نصيبه من الثابتة والعامة (إيجار + مصاريف عامة موزعة شهريًا بنسبة ساعات الشغل). <a href="#" onclick="event.preventDefault();goTo('fixedExp')" style="color:var(--gold);font-weight:700;">تفاصيل التوزيع ←</a></p>` : ''}
         ${projects.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>ساعات العمالة</th><th>تكلفة العمالة</th>${fx ? '' : '<th>تكلفة الخامات</th>'}<th>مصاريف المشروع</th>${fx ? '<th>ديون المشروع</th><th>ثابتة وعامة (نصيب)</th>' : ''}<th>إجمالي التكلفة</th><th>الإيرادات</th><th>صافي الربح</th></tr></thead>
-        <tbody>${projects.map(p => { const a = adj(p); return `<tr class="row-clickable" onclick="showProjectDetail('${p.project.replace(/'/g,"\\'")}')"><td>${p.project}</td><td>${fmt(p.laborHours)}</td><td>${fmt(a.labor)} ج</td>${fx ? '' : `<td>${fmt(p.materialsCost)} ج</td>`}<td>${fmt(a.expenses)} ج</td>${fx ? `<td>${a.debt ? fmt(a.debt) + ' ج' : '—'}</td><td>${a.share ? fmt(a.share) + ' ج <span style="font-size:11px;color:var(--muted);">(' + fxPct(a.pctOfCost) + ')</span>' : '—'}</td>` : ''}<td><b>${fmt(a.total)} ج</b></td>
+        <tbody>${projects.map(p => { const a = adj(p); return `<tr class="row-clickable" onclick="showProjectDetailModal('${qEscJs(p.project)}')"><td>${p.project}</td><td>${fmt(p.laborHours)}</td><td>${fmt(a.labor)} ج</td>${fx ? '' : `<td>${fmt(p.materialsCost)} ج</td>`}<td>${fmt(a.expenses)} ج</td>${fx ? `<td>${a.debt ? fmt(a.debt) + ' ج' : '—'}</td><td>${a.share ? fmt(a.share) + ' ج <span style="font-size:11px;color:var(--muted);">(' + fxPct(a.pctOfCost) + ')</span>' : '—'}</td>` : ''}<td><b>${fmt(a.total)} ج</b></td>
           <td>${p.financials ? fmt(p.financials.revenue)+' ج' : '—'}</td>
           <td>${a.net===null ? '—' : `<b style="color:${a.net>=0?'var(--green)':'var(--red)'}">${fmt(a.net)} ج</b>`}</td></tr>`; }).join('')}</tbody></table></div>`
         : `<div class="empty">مفيش مشاريع لسه — من صفحة "متابعة صرف المشاريع" دوس "+ مشروع جديد" عشان تضيف أول مشروع</div>`}
@@ -8197,8 +8204,16 @@ function showProjectOtherCostsModal_(d){
   `);
   document.getElementById('cardDetailBody').classList.add('cd-wide');
 }
-async function showProjectDetail(name){
-  const box = document.getElementById('projectDetailBox');
+// Pop-up تفاصيل المشروع (من صفحة المشاريع وتبويبة المشاريع في التكاليف) — نفس محتوى showProjectDetail بالظبط
+async function showProjectDetailModal(name){
+  _cdBack = null;
+  openCardModal(`<div style="display:flex;justify-content:flex-end;margin-bottom:4px;"><button type="button" class="cd-close" onclick="closeCardModal()">&times;</button></div><div id="pdModalBox"></div>`, { root: true });
+  document.getElementById('cardDetailBody').classList.add('cd-wide');
+  _cdBack = { label: 'تفاصيل ' + name, run: () => showProjectDetailModal(name) };
+  await showProjectDetail(name, document.getElementById('pdModalBox'));
+}
+async function showProjectDetail(name, target){
+  const box = target || document.getElementById('projectDetailBox'); if (!box) return;
   box.innerHTML = '<div class="loading-row">جاري التحميل...</div>';
   try {
     const [d, fx] = await Promise.all([apiGet('getProjectFullSummary', { name }), fxLoadModel().catch(() => null)]);
@@ -8293,12 +8308,12 @@ function pjRenderTabBody(){
       const p = r.p, pj = qEscJs(p.project);
       return `
       <tr>
-        <td class="row-clickable" onclick="showProjectDetail('${pj}')"><b>${qEsc(p.project)}</b></td>
+        <td class="row-clickable" onclick="showProjectDetailModal('${pj}')"><b>${qEsc(p.project)}</b></td>
         <td class="row-clickable" title="تفاصيل العمالة" onclick="showProjectLaborModal_('${pj}')">${fmt(r.labor)} ج<div style="font-size:11px;color:var(--muted);">${fmt(r.hours)} س</div></td>
         <td class="row-clickable" title="تفاصيل المصاريف" onclick="showProjectExpensesModal_('${pj}')">${fmt(r.exp)} ج</td>
         ${fx ? `<td class="row-clickable" title="تفاصيل الديون" onclick="fxShowProjectDebtsModal('${pj}')">${r.debt ? `<span style="color:var(--red);">${fmt(r.debt)} ج</span>` : '—'}</td>
         <td class="row-clickable" title="النصيب شهر بشهر" onclick="fxShowProjectModal('${pj}')">${r.share ? fmt(r.share) + ' ج<div style="font-size:11px;color:var(--muted);">' + fxPct(r.a.pctOfCost) + ' من التكلفة</div>' : '—'}</td>` : `<td>—</td><td>—</td>`}
-        <td class="row-clickable" title="التفاصيل كلها" onclick="showProjectDetail('${pj}')"><b>${fmt(r.total)} ج</b></td>
+        <td class="row-clickable" title="التفاصيل كلها" onclick="showProjectDetailModal('${pj}')"><b>${fmt(r.total)} ج</b></td>
         <td class="row-clickable" title="تفاصيل وتعديل الإيرادات" onclick="showProjectRevenueModal_('${pj}')">${r.rev === null ? '—' : fmt(r.rev) + ' ج'}</td>
         <td>${netCell(r.net)}</td>
         <td style="text-align:left;white-space:nowrap;">
