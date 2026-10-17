@@ -8395,29 +8395,71 @@ async function pjConfirmRename_(oldName){
     await renderProjectsPage(_navToken);
   } catch(err){ msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); btn.disabled = false; }
 }
+// ⚠️ إضافة 2026-10-17: شاشة تحميل بتقفل الصفحة وقت الأرشفة/إلغاء الأرشفة وبتوري كل خطوة لحد ما العملية تخلص
+function pjBusyOpen(title, steps){
+  let el = document.getElementById('pjBusy');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'pjBusy';
+    el.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(21,18,15,.55);display:flex;align-items:center;justify-content:center;padding:16px;';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = `<div style="background:#fff;color:#1E1A15;border-radius:16px;padding:22px 24px;width:min(420px,100%);box-shadow:0 20px 50px rgba(0,0,0,.25);direction:rtl;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;"><span class="spinner" style="margin:0;width:18px;height:18px;border-color:rgba(184,151,90,.3);border-top-color:#B8975A;"></span><b style="font-size:16px;">${qEsc(title)}</b></div>
+    <div id="pjBusySteps">${steps.map((s, i) => `<div data-i="${i}" style="display:flex;gap:8px;align-items:center;padding:6px 0;font-size:14px;color:#9a8f80;"><span class="ic" style="width:18px;text-align:center;">○</span><span>${qEsc(s)}</span></div>`).join('')}</div>
+    <div style="margin-top:12px;font-size:12px;color:#6B5E4E;">ممكن تاخد دقيقة — متقفلش الصفحة. <span id="pjBusyT">0</span> ث</div>
+  </div>`;
+  el.style.display = 'flex';
+  const t0 = Date.now();
+  clearInterval(el._t); el._t = setInterval(() => { const s = document.getElementById('pjBusyT'); if (s) s.textContent = Math.round((Date.now() - t0) / 1000); }, 1000);
+}
+function pjBusyStep(i){
+  document.querySelectorAll('#pjBusySteps [data-i]').forEach(r => {
+    const k = +r.dataset.i, ic = r.querySelector('.ic');
+    if (k < i) { ic.textContent = '✓'; r.style.color = '#2C5F3A'; r.style.fontWeight = '700'; }
+    else if (k === i) { ic.textContent = '⏳'; r.style.color = '#1E1A15'; r.style.fontWeight = '800'; }
+    else { ic.textContent = '○'; r.style.color = '#9a8f80'; r.style.fontWeight = '400'; }
+  });
+}
+function pjBusyClose(){ const el = document.getElementById('pjBusy'); if (el) { clearInterval(el._t); el.remove(); } }
+
 async function pjArchive(name){
-  if (!(await openGenConfirm('أرشفة "' + name + '": كل بياناته (شيت المصاريف، شيت التكاليف، سطور الساعات وسجل الشغل) هتتنسخ لملف الأرشيف وتتشال/تتخفي من مكانها، وهيختفي من كل القوايم والحسابات. تقدر ترجّعه كله في أي وقت من تبويب الأرشيف (♻️ إلغاء الأرشفة).', 'أرشفة المشروع'))) return;
-  showToast('📦 جاري الأرشفة... (ممكن تاخد دقيقة)');
+  if (!(await openGenConfirm('أرشفة "' + name + '": كل بياناته (شيت المصاريف، شيت التكاليف، سطور الساعات وسجل الشغل) هتتنسخ لملف الأرشيف وتتشال/تتخفي من مكانها، وهيختفي من كل القوايم. ساعاته بتتحفظ قبل الأرشفة، فنصيبه من المصاريف الثابتة في الشهور اللي اشتغل فيها بيفضل محسوب. تقدر ترجّعه في أي وقت من تبويب الأرشيف (♻️ إلغاء الأرشفة).', 'تأكيد الأرشفة'))) return;
+  pjBusyOpen('📦 جاري أرشفة "' + name + '"', ['حفظ ساعات المشروع لكل شهر', 'نقل بيانات المشروع لملف الأرشيف', 'تحديث القوايم والحسابات']);
   try {
+    pjBusyStep(0);
     // لقطة بساعات المشروع لكل شهر قبل ما تتشال، عشان يفضل واخد نصيبه من مصاريف الشهور اللي اشتغل فيها
     try { await fxSaveArchiveSnapshot(name); }
-    catch(e) { if (!(await openGenConfirm('مقدرناش نحفظ ساعات "' + name + '" قبل الأرشفة، فالمشروع مش هياخد نصيبه من المصاريف الثابتة في الشهور اللي اشتغل فيها. تكمّل الأرشفة برضو؟', 'تنبيه'))) return; }
+    catch(e) {
+      pjBusyClose();
+      if (!(await openGenConfirm('مقدرناش نحفظ ساعات "' + name + '" قبل الأرشفة، فالمشروع مش هياخد نصيبه من المصاريف الثابتة في الشهور اللي اشتغل فيها. تكمّل الأرشفة برضو؟', 'تنبيه'))) return;
+      pjBusyOpen('📦 جاري أرشفة "' + name + '"', ['حفظ ساعات المشروع لكل شهر', 'نقل بيانات المشروع لملف الأرشيف', 'تحديث القوايم والحسابات']);
+    }
+    pjBusyStep(1);
     const r = await apiPost('archiveProject', { name });
-    const m = r && r.moved;
-    showToast('📦 اتأرشف' + (m ? ' — اتنقل ' + (m.hours || 0) + ' سطر ساعات و' + (m.workflow || 0) + ' سطر شغل' : ''));
+    pjBusyStep(2);
+    fxInvalidate();
     await renderProjectsPage(_navToken);
-  } catch(err){ showError(err); }
+    pjBusyClose();
+    const m = r && r.moved;
+    showToast('📦 اتأرشف "' + name + '"' + (m ? ' — اتنقل ' + (m.hours || 0) + ' سطر ساعات و' + (m.workflow || 0) + ' سطر شغل' : ''), 'success');
+  } catch(err){ pjBusyClose(); showError(err); }
 }
 async function pjUnarchive(name){
+  if (!(await openGenConfirm('إلغاء أرشفة "' + name + '": كل بياناته (شيت المصاريف، شيت التكاليف، سطور الساعات وسجل الشغل) هترجع مكانها، والمشروع هيرجع في المشاريع النشطة وكل الحسابات.', 'تأكيد إلغاء الأرشفة'))) return;
+  pjBusyOpen('♻️ جاري إرجاع "' + name + '"', ['إرجاع بيانات المشروع من الأرشيف', 'تنظيف ساعات الأرشيف المحفوظة', 'تحديث القوايم والحسابات']);
   try {
-    showToast('♻️ جاري الرجوع...');
+    pjBusyStep(0);
     const r = await apiPost('unarchiveProject', { name });
+    pjBusyStep(1);
     // الساعات رجعت لشيت الساعات، فاللقطة مبقاش ليها لازمة (وإلا هتتحسب مرتين لو اتأرشف تاني)
     try { await fxDropArchiveSnapshot(name); } catch(e) {}
-    const m = r && r.restored;
-    showToast('♻️ رجع المشروع للنشطة' + (m ? ' — رجع ' + (m.hours || 0) + ' سطر ساعات و' + (m.workflow || 0) + ' سطر شغل' : ''));
+    pjBusyStep(2);
+    fxInvalidate();
     await renderProjectsPage(_navToken);
-  } catch(err){ showError(err); }
+    pjBusyClose();
+    const m = r && r.restored;
+    showToast('♻️ رجع "' + name + '" للنشطة' + (m ? ' — رجع ' + (m.hours || 0) + ' سطر ساعات و' + (m.workflow || 0) + ' سطر شغل' : ''), 'success');
+  } catch(err){ pjBusyClose(); showError(err); }
 }
 // ⚠️ حذف نهائي حقيقي — بيمسح شيتات المشروع بالكامل من الملفين (مصاريف
 // وتكاليف). محتاج المستخدم يكتب اسم المشروع بالظبط قبل ما يتفعل، عشان يبقى
