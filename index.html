@@ -8279,13 +8279,47 @@ function pjSwitchTab(tab){ PJSTATE.tab = tab; pjRenderPage(); }
 function pjRenderTabBody(){
   const body = document.getElementById('pjTabBody'); if (!body) return;
   if (PJSTATE.tab === 'archived') {
-    body.innerHTML = PJSTATE.archived.length ? `
-      <div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th></th></tr></thead>
-      <tbody>${PJSTATE.archived.map(name => `
-        <tr><td>${qEsc(name)}</td>
-          <td style="text-align:left;"><button class="btn btn-sm btn-outline" onclick="pjUnarchive('${qEscJs(name)}')">♻️ إلغاء الأرشفة</button></td>
-        </tr>`).join('')}</tbody></table></div>
+    // ⚠️ إضافة 2026-10-17: تفاصيل المشاريع المؤرشفة — الأرقام النهائية اللي اتحفظت وقت الأرشفة، عشان تعرف بترجّع إيه
+    const fx = PJSTATE.fx || null;
+    const snaps = (fx && fx.archSnaps) || {};
+    const rows = PJSTATE.archived.map(name => {
+      const j = snaps[name] || {}, s = j.summary || null;
+      const hours = s ? s.hours : Object.values(j.months || {}).reduce((t, v) => t + (Number(v) || 0), 0);
+      const share = fx && fx.byProject[name] ? fx.byProject[name].total : (s ? s.share : 0);
+      const lp = PJSTATE.archLive && PJSTATE.archLive[name]; // ملخص من السيرفر للمشاريع القديمة اللي ملهاش أرقام محفوظة
+      return { name, s, at: j.at || '', hours, share, months: Object.keys(j.months || {}).sort(), lp };
+    });
+    const v = x => x === null || x === undefined ? '—' : fmt(x) + ' ج';
+    const netCell = x => x === null || x === undefined ? '—' : `<b style="color:${x >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(x)} ج</b>`;
+    body.innerHTML = rows.length ? `
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">الأرقام دي آخر حالة للمشروع وقت ما اتأرشف. نصيب الثابتة والعامة لسه محسوب في الشهور اللي اشتغل فيها. دوس على المشروع تشوف ساعاته شهر بشهر.</div>
+      <div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>اتأرشف</th><th>الساعات</th><th>العمالة</th><th>مصاريف المشروع</th><th>ديون</th><th>ثابتة وعامة</th><th>إجمالي التكلفة</th><th>الإيرادات</th><th>صافي الربح</th><th></th></tr></thead>
+      <tbody>${rows.map(r => {
+        const s = r.s, lp = r.lp;
+        const exp = s ? s.expenses : (lp ? lp.exp : null), rev = s ? s.revenue : (lp ? lp.rev : null);
+        return `<tr data-pj="${qEsc(r.name)}">
+          <td class="row-clickable" onclick="pjShowArchivedDetail('${qEscJs(r.name)}')"><b>${qEsc(r.name)}</b>${r.months.length ? `<div style="font-size:11px;color:var(--muted);">${qEsc(fxMonthLabel(r.months[0]))}${r.months.length > 1 ? ' ← ' + qEsc(fxMonthLabel(r.months[r.months.length - 1])) : ''}</div>` : ''}</td>
+          <td style="white-space:nowrap;">${qEsc(r.at || '—')}</td>
+          <td>${r.hours ? fmt(r.hours) + ' س' : '—'}</td>
+          <td>${s ? v(s.labor) : '—'}</td>
+          <td>${v(exp)}</td>
+          <td>${s && s.debt ? `<span style="color:var(--red);">${fmt(s.debt)} ج</span>` : '—'}</td>
+          <td class="row-clickable" onclick="fxShowProjectModal('${qEscJs(r.name)}')">${r.share ? fmt(r.share) + ' ج' : '—'}</td>
+          <td><b>${s ? v(s.total) : '—'}</b></td>
+          <td>${v(rev)}</td>
+          <td>${s ? netCell(s.net) : '—'}</td>
+          <td style="text-align:left;"><button class="btn btn-sm btn-outline" onclick="pjUnarchive('${qEscJs(r.name)}')">♻️ إلغاء الأرشفة</button></td>
+        </tr>`; }).join('')}</tbody></table></div>
+      ${rows.some(r => !r.s) ? `<div style="font-size:12px;color:var(--muted);margin-top:8px;">"—" = المشروع اتأرشف قبل ما السيستم يبدأ يحفظ أرقامه النهائية. أي أرشفة جاية هتتحفظ أرقامها كاملة.</div>` : ''}
     ` : `<div class="empty">مفيش مشاريع مؤرشفة</div>`;
+    // للمشاريع القديمة: نحاول نجيب مصاريفها وإيراداتها من السيرفر (مرة واحدة)
+    const missing = rows.filter(r => !r.s && !(PJSTATE.archLive && r.name in PJSTATE.archLive)).map(r => r.name);
+    if (missing.length) {
+      PJSTATE.archLive = PJSTATE.archLive || {};
+      Promise.all(missing.map(n => apiGet('getProjectFullSummary', { name: n }).then(d => {
+        PJSTATE.archLive[n] = { exp: d && d.projectExpenses ? Number(d.projectExpenses) : null, rev: d && d.financials ? Number(d.financials.revenue) || 0 : null };
+      }).catch(() => { PJSTATE.archLive[n] = null; }))).then(() => { if (PJSTATE.tab === 'archived') pjRenderTabBody(); });
+    }
     return;
   }
   // ⚠️ تعديل 2026-10-12: تكلفة المشروع = عمالة + مصاريف المشروع + ديون المشروع (الباقي) + نصيبه من الثابتة والعامة بالساعات (fxAdjust)
@@ -8306,7 +8340,7 @@ function pjRenderTabBody(){
     <tbody>${rowsData.map(r => {
       const p = r.p, pj = qEscJs(p.project);
       return `
-      <tr>
+      <tr data-pj="${qEsc(p.project)}">
         <td class="row-clickable" onclick="showProjectDetailModal('${pj}')"><b>${qEsc(p.project)}</b></td>
         <td class="row-clickable" title="تفاصيل العمالة" onclick="showProjectLaborModal_('${pj}')">${fmt(r.labor)} ج<div style="font-size:11px;color:var(--muted);">${fmt(r.hours)} س</div></td>
         <td class="row-clickable" title="تفاصيل المصاريف" onclick="showProjectExpensesModal_('${pj}')">${fmt(r.exp)} ج</td>
@@ -8395,71 +8429,118 @@ async function pjConfirmRename_(oldName){
     await renderProjectsPage(_navToken);
   } catch(err){ msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); btn.disabled = false; }
 }
-// ⚠️ إضافة 2026-10-17: شاشة تحميل بتقفل الصفحة وقت الأرشفة/إلغاء الأرشفة وبتوري كل خطوة لحد ما العملية تخلص
-function pjBusyOpen(title, steps){
-  let el = document.getElementById('pjBusy');
-  if (!el) {
-    el = document.createElement('div'); el.id = 'pjBusy';
-    el.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(21,18,15,.55);display:flex;align-items:center;justify-content:center;padding:16px;';
-    document.body.appendChild(el);
+// ⚠️ إضافة 2026-10-17: صف المشروع نفسه بيبين التحميل — بيبهت تدريجيًا وعليه شريط تقدم واسم الخطوة الحالية،
+// وفي الآخر بيختفي من الجدول. الزراير في الصف بتتقفل لحد ما العملية تخلص.
+function _pjBusyCss(){
+  if (document.getElementById('pjBusyCss')) return;
+  const st = document.createElement('style'); st.id = 'pjBusyCss';
+  st.textContent = `
+  tr.pj-busy td{ animation:pjFade 40s cubic-bezier(.2,.6,.4,1) forwards; pointer-events:none; }
+  tr.pj-busy td:first-child{ animation:none; opacity:1; }
+  @keyframes pjFade{ from{ opacity:1; } to{ opacity:.25; } }
+  .pj-st{ margin-top:6px; font-size:11.5px; font-weight:700; color:var(--gold-dim); display:flex; align-items:center; gap:6px; justify-content:center; }
+  .pj-st .spinner{ margin:0; width:11px; height:11px; border-color:rgba(184,151,90,.3); border-top-color:var(--gold); }
+  .pj-bar{ height:4px; border-radius:4px; background:rgba(184,151,90,.18); margin-top:6px; overflow:hidden; }
+  .pj-bar i{ display:block; height:100%; width:4%; background:var(--gold); border-radius:4px; transition:width .6s ease; }
+  tr.pj-gone td{ animation:none !important; opacity:0 !important; transition:opacity .45s; }`;
+  document.head.appendChild(st);
+}
+function pjRowBusy(name, steps){
+  _pjBusyCss();
+  const tr = Array.from(document.querySelectorAll('#pjTabBody tr[data-pj]')).find(r => r.dataset.pj === name);
+  const fallback = !tr;
+  if (fallback) showToast('⏳ ' + steps[0] + '...');
+  let td, base, prog = 4, tick = null;
+  if (tr) {
+    tr.classList.add('pj-busy');
+    td = tr.querySelector('td'); base = td.innerHTML;
+    td.innerHTML = base + `<div class="pj-st"><span class="spinner"></span><span class="t"></span></div><div class="pj-bar"><i></i></div>`;
+    // شريط بيتحرك لوحده ببطء (من غير ما يوصل 100%) لحد ما الخطوة الجاية تخلص
+    tick = setInterval(() => { prog = Math.min(prog + (92 - prog) * 0.04, 92); const i = td.querySelector('.pj-bar i'); if (i) i.style.width = prog + '%'; }, 500);
   }
-  el.innerHTML = `<div style="background:#fff;color:#1E1A15;border-radius:16px;padding:22px 24px;width:min(420px,100%);box-shadow:0 20px 50px rgba(0,0,0,.25);direction:rtl;">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;"><span class="spinner" style="margin:0;width:18px;height:18px;border-color:rgba(184,151,90,.3);border-top-color:#B8975A;"></span><b style="font-size:16px;">${qEsc(title)}</b></div>
-    <div id="pjBusySteps">${steps.map((s, i) => `<div data-i="${i}" style="display:flex;gap:8px;align-items:center;padding:6px 0;font-size:14px;color:#9a8f80;"><span class="ic" style="width:18px;text-align:center;">○</span><span>${qEsc(s)}</span></div>`).join('')}</div>
-    <div style="margin-top:12px;font-size:12px;color:#6B5E4E;">ممكن تاخد دقيقة — متقفلش الصفحة. <span id="pjBusyT">0</span> ث</div>
-  </div>`;
-  el.style.display = 'flex';
-  const t0 = Date.now();
-  clearInterval(el._t); el._t = setInterval(() => { const s = document.getElementById('pjBusyT'); if (s) s.textContent = Math.round((Date.now() - t0) / 1000); }, 1000);
+  const ctl = {
+    step(i){
+      if (!td) return;
+      const t = td.querySelector('.pj-st .t'); if (t) t.textContent = `${steps[i]}... (${i + 1}/${steps.length})`;
+      prog = Math.max(prog, (i / steps.length) * 100 + 4);
+    },
+    async done(){
+      if (!tr) return;
+      clearInterval(tick);
+      const i = td.querySelector('.pj-bar i'); if (i) i.style.width = '100%';
+      const t = td.querySelector('.pj-st .t'); if (t) t.textContent = '✓ تم';
+      await new Promise(r => setTimeout(r, 450));
+      tr.classList.add('pj-gone');
+      await new Promise(r => setTimeout(r, 480));
+    },
+    fail(){ if (tr) { clearInterval(tick); tr.classList.remove('pj-busy'); td.innerHTML = base; } }
+  };
+  return ctl;
 }
-function pjBusyStep(i){
-  document.querySelectorAll('#pjBusySteps [data-i]').forEach(r => {
-    const k = +r.dataset.i, ic = r.querySelector('.ic');
-    if (k < i) { ic.textContent = '✓'; r.style.color = '#2C5F3A'; r.style.fontWeight = '700'; }
-    else if (k === i) { ic.textContent = '⏳'; r.style.color = '#1E1A15'; r.style.fontWeight = '800'; }
-    else { ic.textContent = '○'; r.style.color = '#9a8f80'; r.style.fontWeight = '400'; }
-  });
-}
-function pjBusyClose(){ const el = document.getElementById('pjBusy'); if (el) { clearInterval(el._t); el.remove(); } }
 
+function pjShowArchivedDetail(name){
+  const fx = PJSTATE.fx || null; const j = (fx && fx.archSnaps && fx.archSnaps[name]) || {}; const s = j.summary || null;
+  const card = (l, val, c) => `<div class="card"><div class="label">${l}</div><div class="value ${c || 'gold'}">${val}</div></div>`;
+  openCardModal(`<div class="cd-head"><h3>📦 ${qEsc(name)} — مؤرشف${j.at ? ' من ' + qEsc(j.at) : ''}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    ${s ? `<div class="cards">${card('الساعات', fmt(s.hours) + ' س', '')}${card('العمالة', fmt(s.labor) + ' ج')}${card('مصاريف المشروع', fmt(s.expenses) + ' ج')}${card('ديون (الباقي)', fmt(s.debt) + ' ج', s.debt ? 'red' : '')}
+      ${card('ثابتة وعامة', fmt(s.share) + ' ج')}${card('إجمالي التكلفة', fmt(s.total) + ' ج')}${card('الإيرادات', s.revenue === null ? '—' : fmt(s.revenue) + ' ج', 'green')}${card('صافي الربح', s.net === null ? '—' : fmt(s.net) + ' ج', s.net >= 0 ? 'green' : 'red')}</div>`
+      : `<p style="font-size:12.5px;color:var(--muted);">المشروع ده اتأرشف قبل ما السيستم يبدأ يحفظ أرقامه النهائية — المتاح ساعاته ونصيبه من الثابتة بس.</p>`}
+    <h4 style="margin:12px 0 6px;">ساعاته ونصيبه من الثابتة شهر بشهر</h4>
+    ${fx ? fxProjectTableHtml(fx, name) : '<div class="empty">—</div>'}
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+      <button type="button" class="btn btn-outline" onclick="closeCardModal()">قفل</button>
+      <button type="button" class="btn btn-primary" onclick="closeCardModal(); pjUnarchive('${qEscJs(name)}')">♻️ إلغاء الأرشفة</button>
+    </div>`);
+  document.getElementById('cardDetailBody').classList.add('cd-wide');
+}
 async function pjArchive(name){
   if (!(await openGenConfirm('أرشفة "' + name + '": كل بياناته (شيت المصاريف، شيت التكاليف، سطور الساعات وسجل الشغل) هتتنسخ لملف الأرشيف وتتشال/تتخفي من مكانها، وهيختفي من كل القوايم. ساعاته بتتحفظ قبل الأرشفة، فنصيبه من المصاريف الثابتة في الشهور اللي اشتغل فيها بيفضل محسوب. تقدر ترجّعه في أي وقت من تبويب الأرشيف (♻️ إلغاء الأرشفة).', 'تأكيد الأرشفة'))) return;
-  pjBusyOpen('📦 جاري أرشفة "' + name + '"', ['حفظ ساعات المشروع لكل شهر', 'نقل بيانات المشروع لملف الأرشيف', 'تحديث القوايم والحسابات']);
+  const ARCH_STEPS = ['بيحفظ الساعات', 'بينقل للأرشيف', 'بيحدّث الحسابات'];
+  let busy = pjRowBusy(name, ARCH_STEPS);
   try {
-    pjBusyStep(0);
+    busy.step(0);
     // لقطة بساعات المشروع لكل شهر قبل ما تتشال، عشان يفضل واخد نصيبه من مصاريف الشهور اللي اشتغل فيها
-    try { await fxSaveArchiveSnapshot(name); }
+    let summary = null;
+    try {
+      const p = (PJSTATE.active || []).find(x => String(x.project).trim() === name);
+      if (p) { const a = fxAdjust(p, PJSTATE.fx || null, name);
+        summary = { hours: Number(p.laborHours) || 0, labor: a.labor, expenses: a.expenses, debt: a.debt, share: a.share, total: a.total,
+          revenue: p.financials ? Number(p.financials.revenue) || 0 : null, net: a.net }; }
+    } catch(e) {}
+    try { await fxSaveArchiveSnapshot(name, summary); }
     catch(e) {
-      pjBusyClose();
+      busy.fail();
       if (!(await openGenConfirm('مقدرناش نحفظ ساعات "' + name + '" قبل الأرشفة، فالمشروع مش هياخد نصيبه من المصاريف الثابتة في الشهور اللي اشتغل فيها. تكمّل الأرشفة برضو؟', 'تنبيه'))) return;
-      pjBusyOpen('📦 جاري أرشفة "' + name + '"', ['حفظ ساعات المشروع لكل شهر', 'نقل بيانات المشروع لملف الأرشيف', 'تحديث القوايم والحسابات']);
+      busy = pjRowBusy(name, ARCH_STEPS);
     }
-    pjBusyStep(1);
+    busy.step(1);
     const r = await apiPost('archiveProject', { name });
-    pjBusyStep(2);
+    busy.step(2);
     fxInvalidate();
+    await apiGet('listProjectsSummary').catch(() => null); // تحميل البيانات الجديدة قبل ما الصف يختفي
+    await busy.done();
     await renderProjectsPage(_navToken);
-    pjBusyClose();
     const m = r && r.moved;
     showToast('📦 اتأرشف "' + name + '"' + (m ? ' — اتنقل ' + (m.hours || 0) + ' سطر ساعات و' + (m.workflow || 0) + ' سطر شغل' : ''), 'success');
-  } catch(err){ pjBusyClose(); showError(err); }
+  } catch(err){ busy.fail(); showError(err); }
 }
 async function pjUnarchive(name){
   if (!(await openGenConfirm('إلغاء أرشفة "' + name + '": كل بياناته (شيت المصاريف، شيت التكاليف، سطور الساعات وسجل الشغل) هترجع مكانها، والمشروع هيرجع في المشاريع النشطة وكل الحسابات.', 'تأكيد إلغاء الأرشفة'))) return;
-  pjBusyOpen('♻️ جاري إرجاع "' + name + '"', ['إرجاع بيانات المشروع من الأرشيف', 'تنظيف ساعات الأرشيف المحفوظة', 'تحديث القوايم والحسابات']);
+  const busy = pjRowBusy(name, ['بيرجّع البيانات', 'بينظّف الساعات المحفوظة', 'بيحدّث الحسابات']);
   try {
-    pjBusyStep(0);
+    busy.step(0);
     const r = await apiPost('unarchiveProject', { name });
-    pjBusyStep(1);
+    busy.step(1);
     // الساعات رجعت لشيت الساعات، فاللقطة مبقاش ليها لازمة (وإلا هتتحسب مرتين لو اتأرشف تاني)
     try { await fxDropArchiveSnapshot(name); } catch(e) {}
-    pjBusyStep(2);
+    busy.step(2);
     fxInvalidate();
+    await apiGet('listProjectsSummary').catch(() => null);
+    await busy.done();
     await renderProjectsPage(_navToken);
-    pjBusyClose();
     const m = r && r.restored;
     showToast('♻️ رجع "' + name + '" للنشطة' + (m ? ' — رجع ' + (m.hours || 0) + ' سطر ساعات و' + (m.workflow || 0) + ' سطر شغل' : ''), 'success');
-  } catch(err){ pjBusyClose(); showError(err); }
+  } catch(err){ busy.fail(); showError(err); }
 }
 // ⚠️ حذف نهائي حقيقي — بيمسح شيتات المشروع بالكامل من الملفين (مصاريف
 // وتكاليف). محتاج المستخدم يكتب اسم المشروع بالظبط قبل ما يتفعل، عشان يبقى
@@ -11407,14 +11488,15 @@ function fxMonthlyHours(entries){
   (entries || []).forEach(e => { const k = _fxMonthKey(e.date), h = Number(e.hours) || 0; if (k && h > 0) out[k] = (out[k] || 0) + h; });
   return out;
 }
-async function fxSaveArchiveSnapshot(name){
+async function fxSaveArchiveSnapshot(name, summary){
   apiCacheClear(); // لازم أحدث ساعات من السيرفر، مش من الكاش
   const res = await apiGet('listHoursEntries', { filters: { project: name } });
   const entries = ((res && res.entries) || []).filter(e => String(e.project || '').trim() === name);
   const months = fxMonthlyHours(entries);
   const fixedRes = await apiGet('listFixedExpenses');
   const old = ((fixedRes && fixedRes.items) || []).filter(i => String(i.name || '').trim() === (FX_ARCH_PREFIX + name).trim());
-  if (Object.keys(months).length) await apiPost('addFixedExpense', { item: { name: FX_ARCH_PREFIX + name, amount: 0, notes: JSON.stringify({ project: name, months, at: todayStr() }) } });
+  // summary = أرقام المشروع النهائية وقت الأرشفة (عشان تبويبة الأرشيف تعرضها)
+  if (Object.keys(months).length || summary) await apiPost('addFixedExpense', { item: { name: FX_ARCH_PREFIX + name, amount: 0, notes: JSON.stringify({ project: name, months, at: todayStr(), summary: summary || null }) } });
   for (const it of old) { try { await apiPost('deleteFixedExpense', { id: it.id }); } catch(e) {} }
   fxInvalidate();
   return months;
@@ -11475,11 +11557,12 @@ async function fxLoadModel(force){
     const hours = ((hoursRes && hoursRes.entries) || []).map(e => ({ project: String(e.project || '').trim(), month: _fxMonthKey(e.date), hours: Number(e.hours) || 0 }))
       .filter(h => h.month && h.hours > 0 && projSet.has(h.project));
     // ساعات المشاريع المؤرشفة (من اللقطة اللي اتاخدت وقت الأرشفة) — بتفضل داخلة في توزيع شهورها
-    const archived = [];
+    const archived = [], archSnaps = {};
     items.filter(_fxIsArch).forEach(it => {
       let j = {}; try { j = JSON.parse(it.notes || '{}'); } catch(e) {}
       const pj = String(j.project || String(it.name || '').trim().slice(FX_ARCH_PREFIX.trim().length)).trim();
-      if (!pj || projSet.has(pj)) return; // لو رجع من الأرشيف، ساعاته رجعت للشيت فمنحسبهاش مرتين
+      if (!pj || projSet.has(pj)) return;
+      archSnaps[pj] = j; // لو رجع من الأرشيف، ساعاته رجعت للشيت فمنحسبهاش مرتين
       if (!archived.includes(pj)) archived.push(pj);
       Object.entries(j.months || {}).forEach(([month, h]) => { h = Number(h) || 0; if (/^\d{4}-\d{2}$/.test(month) && h > 0) hours.push({ project: pj, month, hours: h, archived: true }); });
     });
@@ -11523,7 +11606,7 @@ async function fxLoadModel(force){
       const b = debtsByProject[pj] || (debtsByProject[pj] = { total: 0, paid: 0, remaining: 0, items: [] });
       b.total += Number(x.total) || 0; b.paid += Number(x.paid) || 0; b.remaining += Math.max(0, Number(x.remaining) || 0); b.items.push(x);
     });
-    FX_MODEL = { months, byProject, debtsByProject, manual, manualTotal, selCats, cfgItems, general, archived,
+    FX_MODEL = { months, byProject, debtsByProject, manual, manualTotal, selCats, cfgItems, general, archived, archSnaps,
       grandTotal: months.reduce((s, m) => s + m.total, 0), grandAllocated: months.reduce((s, m) => s + m.allocated, 0),
       grandUnallocated: months.reduce((s, m) => s + m.unallocated, 0) };
     FX_MODEL_AT = Date.now();
