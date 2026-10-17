@@ -8251,7 +8251,9 @@ async function renderProjectsPage(token){
       apiGet('listProjectsSummary'), apiGet('listArchivedProjects'), fxLoadModel().catch(() => null)
     ]);
     if (isStaleNav(token)) return;
-    PJSTATE.active = active; PJSTATE.archived = archivedNames; PJSTATE.fx = fx;
+    // السيرفر بيكاش ملخص المشاريع لحد 10 دقايق، فمشروع لسه متأرشف ممكن يفضل ظاهر في النشطة بساعات صفر — بنشيله من هنا
+    const archSet = new Set((archivedNames || []).map(n => String(n).trim()));
+    PJSTATE.active = (active || []).filter(p => !archSet.has(String(p.project).trim())); PJSTATE.archived = archivedNames; PJSTATE.fx = fx;
     pjRenderPage();
   } catch(err){ showError(err); }
 }
