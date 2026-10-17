@@ -8478,20 +8478,41 @@ function pjRowBusy(name, steps){
   return ctl;
 }
 
-function pjShowArchivedDetail(name){
-  const fx = PJSTATE.fx || null; const j = (fx && fx.archSnaps && fx.archSnaps[name]) || {}; const s = j.summary || null;
-  const card = (l, val, c) => `<div class="card"><div class="label">${l}</div><div class="value ${c || 'gold'}">${val}</div></div>`;
-  openCardModal(`<div class="cd-head"><h3>📦 ${qEsc(name)} — مؤرشف${j.at ? ' من ' + qEsc(j.at) : ''}</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
-    ${s ? `<div class="cards">${card('الساعات', fmt(s.hours) + ' س', '')}${card('العمالة', fmt(s.labor) + ' ج')}${card('مصاريف المشروع', fmt(s.expenses) + ' ج')}${card('ديون (الباقي)', fmt(s.debt) + ' ج', s.debt ? 'red' : '')}
-      ${card('ثابتة وعامة', fmt(s.share) + ' ج')}${card('إجمالي التكلفة', fmt(s.total) + ' ج')}${card('الإيرادات', s.revenue === null ? '—' : fmt(s.revenue) + ' ج', 'green')}${card('صافي الربح', s.net === null ? '—' : fmt(s.net) + ' ج', s.net >= 0 ? 'green' : 'red')}</div>`
-      : `<p style="font-size:12.5px;color:var(--muted);">المشروع ده اتأرشف قبل ما السيستم يبدأ يحفظ أرقامه النهائية — المتاح ساعاته ونصيبه من الثابتة بس.</p>`}
-    <h4 style="margin:12px 0 6px;">ساعاته ونصيبه من الثابتة شهر بشهر</h4>
-    ${fx ? fxProjectTableHtml(fx, name) : '<div class="empty">—</div>'}
-    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
-      <button type="button" class="btn btn-outline" onclick="closeCardModal()">قفل</button>
-      <button type="button" class="btn btn-primary" onclick="closeCardModal(); pjUnarchive('${qEscJs(name)}')">♻️ إلغاء الأرشفة</button>
-    </div>`);
+// Pop-up المشروع المؤرشف — بنفس شكل "تفاصيل مشروع" (الأرقام الرئيسية + التكلفة جاية منين + الشهور)
+async function pjShowArchivedDetail(name){
+  _cdBack = null;
+  openCardModal(`<div class="loading-row">جاري التحميل...</div>`, { root: true });
   document.getElementById('cardDetailBody').classList.add('cd-wide');
+  try {
+    const fx = PJSTATE.fx || await fxLoadModel().catch(() => null);
+    const j = (fx && fx.archSnaps && fx.archSnaps[name]) || {}; const s = j.summary || null;
+    // المشاريع القديمة (من غير أرقام محفوظة): المصاريف والإيرادات من السيرفر لو لسه بيرجعها
+    let live = null;
+    if (!s) { try { live = await apiGet('getProjectFullSummary', { name }); } catch(e) {} }
+    const share = fx && fx.byProject[name] ? fx.byProject[name].total : (s ? s.share || 0 : 0);
+    const hours = s ? s.hours : Object.values(j.months || {}).reduce((t, v) => t + (Number(v) || 0), 0);
+    const labor = s ? Number(s.labor) || 0 : 0;
+    const expenses = s ? Number(s.expenses) || 0 : (live ? Number(live.projectExpenses) || 0 : 0);
+    const debt = s ? Number(s.debt) || 0 : ((fx && fx.debtsByProject && fx.debtsByProject[name]) ? fx.debtsByProject[name].remaining : 0);
+    const revenue = s ? s.revenue : (live && live.financials ? Number(live.financials.revenue) || 0 : null);
+    const direct = labor + expenses + debt, total = direct + share;
+    const fa = { labor, expenses, debt, share, direct, total, net: revenue === null || revenue === undefined ? null : revenue - total, pctOfCost: total ? share / total : 0 };
+    const d = { financials: revenue === null || revenue === undefined ? null : { revenue }, laborHours: hours };
+    if (!document.getElementById('cardDetailModal').classList.contains('open')) return;
+    _cdBack = { label: 'تفاصيل ' + name, run: () => pjShowArchivedDetail(name) };
+    openCardModal(`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <h3 style="margin:0;">📦 تفاصيل مشروع: ${qEsc(name)} <span style="font-size:12px;font-weight:700;background:rgba(184,151,90,.15);color:var(--gold-dim);padding:3px 10px;border-radius:10px;margin-inline-start:6px;">مؤرشف${j.at ? ' من ' + qEsc(j.at) : ''}</span></h3>
+        <button type="button" class="cd-close" onclick="closeCardModal()">&times;</button></div>
+      ${s ? '' : `<p style="font-size:12.5px;color:var(--muted);margin:8px 0 0;">⚠️ المشروع ده اتأرشف قبل ما السيستم يبدأ يحفظ أرقامه النهائية، فتكلفة العمالة مش محفوظة (الساعات والثابتة والمصاريف والإيرادات موجودة). لو عاوز أرقامه كاملة: ألغي الأرشفة وأرشفه تاني.</p>`}
+      <div style="margin-top:12px;">${fxProjectKpisHtml(fa, d, name)}</div>
+      ${fxCostBreakdownHtml(fa, name, hours)}
+      ${fx ? `<h3 style="margin:6px 0 8px;">المصاريف الثابتة — نصيب ${qEsc(name)} شهر بشهر</h3>${fxProjectTableHtml(fx, name)}` : ''}
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
+        <button type="button" class="btn btn-outline" onclick="closeCardModal()">قفل</button>
+        <button type="button" class="btn btn-primary" onclick="closeCardModal(); pjUnarchive('${qEscJs(name)}')">♻️ إلغاء الأرشفة</button>
+      </div>`, { root: true });
+    document.getElementById('cardDetailBody').classList.add('cd-wide');
+  } catch(err){ openCardModal(`<div class="msg err" style="display:block;">خطأ: ${qEsc(err.message || String(err))}</div>`); }
 }
 async function pjArchive(name){
   if (!(await openGenConfirm('أرشفة "' + name + '": كل بياناته (شيت المصاريف، شيت التكاليف، سطور الساعات وسجل الشغل) هتتنسخ لملف الأرشيف وتتشال/تتخفي من مكانها، وهيختفي من كل القوايم. ساعاته بتتحفظ قبل الأرشفة، فنصيبه من المصاريف الثابتة في الشهور اللي اشتغل فيها بيفضل محسوب. تقدر ترجّعه في أي وقت من تبويب الأرشيف (♻️ إلغاء الأرشفة).', 'تأكيد الأرشفة'))) return;
