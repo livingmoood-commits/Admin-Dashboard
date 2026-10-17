@@ -8397,6 +8397,9 @@ async function pjArchive(name){
   if (!(await openGenConfirm('أرشفة "' + name + '": كل بياناته (شيت المصاريف، شيت التكاليف، سطور الساعات وسجل الشغل) هتتنسخ لملف الأرشيف وتتشال/تتخفي من مكانها، وهيختفي من كل القوايم والحسابات. تقدر ترجّعه كله في أي وقت من تبويب الأرشيف (♻️ إلغاء الأرشفة).', 'أرشفة المشروع'))) return;
   showToast('📦 جاري الأرشفة... (ممكن تاخد دقيقة)');
   try {
+    // لقطة بساعات المشروع لكل شهر قبل ما تتشال، عشان يفضل واخد نصيبه من مصاريف الشهور اللي اشتغل فيها
+    try { await fxSaveArchiveSnapshot(name); }
+    catch(e) { if (!(await openGenConfirm('مقدرناش نحفظ ساعات "' + name + '" قبل الأرشفة، فالمشروع مش هياخد نصيبه من المصاريف الثابتة في الشهور اللي اشتغل فيها. تكمّل الأرشفة برضو؟', 'تنبيه'))) return; }
     const r = await apiPost('archiveProject', { name });
     const m = r && r.moved;
     showToast('📦 اتأرشف' + (m ? ' — اتنقل ' + (m.hours || 0) + ' سطر ساعات و' + (m.workflow || 0) + ' سطر شغل' : ''));
@@ -8407,6 +8410,8 @@ async function pjUnarchive(name){
   try {
     showToast('♻️ جاري الرجوع...');
     const r = await apiPost('unarchiveProject', { name });
+    // الساعات رجعت لشيت الساعات، فاللقطة مبقاش ليها لازمة (وإلا هتتحسب مرتين لو اتأرشف تاني)
+    try { await fxDropArchiveSnapshot(name); } catch(e) {}
     const m = r && r.restored;
     showToast('♻️ رجع المشروع للنشطة' + (m ? ' — رجع ' + (m.hours || 0) + ' سطر ساعات و' + (m.workflow || 0) + ' سطر شغل' : ''));
     await renderProjectsPage(_navToken);
@@ -11346,6 +11351,36 @@ let FX_UI = { month: '', from: '', to: '', cats: null, dirty: false };
 
 function fxDefaultCats(){ return GEN_EXP_CATS.map(c => c.key).filter(k => !FX_DEFAULT_EXCLUDE.includes(k)); }
 function _fxIsCfg(it){ return String(it && it.name || '').trim() === FX_CFG_NAME; }
+// ⚠️ إضافة 2026-10-17: الأرشفة بتشيل سطور ساعات المشروع من شيت الساعات، فكان المشروع المؤرشف بيختفي من توزيع
+// المصاريف الثابتة للشهور اللي اشتغل فيها، والمشاريع الباقية بتشيل نصيبه. الحل: قبل الأرشفة بناخد "لقطة" بساعات
+// المشروع لكل شهر ونخزنها كبند إعداد مبلغه 0 في شيت المصاريف الثابتة (نفس فكرة FX_CFG_NAME)، والتوزيع بيقراها.
+const FX_ARCH_PREFIX = '⚙️ ساعات أرشيف: ';
+function _fxIsArch(it){ return String(it && it.name || '').trim().startsWith(FX_ARCH_PREFIX.trim()); }
+function _fxIsSys(it){ return _fxIsCfg(it) || _fxIsArch(it); }
+// ساعات المشروع لكل شهر { '2026-10': 162, ... } — نفس قاعدة التوزيع (ساعات > 0 وتاريخ صالح)
+function fxMonthlyHours(entries){
+  const out = {};
+  (entries || []).forEach(e => { const k = _fxMonthKey(e.date), h = Number(e.hours) || 0; if (k && h > 0) out[k] = (out[k] || 0) + h; });
+  return out;
+}
+async function fxSaveArchiveSnapshot(name){
+  apiCacheClear(); // لازم أحدث ساعات من السيرفر، مش من الكاش
+  const res = await apiGet('listHoursEntries', { filters: { project: name } });
+  const entries = ((res && res.entries) || []).filter(e => String(e.project || '').trim() === name);
+  const months = fxMonthlyHours(entries);
+  const fixedRes = await apiGet('listFixedExpenses');
+  const old = ((fixedRes && fixedRes.items) || []).filter(i => String(i.name || '').trim() === (FX_ARCH_PREFIX + name).trim());
+  if (Object.keys(months).length) await apiPost('addFixedExpense', { item: { name: FX_ARCH_PREFIX + name, amount: 0, notes: JSON.stringify({ project: name, months, at: todayStr() }) } });
+  for (const it of old) { try { await apiPost('deleteFixedExpense', { id: it.id }); } catch(e) {} }
+  fxInvalidate();
+  return months;
+}
+async function fxDropArchiveSnapshot(name){
+  const fixedRes = await apiGet('listFixedExpenses');
+  const old = ((fixedRes && fixedRes.items) || []).filter(i => String(i.name || '').trim() === (FX_ARCH_PREFIX + name).trim());
+  for (const it of old) { try { await apiPost('deleteFixedExpense', { id: it.id }); } catch(e) {} }
+  fxInvalidate();
+}
 function _fxMonthKey(d){ return /^\d{4}-\d{2}/.test(String(d || '')) ? String(d).slice(0, 7) : ''; }
 function fxMonthLabel(k){ const p = String(k).split('-'); return (EXPX_AR_MONTHS[(+p[1]) - 1] || p[1]) + ' ' + p[0]; }
 function _fxAddMonth(k){ let [y, m] = k.split('-').map(Number); m++; if (m > 12) { m = 1; y++; } return y + '-' + String(m).padStart(2, '0'); }
@@ -11382,7 +11417,7 @@ async function fxLoadModel(force){
     let selCats = null;
     if (cfgItems.length) { try { const j = JSON.parse(cfgItems[cfgItems.length - 1].notes || '{}'); if (Array.isArray(j.cats)) selCats = j.cats; } catch(e) {} }
     if (!selCats) selCats = fxDefaultCats();
-    const manual = items.filter(i => !_fxIsCfg(i)).map(i => ({ id: i.id, name: String(i.name || ''), amount: Number(i.amount) || 0, notes: i.notes || '' }));
+    const manual = items.filter(i => !_fxIsSys(i)).map(i => ({ id: i.id, name: String(i.name || ''), amount: Number(i.amount) || 0, notes: i.notes || '' }));
     const manualTotal = manual.reduce((s, i) => s + i.amount, 0);
 
     const projects = ((projRes && projRes.projects) || []).map(p => String(p).trim());
@@ -11395,6 +11430,15 @@ async function fxLoadModel(force){
     const overhead = general.filter(r => selCats.includes(r.cat));
     const hours = ((hoursRes && hoursRes.entries) || []).map(e => ({ project: String(e.project || '').trim(), month: _fxMonthKey(e.date), hours: Number(e.hours) || 0 }))
       .filter(h => h.month && h.hours > 0 && projSet.has(h.project));
+    // ساعات المشاريع المؤرشفة (من اللقطة اللي اتاخدت وقت الأرشفة) — بتفضل داخلة في توزيع شهورها
+    const archived = [];
+    items.filter(_fxIsArch).forEach(it => {
+      let j = {}; try { j = JSON.parse(it.notes || '{}'); } catch(e) {}
+      const pj = String(j.project || String(it.name || '').trim().slice(FX_ARCH_PREFIX.trim().length)).trim();
+      if (!pj || projSet.has(pj)) return; // لو رجع من الأرشيف، ساعاته رجعت للشيت فمنحسبهاش مرتين
+      if (!archived.includes(pj)) archived.push(pj);
+      Object.entries(j.months || {}).forEach(([month, h]) => { h = Number(h) || 0; if (/^\d{4}-\d{2}$/.test(month) && h > 0) hours.push({ project: pj, month, hours: h, archived: true }); });
+    });
 
     // ── الشهور: من أول شهر فيه داتا لحد الشهر الحالي (+ أي شهر بعده فيه داتا) ──
     const cur = todayStr().slice(0, 7);
@@ -11407,6 +11451,7 @@ async function fxLoadModel(force){
 
     const byProject = {};
     projects.forEach(p => { byProject[p] = { project: p, total: 0, hours: 0, months: [] }; });
+    archived.forEach(p => { byProject[p] = { project: p, total: 0, hours: 0, months: [], archived: true }; });
     const months = monthKeys.map(key => {
       const oh = overhead.filter(r => _fxMonthKey(r.date) === key);
       const byCat = {};
@@ -11417,7 +11462,7 @@ async function fxLoadModel(force){
       const hp = {};
       hours.filter(h => h.month === key).forEach(h => { hp[h.project] = (hp[h.project] || 0) + h.hours; });
       const totalHours = Object.values(hp).reduce((s, v) => s + v, 0);
-      const shares = Object.keys(hp).map(p => ({ project: p, hours: hp[p], pct: totalHours ? hp[p] / totalHours : 0, share: totalHours ? total * hp[p] / totalHours : 0 }))
+      const shares = Object.keys(hp).map(p => ({ project: p, archived: archived.includes(p), hours: hp[p], pct: totalHours ? hp[p] / totalHours : 0, share: totalHours ? total * hp[p] / totalHours : 0 }))
         .sort((a, b) => b.share - a.share);
       shares.forEach(s => {
         const bp = byProject[s.project]; if (!bp) return;
@@ -11434,7 +11479,7 @@ async function fxLoadModel(force){
       const b = debtsByProject[pj] || (debtsByProject[pj] = { total: 0, paid: 0, remaining: 0, items: [] });
       b.total += Number(x.total) || 0; b.paid += Number(x.paid) || 0; b.remaining += Math.max(0, Number(x.remaining) || 0); b.items.push(x);
     });
-    FX_MODEL = { months, byProject, debtsByProject, manual, manualTotal, selCats, cfgItems, general,
+    FX_MODEL = { months, byProject, debtsByProject, manual, manualTotal, selCats, cfgItems, general, archived,
       grandTotal: months.reduce((s, m) => s + m.total, 0), grandAllocated: months.reduce((s, m) => s + m.allocated, 0),
       grandUnallocated: months.reduce((s, m) => s + m.unallocated, 0) };
     FX_MODEL_AT = Date.now();
@@ -11552,7 +11597,7 @@ async function fxRenderPage(token){
       const btn = document.getElementById('fxBtn'); const msg = document.getElementById('fxMsg');
       msg.className = 'msg'; msg.textContent = ''; btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
       const item = { name: document.getElementById('fx_name').value.trim(), amount: document.getElementById('fx_amount').value, notes: document.getElementById('fx_notes').value };
-      if (_fxIsCfg(item)) { msg.className = 'msg err'; msg.textContent = 'الاسم ده محجوز'; btn.disabled = false; btn.textContent = 'حفظ'; return; }
+      if (_fxIsSys(item)) { msg.className = 'msg err'; msg.textContent = 'الاسم ده محجوز'; btn.disabled = false; btn.textContent = 'حفظ'; return; }
       try { await apiPost('addFixedExpense', { item }); fxInvalidate(); fxRenderPage(); }
       catch(err){ msg.className = 'msg err'; msg.textContent = 'خطأ: ' + (err.message || err); btn.disabled = false; btn.textContent = 'حفظ'; }
     });
@@ -11578,7 +11623,7 @@ function _fxPeriodView(fx, from, to, cats){
     const total = m.manual + ohT;
     manual += m.manual; overhead += ohT; totalHours += m.totalHours;
     if (!m.totalHours) unallocated += total;
-    m.shares.forEach(s => { const p = proj[s.project] || (proj[s.project] = { project: s.project, hours: 0, share: 0 }); p.hours += s.hours; p.share += total * s.pct; });
+    m.shares.forEach(s => { const p = proj[s.project] || (proj[s.project] = { project: s.project, archived: !!s.archived, hours: 0, share: 0 }); p.hours += s.hours; p.share += total * s.pct; });
     return { key: m.key, label: m.label, manual: m.manual, overhead: ohT, total, totalHours: m.totalHours };
   });
   const total = manual + overhead;
@@ -11628,7 +11673,7 @@ function fxRenderBody(){
     <h3>التوزيع على المشاريع — ${mv.label}</h3>
     <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">على أساس إيه؟ نصيب المشروع = إجمالي ثابت الشهر × (ساعات شغل المشروع ÷ ساعات شغل كل المشاريع في نفس الشهر)${mv.monthsCount > 1 ? '، وكل شهر بيتحسب لوحده وبعدين بيتجمع' : ''}. الساعات العادية بس (من غير السهرات).</p>
     ${mv.shares.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>الساعات</th><th>النسبة</th><th>النصيب</th></tr></thead><tbody>
-      ${mv.shares.map(s => `<tr><td>${qEsc(s.project)}</td><td>${fmt(s.hours)} س</td><td>${fxPct(s.pct)}</td><td><b>${fmt(s.share)} ج</b></td></tr>`).join('')}
+      ${mv.shares.map(s => `<tr><td>${qEsc(s.project)}${s.archived ? ' <span class="fx-src man">أرشيف</span>' : ''}</td><td>${fmt(s.hours)} س</td><td>${fxPct(s.pct)}</td><td><b>${fmt(s.share)} ج</b></td></tr>`).join('')}
     </tbody><tfoot><tr class="tbl-totals-row"><td>الإجمالي</td><td>${fmt(mv.totalHours)} س</td><td>100%</td><td>${fmt(mv.allocated)} ج</td></tr></tfoot></table></div>`
     : `<div class="empty">مفيش ساعات شغل على مشاريع في الشهر ده</div>`}`;
 
@@ -11706,7 +11751,7 @@ async function fxShowMonthModal(key, project){
       </tbody><tfoot><tr class="tbl-totals-row"><td colspan="3">الإجمالي</td><td>${fmt(m.overhead)} ج</td></tr></tfoot></table></div>` : ''}
       <h4 style="margin:14px 0 6px;">${rows.length ? 4 : 3}) التوزيع على المشاريع (حسب ساعات الشغل العادية في الشهر)</h4>
       ${m.shares.length ? `<div class="tbl-wrap"><table><thead><tr><th>المشروع</th><th>الساعات</th><th>النسبة</th><th>النصيب</th></tr></thead><tbody>
-        ${m.shares.map(s => `<tr${s.project === project ? ' style="background:rgba(201,162,92,.18);font-weight:800;"' : ''}><td ${tdR}>${qEsc(s.project)}${s.project === project ? ' ◀' : ''}</td><td>${fmt(s.hours)} س</td><td>${fxPct(s.pct)}</td><td><b>${fmt(s.share)} ج</b></td></tr>`).join('')}
+        ${m.shares.map(s => `<tr${s.project === project ? ' style="background:rgba(201,162,92,.18);font-weight:800;"' : ''}><td ${tdR}>${qEsc(s.project)}${s.archived ? ' <span class="fx-src man">أرشيف</span>' : ''}${s.project === project ? ' ◀' : ''}</td><td>${fmt(s.hours)} س</td><td>${fxPct(s.pct)}</td><td><b>${fmt(s.share)} ج</b></td></tr>`).join('')}
       </tbody><tfoot><tr class="tbl-totals-row"><td>الإجمالي</td><td>${fmt(m.totalHours)} س</td><td>100%</td><td>${fmt(m.allocated)} ج</td></tr></tfoot></table></div>`
       : `<div class="empty">مفيش ساعات شغل على مشاريع في الشهر ده — المبلغ مش متوزع</div>`}
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
