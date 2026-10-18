@@ -1425,7 +1425,7 @@
       <div class="field"><label>اسم الموظف</label><input autocomplete="off" id="ee_name" required></div>
       <div class="form-row">
         <div class="field"><label>الطريقة</label>
-          <select id="ee_paymentType"><option value="اسبوعي">اسبوعي</option><option value="شهري">شهري</option></select>
+          <select id="ee_paymentType"><option value="اسبوعي">اسبوعي</option><option value="شهري">شهري</option><option value="__left">🚪 مشي (ساب الشغل)</option></select>
         </div>
         <div class="field"><label>تاريخ الانضمام</label><input autocomplete="off" type="date" id="ee_joinDate" required></div>
       </div>
@@ -2365,7 +2365,7 @@ function _dBStr(v){ return String(_dBNum(v)); }
 function _dBFmtDM(dt){ return dt.getDate() + '/' + (dt.getMonth() + 1); }
 function _dBEmpFields(e){
   return { name: e.name, paymentType: e.paymentType, monthlyPay: e.monthlyPay || 0, weeklyPay: e.weeklyPay || 0,
-    dailyRate: e.dailyRate || 0, hourlyRate: e.hourlyRate || 0, joinDate: e.joinDate || '', eveningRate: e.eveningRate || 0 };
+    dailyRate: e.dailyRate || 0, hourlyRate: e.hourlyRate || 0, joinDate: e.joinDate || '', eveningRate: e.eveningRate || 0, lastDay: e.lastDay || '' };
 }
 function _dBEmp(name){ return DEMO.employees.find(e => e.name === name) || null; }
 
@@ -2625,7 +2625,9 @@ DEMO_H['payrollGetSheet'] = (params) => {
   const kind = (params && params.kind) === 'weekly' ? 'weekly' : 'monthly';
   const sheetName = kind === 'monthly' ? `حضور شهر ${_dB_AR_MONTHS[monthIndex] || ''} ${year}` : `كشف الحضور الاسبوعي ${_dB_AR_MONTHS[monthIndex] || ''} ${year}`;
   if (monthIndex < 0 || monthIndex > 11 || !_dBMonthExists(year, monthIndex)) return { exists: false, sheetName };
-  return _dBStrip(kind === 'monthly' ? _dBMonthlySheet(year, monthIndex) : _dBWeeklySheet(year, monthIndex));
+  const out = _dBStrip(kind === 'monthly' ? _dBMonthlySheet(year, monthIndex) : _dBWeeklySheet(year, monthIndex));
+  out.leftNames = {}; DEMO.employees.forEach(e => { if (e.lastDay) out.leftNames[e.name] = e.lastDay; });
+  return out;
 };
 
 DEMO_H['payrollGetMaster'] = (params) => {
@@ -4646,9 +4648,19 @@ async function cellNoteAutoSave_(){
 /* توزيع حسب نوع الشيت (شهري = بلوك واحد متصل / اسبوعي = كذا بلوك أسبوع) */
 function payrollRenderTable(){
   const box = document.getElementById('pay-box'); if (!box) return;
-  const data = PAYSTATE.data; if (!data) return;
-  if (PAYSTATE.kind === 'monthly') { payrollRenderMonthlyTable_(box, data); return; }
-  payrollRenderWeeklyTable_(box, data);
+  const raw = PAYSTATE.data; if (!raw) return;
+  // ⚠️ 2026-10-18: اللي "مشي" مخفي من العرض (الإجمالي زي ما هو) — زرار صغير يظهرهم لو محتاج تعدّل حاجة قبل آخر يوم
+  const left = raw.leftNames || {};
+  const leftRows = (raw.rows || []).filter(r => left[String(r.name || '').trim()]);
+  const data = (leftRows.length && !PAYSTATE.showLeft) ? Object.assign({}, raw, { rows: raw.rows.filter(r => !left[String(r.name || '').trim()]) }) : raw;
+  if (PAYSTATE.kind === 'monthly') payrollRenderMonthlyTable_(box, data);
+  else payrollRenderWeeklyTable_(box, data);
+  if (leftRows.length) {
+    const panel = box.querySelector('.panel');
+    if (panel) panel.insertAdjacentHTML('afterbegin', `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);background:var(--cream,#f6f1e8);border-radius:10px;padding:7px 12px;margin-bottom:10px;">
+      🚪 ${PAYSTATE.showLeft ? 'ظاهر' : 'مخفي'} ${leftRows.length} موظف مشي: ${leftRows.map(r => qEsc(r.name) + ' (آخر يوم ' + qEsc(left[String(r.name).trim()]) + ')').join('، ')}
+      <button type="button" class="btn btn-outline btn-sm" style="margin-inline-start:auto;" onclick="PAYSTATE.showLeft=!PAYSTATE.showLeft;payrollRenderTable();">${PAYSTATE.showLeft ? 'إخفاء' : 'إظهار'}</button></div>`);
+  }
 }
 
 /* شيت "كشف الحضور الاسبوعي" — كل أسابيع الشهر مع بعض، كل أسبوع بلوكه
@@ -6442,7 +6454,7 @@ async function payrollLoadDetails(){
     box.innerHTML = `
       <div class="stack-v">
         <div class="panel">
-          <h3>${qEsc(data.sheetName)} (${_payDetailsList.length})</h3>
+          <h3>${qEsc(data.sheetName)} (${_payDetailsList.filter(e => !e.lastDay).length})</h3>
           ${notice}
           <div id="pd-list-panel"></div>
         </div>
@@ -6465,7 +6477,7 @@ async function payrollLoadDetails(){
             <div class="field"><label>سعر السهرة العادي (ج) — اختياري</label><input autocomplete="off" type="number" id="pd_eveningRate" step="1" min="0" placeholder="بيتملي أوتوماتيك في فورم السهرة، وتقدر تعدله كل مرة"></div>
             <div class="field" id="pd_afterField"><label>حط الموظف الجديد تحت</label>
               <select id="pd_afterName"><option value="">في آخر القايمة (الوضع الافتراضي)</option>
-                ${_payDetailsList.map(e => `<option value="${qEsc(e.name)}">${qEsc(e.name)}</option>`).join('')}
+                ${_payDetailsList.filter(e => !e.lastDay).map(e => `<option value="${qEsc(e.name)}">${qEsc(e.name)}</option>`).join('')}
               </select>
             </div>
             <button type="submit" class="btn btn-primary" id="pdSubmitBtn" data-hotkey-save>حفظ الموظف</button>
@@ -6543,10 +6555,13 @@ function payrollDetailsSetFilter_(val){
 }
 function payrollRenderDetailsListPanel_(){
   const panel = document.getElementById('pd-list-panel'); if (!panel) return;
-  const all = _payDetailsList;
+  // ⚠️ 2026-10-18: اللي "مشي" (ليه آخر يوم) مبيظهرش في القايمة العادية — ليه تاب لوحده
+  const leftList = _payDetailsList.filter(e => e.lastDay);
+  const all = _payDetailsList.filter(e => !e.lastDay);
   const weeklyCount = all.filter(e => e.paymentType === 'اسبوعي').length;
   const monthlyCount = all.filter(e => e.paymentType === 'شهري').length;
-  const filter = _payDetailsFilter;
+  const filter = (_payDetailsFilter === 'left' && !leftList.length) ? 'all' : _payDetailsFilter;
+  if (filter === 'left') { payrollRenderLeftListPanel_(panel, all.length, weeklyCount, monthlyCount, leftList); return; }
   const visible = filter === 'weekly' ? all.filter(e => e.paymentType === 'اسبوعي')
                 : filter === 'monthly' ? all.filter(e => e.paymentType === 'شهري')
                 : all;
@@ -6558,6 +6573,7 @@ function payrollRenderDetailsListPanel_(){
       <div class="step ${filter==='all'?'active':''}" onclick="payrollDetailsSetFilter_('all')">الجميع (${all.length})</div>
       <div class="step ${filter==='weekly'?'active':''}" onclick="payrollDetailsSetFilter_('weekly')">قبض اسبوعي (${weeklyCount})</div>
       <div class="step ${filter==='monthly'?'active':''}" onclick="payrollDetailsSetFilter_('monthly')">قبض شهري (${monthlyCount})</div>
+      ${leftList.length ? `<div class="step" onclick="payrollDetailsSetFilter_('left')">🚪 مشيوا (${leftList.length})</div>` : ''}
     </div>
     <div class="tbl-wrap"><table>
       <thead><tr><th>الاسم</th><th>الطريقة</th><th>تاريخ الانضمام</th><th>اليومية</th><th>أجر الساعة</th><th>سعر السهرة</th><th>قبض الاسبوع</th><th>قبض الشهر</th><th></th></tr></thead>
@@ -6571,6 +6587,111 @@ function payrollRenderDetailsListPanel_(){
       </tr>`).join('') : `<tr><td colspan="9" class="empty">${emptyMsg}</td></tr>`}</tbody>
     </table></div>
   `;
+}
+function payrollRenderLeftListPanel_(panel, activeCount, weeklyCount, monthlyCount, leftList){
+  const nextDayTxt = iso => { const d = payrollLeftNextWorkDay_(iso); return d ? payrollLeftDayLabel_(d) : '—'; };
+  panel.innerHTML = `
+    <div class="q-steps p-filter-tabs">
+      <div class="step" onclick="payrollDetailsSetFilter_('all')">الجميع (${activeCount})</div>
+      <div class="step" onclick="payrollDetailsSetFilter_('weekly')">قبض اسبوعي (${weeklyCount})</div>
+      <div class="step" onclick="payrollDetailsSetFilter_('monthly')">قبض شهري (${monthlyCount})</div>
+      <div class="step active">🚪 مشيوا (${leftList.length})</div>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">دول مخفيين من الشيت والعرض، وقبضهم لحد آخر يوم فاضل في الماستر.</p>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>الاسم</th><th>الطريقة</th><th>تاريخ الانضمام</th><th>آخر يوم</th><th>مش بييجي من</th><th>اليومية</th><th></th></tr></thead>
+      <tbody>${leftList.map(e => `<tr style="opacity:.85;">
+        <td>${qEsc(e.name)}</td><td>${qEsc(e.paymentType)}</td><td>${qEsc(e.joinDate || '—')}</td>
+        <td style="font-weight:800;color:var(--red);">${qEsc(payrollLeftDayLabel_(new Date(e.lastDay + 'T00:00:00')))}</td>
+        <td>${qEsc(nextDayTxt(e.lastDay))}</td><td>${fmt(e.dailyRate)} ج</td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-sm btn-outline" onclick="payrollOpenLeftModal_('${qEscJs(e.name)}')">تعديل اليوم</button>
+          <button class="btn btn-sm btn-primary" onclick="payrollUndoLeft_('${qEscJs(e.name)}')">رجّعه</button></td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+
+/* ================= "مشي" — موظف ساب الشغل (2026-10-18) =================
+ * بيتفتح من اختيار "مشي" في بوكس تعديل الموظف. بتكتب آخر يوم شغل، والسيرفر
+ * (payrollSetEmployeeLeft) بيسجله في عمود I في شيتات التفاصيل، ويصفّر الأيام
+ * اللي بعده في كشوف الحضور، ويعمل Hide لصفه — والماستر بيفضل فيه قبضه لحد آخر يوم. */
+const _PL_DAYS = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+function payrollLeftDayLabel_(d){
+  if (!d || isNaN(d.getTime())) return '—';
+  return `${_PL_DAYS[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+}
+// أول يوم شغل بعد آخر يوم (الجمعة إجازة — بنعدّيها)
+function payrollLeftNextWorkDay_(iso){
+  const d = new Date(String(iso || '') + 'T00:00:00'); if (isNaN(d.getTime())) return null;
+  do { d.setDate(d.getDate() + 1); } while (d.getDay() === 5);
+  return d;
+}
+function _plLocalIso_(d){ return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function payrollOpenLeftModal_(name){
+  if (!name) return;
+  closeEmpEditModal();
+  const emp = (_payDetailsList || []).find(e => e.name === name) || {};
+  const def = emp.lastDay || _plLocalIso_(new Date());
+  openCardModal(`
+    <div class="cd-head"><h3>🚪 ${qEsc(name)} مشي امتى؟</h3><button class="cd-close" onclick="closeCardModal()">&times;</button></div>
+    <div class="field"><label>آخر يوم اشتغله</label><input type="date" id="pl_lastDay" value="${qEsc(def)}" ${emp.joinDate ? `min="${qEsc(emp.joinDate)}"` : ''}></div>
+    <div id="pl_hint" style="background:var(--cream,#f6f1e8);border:1px solid var(--border,#e6dccb);border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.9;margin-bottom:12px;"></div>
+    <div class="msg" id="pl_msg"></div>
+    <div class="q-confirm-btns">
+      <button type="button" class="btn btn-danger" id="pl_ok">تأكيد إنه مشي</button>
+      <button type="button" class="btn btn-outline" onclick="closeCardModal()">إلغاء</button>
+    </div>`, { root: true });
+  const inp = document.getElementById('pl_lastDay');
+  const upd = () => {
+    const iso = inp.value; const h = document.getElementById('pl_hint'); if (!h) return;
+    if (!iso) { h.innerHTML = 'اختار آخر يوم.'; return; }
+    const last = new Date(iso + 'T00:00:00'), next = payrollLeftNextWorkDay_(iso);
+    h.innerHTML = `آخر يوم: <b>${qEsc(payrollLeftDayLabel_(last))}</b><br>من <b>${qEsc(payrollLeftDayLabel_(next))}</b> مش هييجي تاني.<br>
+      • كل الأيام اللي بعده هتتصفّر في كشف الحضور.<br>
+      • هيتخفي من الشيت ومن العرض هنا.<br>
+      • قبضه لحد آخر يوم فاضل في الماستر، وبياناته مش هتتمسح.`;
+  };
+  inp.addEventListener('input', upd); upd();
+  document.getElementById('pl_ok').addEventListener('click', () => payrollSubmitLeft_(name, inp.value));
+}
+async function payrollSubmitLeft_(name, lastDay){
+  const btn = document.getElementById('pl_ok'), msg = document.getElementById('pl_msg');
+  if (!lastDay) { msg.className = 'msg err'; msg.textContent = 'اختار آخر يوم الأول'; return; }
+  if (_payDetailsBusy) return;
+  _payrollDetailsSetBusy_(true);
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>بيحدّث الشيت والحضور والماستر… ممكن ياخد دقيقة';
+  msg.className = 'msg'; msg.textContent = '';
+  try {
+    const res = await apiPost('payrollSetEmployeeLeft', { name, lastDay, monthNum: PAYSTATE.monthIndex + 1, year: PAYSTATE.year });
+    if (res && res.error) throw new Error(res.error);
+    if (DEMO_MODE) { const e = (DEMO.employees || []).find(x => x.name === name); if (e) e.lastDay = lastDay; apiCacheClear(); }
+    closeCardModal();
+    _payDetailsFilter = 'all';
+    showToast(`✔ اتسجل إن ${name} مشي — آخر يوم ${payrollLeftDayLabel_(new Date(lastDay + 'T00:00:00'))}`, 'success');
+    if (res && res.rebuildWarning) showToast(res.rebuildWarning, 'error');
+    await payrollLoadDetails();
+  } catch(err){
+    const m = err.message || String(err);
+    msg.className = 'msg err';
+    msg.textContent = /Unknown POST action/.test(m) ? 'لازم تحدّث كود الـ GS (النسخة الجديدة) وتعمل Deploy → New version الأول.' : 'خطأ: ' + m;
+    btn.disabled = false; btn.textContent = 'تأكيد إنه مشي';
+  } finally { _payrollDetailsSetBusy_(false); }
+}
+async function payrollUndoLeft_(name){
+  if (_payDetailsBusy) return;
+  if (!(await openGenConfirm(`ترجّع "${name}" تاني للشغل؟ هيظهر في الشيت والعرض تاني.`, 'رجوع للشغل'))) return;
+  _payrollDetailsSetBusy_(true);
+  showToast('⏳ بيرجّعه ويحدّث الحضور والماستر…', 'info');
+  try {
+    const res = await apiPost('payrollSetEmployeeLeft', { name, lastDay: '', monthNum: PAYSTATE.monthIndex + 1, year: PAYSTATE.year });
+    if (res && res.error) throw new Error(res.error);
+    if (DEMO_MODE) { const e = (DEMO.employees || []).find(x => x.name === name); if (e) delete e.lastDay; apiCacheClear(); }
+    showToast(`✔ ${name} رجع تاني`, 'success');
+    await payrollLoadDetails();
+  } catch(err){
+    const m = err.message || String(err);
+    showToast(/Unknown POST action/.test(m) ? 'لازم تحدّث كود الـ GS وتعمل Deploy الأول' : 'خطأ: ' + m, 'error');
+  } finally { _payrollDetailsSetBusy_(false); }
 }
 function payrollResetDetailsForm_(){
   document.getElementById('pd_originalName').value='';
@@ -13854,6 +13975,7 @@ function openEmpEditModal(e, context){
   document.getElementById('ee_originalName').value = e.name;
   document.getElementById('ee_name').value = e.name;
   document.getElementById('ee_paymentType').value = e.paymentType;
+  document.getElementById('ee_paymentType').dataset.prev = e.paymentType;
   document.getElementById('ee_joinDate').value = e.joinDate || '';
   document.getElementById('ee_periodPay').value = e.paymentType === 'شهري' ? (e.monthlyPay || '') : (e.weeklyPay || '');
   document.getElementById('ee_dailyRate').value = e.dailyRate || '';
@@ -13891,6 +14013,14 @@ function empEditCalcFromDaily_(){
   empEditRecalcHourly_(daily);
 }
 document.getElementById('ee_paymentType').addEventListener('change', empEditUpdatePeriodLabel_);
+// ⚠️ إضافة 2026-10-18: اختيار "مشي" مش طريقة قبض — بيرجّع الاختيار زي ما كان ويفتح بوكس "مشي امتى؟"
+document.getElementById('ee_paymentType').addEventListener('change', (ev) => {
+  const sel = ev.target;
+  if (sel.value !== '__left') { sel.dataset.prev = sel.value; return; }
+  sel.value = sel.dataset.prev || 'اسبوعي';
+  empEditUpdatePeriodLabel_();
+  payrollOpenLeftModal_(document.getElementById('ee_originalName').value);
+});
 document.getElementById('ee_periodPay').addEventListener('input', empEditCalcFromPeriodPay_);
 document.getElementById('ee_dailyRate').addEventListener('input', empEditCalcFromDaily_);
 document.getElementById('empEditForm').addEventListener('submit', async (e) => {
