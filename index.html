@@ -1425,7 +1425,7 @@
       <div class="field"><label>اسم الموظف</label><input autocomplete="off" id="ee_name" required></div>
       <div class="form-row">
         <div class="field"><label>الطريقة</label>
-          <select id="ee_paymentType"><option value="اسبوعي">اسبوعي</option><option value="شهري">شهري</option><option value="__left">🚪 مشي (ساب الشغل)</option></select>
+          <select id="ee_paymentType"><option value="اسبوعي">اسبوعي</option><option value="شهري">شهري</option></select>
         </div>
         <div class="field"><label>تاريخ الانضمام</label><input autocomplete="off" type="date" id="ee_joinDate" required></div>
       </div>
@@ -6583,7 +6583,8 @@ function payrollRenderDetailsListPanel_(){
             <button class="btn btn-sm" title="نقل لفوق" ${i===0?'disabled':''} onclick="payrollMoveDetailsEmployee_('${e.name.replace(/'/g,"\\'")}','up')">▲</button>
             <button class="btn btn-sm" title="نقل لتحت" ${i===visible.length-1?'disabled':''} onclick="payrollMoveDetailsEmployee_('${e.name.replace(/'/g,"\\'")}','down')">▼</button>
             <button class="btn btn-sm btn-outline" onclick='openEmpEditModal(${JSON.stringify(e).replace(/'/g,"&#39;")}, "details")'>تعديل</button>
-            <button class="btn btn-sm btn-danger" onclick="payrollDeleteDetailsEmployeeConfirm_('${e.name.replace(/'/g,"\\'")}')">حذف</button></td>
+            <button class="btn btn-sm btn-danger" onclick="payrollDeleteDetailsEmployeeConfirm_('${e.name.replace(/'/g,"\\'")}')">حذف</button>
+            <button class="btn btn-sm" style="background:var(--dark);color:#fff;" title="الموظف ساب الشغل" onclick="payrollOpenLeftModal_('${qEscJs(e.name)}')">🚪 مشي</button></td>
       </tr>`).join('') : `<tr><td colspan="9" class="empty">${emptyMsg}</td></tr>`}</tbody>
     </table></div>
   `;
