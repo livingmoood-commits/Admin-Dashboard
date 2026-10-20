@@ -1913,8 +1913,60 @@ async function apiPost(action, payload) {
   // (شوف قسم "حماية النصوص المكتوبة" تحت). البيانات اتحفظت فعلاً دلوقتي، فمفيش
   // داعي نفضل شايلين نسخة قديمة محليًا ممكن تظهر تاني بالغلط في فورم جديد.
   if (data && !data.error) _clearAllDrafts_();
+  if (action !== 'login' && data && !data.error) _liveAfterOwnPost_();
   return data;
 }
+
+/* ================= تحديث لايف (2026-10-20) =================
+ * أي تعديل بيتعمل في أي تاب/صفحة بيظهر في كل التابات المفتوحة من غير ريفرش:
+ * 1) نفس الجهاز: التاب اللي حفظ بيبعت إشارة (BroadcastChannel) للتابات التانية فورًا.
+ * 2) أجهزة/أشخاص تانيين: كل 30 ثانية (والتاب ظاهر) بنسأل السيرفر عن "نسخة البيانات"
+ *    (getBuildInfo → cv، بتزيد مع أي حفظ في السيرفر)؛ لو اتغيرت، الصفحة بتتحدث.
+ * التحديث بيستنى لو إنت بتكتب في فورم أو فاتح بوكس، عشان ميضيعش اللي بتكتبه. */
+const _LIVE_CH = (typeof BroadcastChannel !== 'undefined') ? (() => { try { return new BroadcastChannel('lm-live'); } catch (e) { return null; } })() : null;
+let _liveCv = null, _livePending = false, _liveBusy = false, _liveDirty = false;
+function _liveAfterOwnPost_(){
+  _liveDirty = false; // الفورم اتحفظ — مفيش كتابة معلقة
+  try { if (_LIVE_CH) _LIVE_CH.postMessage({ t: 'changed', at: Date.now() }); else localStorage.setItem('lm_live_ping', String(Date.now())); } catch (e) {}
+  setTimeout(() => _livePollCv_(true), 2500); // نحدّث نسختنا من السيرفر عشان تعديلنا إحنا ميتحسبش "تحديث من بره"
+}
+function _liveCanRefreshNow_(){
+  if (document.hidden || _liveBusy || _liveDirty) return false;
+  if (!sessionStorage.getItem('lm_loggedIn') || !_currentPage || !PAGES[_currentPage]) return false;
+  const a = document.activeElement;
+  if (a && (a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || (a.tagName === 'INPUT' && !/^(button|submit|checkbox|radio)$/i.test(a.type || '')))) return false;
+  if (document.querySelector('[id$="Modal"].open, .d-quick-popover.open, .d-suggest-popover.open')) return false;
+  return true;
+}
+async function _liveRefresh_(){
+  _livePending = true;
+  if (!_liveCanRefreshNow_()) return; // هنجرب تاني بعد شوية (شوف setInterval تحت)
+  _livePending = false; _liveBusy = true;
+  const page = _currentPage, token = _navToken, y = window.scrollY;
+  try {
+    apiCacheClear();
+    await PAGES[page].render(token);
+    if (page === _currentPage && token === _navToken) window.scrollTo(0, y);
+  } catch (e) { /* فشل التحديث — اللي معروض يفضل زي ما هو */ }
+  finally { _liveBusy = false; }
+}
+async function _livePollCv_(silent){
+  if (DEMO_MODE || !sessionStorage.getItem('lm_loggedIn') || typeof API_URL === 'undefined') return;
+  try {
+    const d = await _apiFetch(API_URL + '?action=getBuildInfo&_r=' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), undefined, undefined, 'low');
+    if (!d || d.cv === undefined || d.cv === null) return; // سيرفر قديم من غير cv — بنكتفي بالتحديث بين التابات
+    const cv = String(d.cv);
+    if (_liveCv !== null && cv !== _liveCv && !silent) _liveRefresh_();
+    _liveCv = cv;
+  } catch (e) {}
+}
+if (_LIVE_CH) _LIVE_CH.onmessage = ev => { if (ev && ev.data && ev.data.t === 'changed') _liveRefresh_(); };
+else window.addEventListener('storage', ev => { if (ev.key === 'lm_live_ping') _liveRefresh_(); });
+// أي كتابة في فورم جوه الصفحة = "فيه شغل مش متحفظ" — منعملش تحديث فوقه لحد ما يتحفظ أو تغيّر الصفحة
+document.addEventListener('input', ev => { const c = document.getElementById('content'); if (c && ev.target && ev.isTrusted && c.contains(ev.target) && ev.target.closest && ev.target.closest('form')) _liveDirty = true; }, true);
+setInterval(() => { if (_livePending) _liveRefresh_(); }, 2500);
+setInterval(() => { if (!document.hidden) _livePollCv_(); }, 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { if (_livePending) _liveRefresh_(); _livePollCv_(); } });
 /* DEMO-BEGIN */
 /* ================= النسخة التجريبية — التشغيل =================
  * زرار "جرّب نسخة تجريبية" في صفحة الدخول بيفتح الموقع كله بأرقام وهمية (DEMO تحت).
@@ -3422,6 +3474,7 @@ function goTo(page, costTab) {
   if (!_isLeadRole() && !WORKFLOW_ONLY_PAGES.includes(page)) page = WORKFLOW_ONLY_PAGES[0];
   if (page === 'costs' && costTab) COST_TAB = costTab; // فتح تاب معيّن (تكاليف/إيرادات/مشاريع) مباشرة
   const token = ++_navToken;
+  _liveDirty = false; _livePending = false; // صفحة جديدة — أي كتابة قديمة اتسابت
   _currentPage = page;
   sessionStorage.setItem('lm_currentPage', page);
   document.querySelectorAll('.nav button.active, .bottom-nav button.active').forEach(b => b.classList.remove('active'));
