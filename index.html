@@ -1472,6 +1472,16 @@ function _apiCacheTtlFor(action){ return _API_LONG_TTL_ACTIONS.has(action) ? API
 // سبب تصادم الـ echo key المؤقت اللي كان بيسبب 404 (شوف _apiFetch تحت).
 const _inFlight = new Map();
 
+// ⚠️ 2026-10-22: بيانات الدخول — التاب نفسه الأول (النسخة التجريبية بتتسجل في sessionStorage)، وبعدين الدخول المحفوظ (localStorage) المشترك بين كل التابات
+function _authGet(k) {
+  try { const v = sessionStorage.getItem(k); if (v !== null) return v; } catch (e) {}
+  try { return localStorage.getItem(k); } catch (e) { return null; }
+}
+function _apiGetQs(action, params) {
+  return new URLSearchParams({ action, ...Object.fromEntries(Object.entries(params || {}).map(([k,v]) => [k, typeof v === 'object' ? JSON.stringify(v) : v])) });
+}
+const _livePageKeys = new Map();
+let _liveRendering = false; // true وقت إعادة الرسم اللايف — الصفحات بتحافظ فيه على الفلاتر/التاب المفتوح
 function _apiCacheKey(action, params) { return action + '::' + JSON.stringify(params || {}); }
 
 // ─── كاش دائم (stale-while-revalidate) ───
@@ -1851,12 +1861,13 @@ async function apiGet(action, params, opts) {
   if (DEMO_MODE) return demoApiGet(action, params); // النسخة التجريبية — مفيش أي طلب للسيرفر
   const priority = (opts && opts.priority) || 'high';
   const key = _apiCacheKey(action, params);
+  _livePageKeys.set(key, { action, params }); // ⚠️ 2026-10-22: البيانات اللي الصفحة المفتوحة بتعتمد عليها — التحديث اللايف بيجيبها هي بس ويقارن
 
   // 1) كاش الذاكرة الطازة — أسرع حاجة ممكنة، رجّعها فورًا
   const cached = _apiCache.get(key);
   if (cached && (Date.now() - cached.t) < _apiCacheTtlFor(action)) return cached.data;
 
-  const qs = new URLSearchParams({ action, ...Object.fromEntries(Object.entries(params).map(([k,v]) => [k, typeof v === 'object' ? JSON.stringify(v) : v])) });
+  const qs = _apiGetQs(action, params);
   // ⚠️ إصلاح 404/إبطاء متكرر على echo: لما كذا طلب GET يضربوا بنفس الـ URL بالظبط في
   // نفس اللحظة (أي صفحة بتعمل Promise.all لأكتر من apiGet مع بعض)، المتصفح أحيانًا
   // بيتعامل معاهم كأنهم "نفس الطلب" على مستوى الشبكة وبيصطدموا على رابط الـ echo
@@ -1893,7 +1904,7 @@ function _genRequestId(){
 }
 async function apiPost(action, payload) {
   if (DEMO_MODE) return demoApiPost(action, payload); // النسخة التجريبية — مفيش أي حفظ حقيقي
-  const actor = sessionStorage.getItem('lm_userName') || '';
+  const actor = _authGet('lm_userName') || '';
   // ⚠️ requestId ثابت لنفس الطلب — نفس القيمة بتتبعت في كل محاولات الإعادة
   // التلقائية جوه _apiFetch لأنها بتستخدم نفس الـ body، فلو الطلب كان فعلاً
   // اتنفذ في السيرفر قبل كده، السيرفر هيرجع نفس النتيجة القديمة تاني من غير
@@ -1930,28 +1941,63 @@ function _liveAfterOwnPost_(){
   try { if (_LIVE_CH) _LIVE_CH.postMessage({ t: 'changed', at: Date.now() }); else localStorage.setItem('lm_live_ping', String(Date.now())); } catch (e) {}
   setTimeout(() => _livePollCv_(true), 2500); // نحدّث نسختنا من السيرفر عشان تعديلنا إحنا ميتحسبش "تحديث من بره"
 }
-function _liveCanRefreshNow_(){
-  if (document.hidden || _liveBusy || _liveDirty) return false;
-  if (!sessionStorage.getItem('lm_loggedIn') || !_currentPage || !PAGES[_currentPage]) return false;
+function _liveCanRefreshNow_(ignoreBusy){
+  if (document.hidden || (_liveBusy && !ignoreBusy) || _liveDirty) return false;
+  if (!_authGet('lm_loggedIn') || !_currentPage || !PAGES[_currentPage]) return false;
   const a = document.activeElement;
-  if (a && (a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || (a.tagName === 'INPUT' && !/^(button|submit|checkbox|radio)$/i.test(a.type || '')))) return false;
+  if (a && (a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || (a.tagName === 'INPUT' && !/^(button|submit|checkbox|radio|date)$/i.test(a.type || '')))) return false;
   if (document.querySelector('[id$="Modal"].open, .d-quick-popover.open, .d-suggest-popover.open')) return false;
   return true;
 }
+// ⚠️ 2026-10-22 ("كل ما أسجل حاجة باقي التابات بتعمل ريفرش وأنا شغال عليها"): التحديث بقى هادي —
+// بنجيب في الخلفية بس البيانات اللي الصفحة المفتوحة بتستخدمها ونقارنها باللي معروض. لو مفيش
+// فرق مفيش أي حاجة بتتلمس. لو فيه فرق، الصفحة بتترسم من البيانات الجديدة مرة واحدة من غير
+// "جاري التحميل"، ومكان السكرول والفلاتر والتاب المفتوح بيفضلوا زي ما هما.
+let _liveNeedsRender = false;
 async function _liveRefresh_(){
   _livePending = true;
-  if (!_liveCanRefreshNow_()) return; // هنجرب تاني بعد شوية (شوف setInterval تحت)
+  if (_liveBusy) return;
+  const page = _currentPage, token = _navToken;
+  if (!page || !PAGES[page] || !_authGet('lm_loggedIn')) return;
   _livePending = false; _liveBusy = true;
-  const page = _currentPage, token = _navToken, y = window.scrollY;
   try {
-    apiCacheClear();
-    await PAGES[page].render(token);
-    if (page === _currentPage && token === _navToken) window.scrollTo(0, y);
-  } catch (e) { /* فشل التحديث — اللي معروض يفضل زي ما هو */ }
-  finally { _liveBusy = false; }
+    // الصفحات التانية: بنشيل بس نسختها من الذاكرة — أول ما تفتحها بتظهر فورًا وتتحدث في الخلفية
+    for (const k of Array.from(_apiCache.keys())) if (!_livePageKeys.has(k)) _apiCache.delete(k);
+    const entries = Array.from(_livePageKeys.entries());
+    let changed = false;
+    await Promise.all(entries.map(async ([key, { action, params }]) => {
+      try {
+        const qs = _apiGetQs(action, params);
+        qs.set('_r', Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
+        const data = await _apiFetch(API_URL + '?' + qs.toString(), undefined, undefined, 'low');
+        if (!data || data.error) return;
+        const old = _apiCache.get(key) || _lsGet(key);
+        if (!old || JSON.stringify(old.data) !== JSON.stringify(data)) changed = true;
+        _apiCache.set(key, { t: Date.now(), data }); _lsSet(key, data);
+      } catch (e) {}
+    }));
+    if (changed) _liveNeedsRender = true;
+    if (!_liveNeedsRender || page !== _currentPage || token !== _navToken) return;
+    if (!_liveCanRefreshNow_(true)) { _livePending = true; return; } // بتكتب دلوقتي — هنرسم أول ما تخلص
+    _liveNeedsRender = false;
+    if (typeof fxInvalidate === 'function') fxInvalidate();
+    await _liveRerender_(page, token);
+  } finally { _liveBusy = false; }
+}
+async function _liveRerender_(page, token){
+  const y = window.scrollY;
+  const scrollers = Array.from(document.querySelectorAll('#content .tbl-wrap-scroll, #content .tbl-wrap')).map(el => ({ id: el.id, l: el.scrollLeft, t: el.scrollTop }));
+  _liveRendering = true;
+  try { await PAGES[page].render(token); }
+  catch (e) { /* فشل — اللي معروض يفضل زي ما هو */ }
+  finally { _liveRendering = false; }
+  if (page !== _currentPage || token !== _navToken) return;
+  window.scrollTo(0, y);
+  const now = Array.from(document.querySelectorAll('#content .tbl-wrap-scroll, #content .tbl-wrap'));
+  scrollers.forEach((sc, i) => { const el = (sc.id && document.getElementById(sc.id)) || now[i]; if (el) { el.scrollLeft = sc.l; el.scrollTop = sc.t; } });
 }
 async function _livePollCv_(silent){
-  if (DEMO_MODE || !sessionStorage.getItem('lm_loggedIn') || typeof API_URL === 'undefined') return;
+  if (DEMO_MODE || !_authGet('lm_loggedIn') || typeof API_URL === 'undefined') return;
   try {
     const d = await _apiFetch(API_URL + '?action=getBuildInfo&_r=' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), undefined, undefined, 'low');
     if (!d || d.cv === undefined || d.cv === null) return; // سيرفر قديم من غير cv — بنكتفي بالتحديث بين التابات
@@ -1963,8 +2009,13 @@ async function _livePollCv_(silent){
 if (_LIVE_CH) _LIVE_CH.onmessage = ev => { if (ev && ev.data && ev.data.t === 'changed') _liveRefresh_(); };
 else window.addEventListener('storage', ev => { if (ev.key === 'lm_live_ping') _liveRefresh_(); });
 // أي كتابة في فورم جوه الصفحة = "فيه شغل مش متحفظ" — منعملش تحديث فوقه لحد ما يتحفظ أو تغيّر الصفحة
-document.addEventListener('input', ev => { const c = document.getElementById('content'); if (c && ev.target && ev.isTrusted && c.contains(ev.target) && ev.target.closest && ev.target.closest('form')) _liveDirty = true; }, true);
-setInterval(() => { if (_livePending) _liveRefresh_(); }, 2500);
+document.addEventListener('input', ev => {
+  const c = document.getElementById('content'), t = ev.target;
+  if (!c || !t || !ev.isTrusted || !c.contains(t) || !t.closest) return;
+  if (t.type === 'date' || t.closest('.adv-filter, .p-filter-tabs, [id*="filter" i], [id*="search" i]')) return; // فلاتر وبحث مش شغل بيتحفظ
+  if (t.closest('form, table, .panel')) _liveDirty = true;
+}, true);
+setInterval(() => { if (_livePending || (_liveNeedsRender && _liveCanRefreshNow_())) _liveRefresh_(); }, 2500);
 setInterval(() => { if (!document.hidden) _livePollCv_(); }, 30000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { if (_livePending) _liveRefresh_(); _livePollCv_(); } });
 /* DEMO-BEGIN */
@@ -3468,13 +3519,13 @@ let _navToken = 0;
 const _appLoadTime = Date.now();
 // صفحات Work Flow — المستخدمين اللي مش Role=Lead بيشوفوا دول بس (شوف applyRoleAccess تحت)
 const WORKFLOW_ONLY_PAGES = ['taskOrganize', 'materials', 'projectPlanning'];
-function _isLeadRole(){ return sessionStorage.getItem('lm_userRole') === 'Lead'; }
+function _isLeadRole(){ return _authGet('lm_userRole') === 'Lead'; }
 function goTo(page, costTab) {
   if (!PAGES[page]) page = 'dashboard';
   if (!_isLeadRole() && !WORKFLOW_ONLY_PAGES.includes(page)) page = WORKFLOW_ONLY_PAGES[0];
   if (page === 'costs' && costTab) COST_TAB = costTab; // فتح تاب معيّن (تكاليف/إيرادات/مشاريع) مباشرة
   const token = ++_navToken;
-  _liveDirty = false; _livePending = false; // صفحة جديدة — أي كتابة قديمة اتسابت
+  _liveDirty = false; _livePending = false; _liveNeedsRender = false; _livePageKeys.clear(); // صفحة جديدة — أي كتابة قديمة اتسابت
   _currentPage = page;
   sessionStorage.setItem('lm_currentPage', page);
   document.querySelectorAll('.nav button.active, .bottom-nav button.active').forEach(b => b.classList.remove('active'));
@@ -3536,7 +3587,7 @@ function applyRoleAccess() {
   // اللي كانت بتفصل بين مجموعات تانية دلوقتي مخفية كلها
   document.querySelectorAll('#nav > .sep').forEach(sep => { sep.style.display = isLead ? '' : 'none'; });
   const badge = document.getElementById('userBadge');
-  if (badge) badge.textContent = sessionStorage.getItem('lm_userName') || '';
+  if (badge) badge.textContent = _authGet('lm_userName') || '';
 }
 
 // ⚡ إضافة: الوضع الليلي — راجع كومنت الـCSS جنب html[data-theme="dark"] فوق
@@ -6806,8 +6857,7 @@ async function renderTreasury(token) {
     _treasuryMoves = movesData.moves;
     _deposits = depositsData.moves || [];
     _allProjectsForTreasury = projectsData.projects || []; // ⚠️ إضافة: أسماء المشاريع الحقيقية (تبويبات ملف "مصاريف المشاريع") — لعمل اقتراحات في حقل "المشروع" تحت، ولتاب "متابعة صرف المشاريع"
-    _editingMoveId = null;
-    _movesFilters = { date:'', type:'all', project:'', amountOp:'', amountVal:'', desc:'' };
+    if (!_liveRendering) { _editingMoveId = null; _movesFilters = { date:'', type:'all', project:'', amountOp:'', amountVal:'', desc:'' }; }
     _treasurySummary = summary;
     // ⚠️ إضافة 2026-08-16: الدفلت بتاع فلتر التاريخ فوق = من أول يوم اتسجلت فيه
     // أي حركة في الخزنة (أقدم تاريخ في _treasuryMoves) لحد النهارده — يعني بيبان
@@ -6816,7 +6866,7 @@ async function renderTreasury(token) {
     const earliestDate = _treasuryMoves.length
       ? _treasuryMoves.reduce((min, m) => (m.date && m.date < min) ? m.date : min, _treasuryMoves[0].date)
       : todayStr();
-    _tfFilters = { from: earliestDate, to: todayStr() };
+    if (!_liveRendering || !_tfFilters || !_tfFilters.from) _tfFilters = { from: earliestDate, to: todayStr() };
     document.getElementById('content').innerHTML = `
       <div class="adv-filter" id="tfFilterBar">
         <div class="af-field">
@@ -12179,7 +12229,7 @@ async function fxShowProjectDebtsModal(project){
 }
 
 // ⚡ تحميل المصاريف الثابتة في الخلفية بعد فتح الموقع بشوية — عشان أول ما تفتح التكاليف/المشاريع تبقى جاهزة
-try { if (sessionStorage.getItem('lm_loggedIn') === '1') setTimeout(() => { fxLoadModel().catch(() => {}); }, 4000); } catch(e) {}
+try { if (_authGet('lm_loggedIn') === '1') setTimeout(() => { fxLoadModel().catch(() => {}); }, 4000); } catch(e) {}
 
 async function renderFixedExp(token) { return fxRenderPage(token); } // الصفحة الجديدة (شهري + مصاريف عامة من الخزنة) — شوف قسم FX
 async function deleteFixedExpConfirm(id){
@@ -14129,9 +14179,10 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     // كاش خالص على تسجيل الدخول، وده بيحل تحديدًا مشكلة "بيتكتب صح ومش بيدخل"
     // اللي كانت بتظهر أكتر على الموبايل بسبب كاش الشبكة/المتصفح لطلبات الـ GET.
     const data = await apiPost('login', { name, pass }); // apiPost بيرمي Error لو data.error موجودة
-    sessionStorage.setItem('lm_loggedIn', '1');
-    sessionStorage.setItem('lm_userName', name);
-    sessionStorage.setItem('lm_userRole', data.role || '');
+    // ⚠️ 2026-10-22: الدخول بيتحفظ في localStorage (مش sessionStorage) — فبيفضل مسجّل في كل التابات وبعد قفل المتصفح لحد ما تعمل تسجيل خروج
+    localStorage.setItem('lm_loggedIn', '1');
+    localStorage.setItem('lm_userName', name);
+    localStorage.setItem('lm_userRole', data.role || '');
     document.getElementById('loginWrap').remove(); // مش hide بس — لازم يتشال من الـ DOM خالص عشان كروم يبطل يقترح باسورد "Hazem" المحفوظ في أي حقل تاني في الصفحة
     document.getElementById('appRoot').style.display = 'flex';
     applyRoleAccess();
@@ -14205,9 +14256,7 @@ document.addEventListener('keydown', (e)=>{
 async function logout(){
   const ok = await openGenConfirm('هل تريد تسجيل الخروج؟', 'تسجيل الخروج');
   if (!ok) return;
-  sessionStorage.removeItem('lm_loggedIn');
-  sessionStorage.removeItem('lm_userName');
-  sessionStorage.removeItem('lm_userRole');
+  ['lm_loggedIn', 'lm_userName', 'lm_userRole'].forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
   sessionStorage.clear();
   window.location.reload(); // بديل بسيط وآمن بدل إظهار فورم اللوجن تاني، وبيضمن مفيش أي بواقي من الصفحة القديمة تأثر على كروم
 }
@@ -14230,7 +14279,7 @@ async function submitChangePassword(){
   if (!oldPass || !newPass || !confirmPass) { show('err', 'من فضلك اكتب كل الحقول'); return; }
   if (newPass !== confirmPass) { show('err', 'كلمة السر الجديدة والتأكيد مش متطابقين'); return; }
   if (newPass.length < 4) { show('err', 'كلمة السر الجديدة قصيرة أوي (4 حروف/أرقام على الأقل)'); return; }
-  const name = sessionStorage.getItem('lm_userName') || '';
+  const name = _authGet('lm_userName') || '';
   if (!name) { show('err', 'حصل خطأ، برجاء تسجيل الخروج والدخول تاني'); return; }
   const btn = document.getElementById('cpSaveBtn'); btn.disabled = true; show('ok', '⏳ جاري الحفظ...');
   try {
@@ -14264,7 +14313,7 @@ async function _loadBuildVersion(){
 // setTimeout بـ0 بتضمن إن كل تعريفات المتغيرات (حتى اللي تحت في الملف) تكون
 // خلصت قبل ما أول render فعلي يحصل، مهما كانت آخر صفحة كانت مفتوحة.
 setTimeout(function _bootApp(){
-  if (sessionStorage.getItem('lm_loggedIn') === '1') {
+  if (_authGet('lm_loggedIn') === '1') {
     document.getElementById('loginWrap').remove();
     document.getElementById('appRoot').style.display = 'flex';
     applyRoleAccess();
