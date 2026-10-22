@@ -7387,6 +7387,7 @@ function dRenderRows(){
           <div class="d-quick-wrap">
             <button type="button" class="d-quick-tag-btn" title="إضافة سريعة بعد المكتوب" onclick="dToggleQuickTag(${r._id}, this)">+ سريع</button>
             <button type="button" id="d-emp-btn-${r._id}" class="d-quick-tag-btn" style="min-width:0;padding:12px 14px;" title="اختيار موظف — هيتكتب (الاسم - مسحوبات)" onclick="dToggleEmployeeTag(${r._id}, this)">🧑</button>
+            <button type="button" id="d-car-btn-${r._id}" class="d-quick-tag-btn" style="min-width:0;padding:12px 14px;" title="عربية — بنزين أو صيانة" onclick="dToggleCarTag(${r._id}, this)">🚗</button>
             <button type="button" id="d-note-btn-${r._id}" class="d-quick-tag-btn d-note-btn${r.note ? ' has-note' : ''}" style="min-width:0;padding:12px 14px;" title="${r.note ? 'فيه ملاحظة — دوس تعدّلها' : 'إضافة ملاحظة (بتتسجل Note على الخلية في الشيت)'}" onclick="dToggleNotePopup(${r._id}, this)">📝</button>
           </div>
         </div>
@@ -7503,7 +7504,7 @@ function dCloseAllQuickTags(){
   document.querySelectorAll('.d-quick-tag-btn.open').forEach(b => b.classList.remove('open'));
   const nbox = _dNotePopover(); if (nbox){ nbox.classList.remove('open'); nbox.dataset.rowId = ''; }
   document.querySelectorAll('.d-note-btn.open').forEach(b => b.classList.remove('open'));
-  const ebox = _dEmpPopover(); if (ebox){ ebox.classList.remove('open'); ebox.dataset.rowId = ''; }
+  const ebox = _dEmpPopover(); if (ebox){ ebox.classList.remove('open'); ebox.dataset.rowId = ''; ebox.dataset.kind = ''; }
 }
 /* دعم كيبورد لقايمة "+ سريع" (زي بالظبط قايمة اقتراحات المشروع): ↓/↑ للتنقل، Enter
  * للاختيار (أول عنصر تلقائي لو لسه محددتش حاجة بالسهم)، Esc للإغلاق. القايمة بتتفتح
@@ -7700,7 +7701,7 @@ async function dDoMaterialFullUsage_(rowId, materialId){
 // (بيستبدل أي وصف قديم في الخلية، مش بيضيف عليه، عشان الصيغة تفضل واضحة ومنضبطة).
 function dToggleEmployeeTag(id, btnEl){
   const box = _dEmpPopover(); if (!box) return;
-  const wasOpenForThisRow = box.classList.contains('open') && String(box.dataset.rowId) === String(id);
+  const wasOpenForThisRow = box.classList.contains('open') && String(box.dataset.rowId) === String(id) && box.dataset.kind !== 'car';
   dCloseAllQuickTags();
   if (wasOpenForThisRow) return;
   box.dataset.rowId = id;
@@ -7745,6 +7746,48 @@ function dRenderEmployeeList_(box, id){
     items += monthly.map(itemHtml).join('');
     box.innerHTML = '<div class="d-pop-items">' + items + '</div><div class="d-pop-hint">هيتكتب: الاسم - مسحوبات</div>';
   }
+}
+// ⚠️ إضافة 2026-10-22: زرار 🚗 — بنزين/صيانة لعربيات الشركة. بيكتب "بنزين BYD" مثلًا في خانة الوصف
+// (بيستبدل المكتوب، زي 🧑 بالظبط). بيستخدم نفس بوكس قايمة الموظفين.
+const D_CARS = ['BYD', 'سكودا', 'KIA'];
+const D_CAR_KINDS = [{ label: 'بنزين', icon: '⛽' }, { label: 'صيانة', icon: '🔧' }];
+function dToggleCarTag(id, btnEl){
+  const box = _dEmpPopover(); if (!box) return;
+  const wasOpen = box.classList.contains('open') && String(box.dataset.rowId) === String(id) && box.dataset.kind === 'car';
+  dCloseAllQuickTags();
+  if (wasOpen) return;
+  box.dataset.rowId = id; box.dataset.kind = 'car';
+  let items = '';
+  D_CAR_KINDS.forEach((k, ki) => {
+    if (ki) items += `<div class="to-cs-divider">${qEsc(k.label)}</div>`;
+    D_CARS.forEach(car => {
+      const txt = k.label + ' ' + car;
+      items += `<div class="d-quick-item" onmousedown="event.preventDefault();dPickTextTag(${id}, '${qEscJs(txt)}')"><span class="d-pop-icon">${k.icon}</span><span class="d-pop-label">${qEsc(txt)}</span></div>`;
+    });
+  });
+  box.innerHTML = '<div class="d-pop-items">' + items + '</div><div class="d-pop-hint">هيتكتب في الوصف: بنزين/صيانة + العربية</div>';
+  const r = btnEl.getBoundingClientRect();
+  const spaceBelow = window.innerHeight - r.bottom;
+  const openUp = spaceBelow < 260 && r.top > spaceBelow;
+  box.style.left = ''; box.style.right = (window.innerWidth - r.right) + 'px';
+  if (openUp){ box.style.top = ''; box.style.bottom = (window.innerHeight - r.top + 6) + 'px'; }
+  else { box.style.bottom = ''; box.style.top = (r.bottom + 6) + 'px'; }
+  box.classList.add('open');
+  btnEl.classList.add('open');
+}
+function dPickTextTag(id, text){
+  dCloseAllQuickTags();
+  const r = DSTATE.rows.find(r => r._id === id); if (!r || !text) return;
+  const input = document.getElementById('d-desc-' + id);
+  let inserted = false;
+  if (input) {
+    input.focus();
+    input.setSelectionRange(0, input.value.length);
+    try { inserted = document.execCommand && document.execCommand('insertText', false, text); } catch (e) { inserted = false; }
+  }
+  if (!inserted && input) input.value = text;
+  r.desc = text;
+  dScheduleDraftSave();
 }
 function dPickEmployeeTag(id, name){
   dCloseAllQuickTags();
