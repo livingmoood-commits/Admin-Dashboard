@@ -4412,11 +4412,12 @@ let PAYSTATE = { year: new Date().getFullYear(), monthIndex: new Date().getMonth
 // "رجّعك للشهر الحالي" حتى لو كنت واقف في شهر/تبويب/أسبوع تاني. بنحفظ بس الاختيارات
 // (مش data نفسها، عشان تتحمّل fresh من الشيت كل مرة) بنفس نمط qSaveSession/pSaveSession.
 function paySaveSession(){
-  try { sessionStorage.setItem('lm_paySession', JSON.stringify({ year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex, kind: PAYSTATE.kind, view: PAYSTATE.view })); } catch(e){}
+  // ⚠️ 2026-10-22: كان نفس مفتاح Payment Statements ('lm_paySession') — فتح المرتبات كان بيمسح جلسة الدفعات المفتوحة
+  try { sessionStorage.setItem('lm_payrollSession', JSON.stringify({ year: PAYSTATE.year, monthIndex: PAYSTATE.monthIndex, kind: PAYSTATE.kind, view: PAYSTATE.view })); } catch(e){}
 }
 function payRestoreSession(){
   try {
-    const raw = sessionStorage.getItem('lm_paySession');
+    const raw = sessionStorage.getItem('lm_payrollSession');
     if (!raw) return;
     const s = JSON.parse(raw);
     if (!s) return;
@@ -13894,7 +13895,7 @@ function pRenderEditor(){
             oninput="PSTATE.customer.address=this.value; pSaveSession();"></div>
         </div>
         <div class="q-info-box">
-          <div class="q-info-row"><label>الإجمالي الكلي:</label><input type="text" class="ltr-num" autocomplete="off" inputmode="numeric" id="p-b-total" value="${c.total||0}" onkeypress="return /[0-9.]/.test(event.key)" oninput="pRenderRows(); pSaveSession();"></div>
+          <div class="q-info-row"><label>الإجمالي الكلي:</label><input type="text" class="ltr-num" autocomplete="off" inputmode="numeric" id="p-b-total" value="${c.total||0}" onkeypress="return /[0-9.]/.test(event.key)" oninput="PSTATE.customer.total=qNum(this.value); pRenderRows(); pSaveSession();"></div>
           <div class="q-info-row"><label>تاريخ استلام المشروع:</label><input autocomplete="off" type="date" id="p-b-date" value="${pToISO(c.date)}" oninput="PSTATE.customer.date=pToEnGB(this.value); pSaveSession();"></div>
         </div>
       </div>
@@ -13945,6 +13946,7 @@ async function pSaveCashFlow(){
   const total = PSTATE.customer.total; const remaining = total - pReceived();
   PSTATE.customer.completed = total > 0 && Math.abs(remaining) <= 0.01;
   PSTATE.customer.date = pToEnGB(document.getElementById('p-b-date').value);
+  pSaveSession(); // ⚠️ 2026-10-22: الإجمالي لازم يتحفظ في الجلسة كمان — أي إعادة رسم كانت بترجّعه للقيمة القديمة (0)
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>جاري الحفظ...';
   try {
     // ⚠️ راجع كومنت qSaveQuotation — نفس الفكرة بالظبط هنا
