@@ -7750,7 +7750,7 @@ function dRenderEmployeeList_(box, id){
 // ⚠️ إضافة 2026-10-22: زرار 🚗 — بنزين/صيانة لعربيات الشركة. بيكتب "بنزين BYD" مثلًا في خانة الوصف
 // (بيستبدل المكتوب، زي 🧑 بالظبط). بيستخدم نفس بوكس قايمة الموظفين.
 const D_CARS = ['BYD', 'سكودا', 'KIA'];
-const D_CAR_KINDS = [{ label: 'بنزين', icon: '⛽' }, { label: 'صيانة', icon: '🔧' }];
+const D_CAR_KINDS = [{ label: 'بنزين', icon: '⛽' }, { label: 'صيانة', icon: '🔧' }, { label: 'غيار زيت', icon: '🛢️' }];
 function dToggleCarTag(id, btnEl){
   const box = _dEmpPopover(); if (!box) return;
   const wasOpen = box.classList.contains('open') && String(box.dataset.rowId) === String(id) && box.dataset.kind === 'car';
@@ -7765,7 +7765,7 @@ function dToggleCarTag(id, btnEl){
       items += `<div class="d-quick-item" onmousedown="event.preventDefault();dPickTextTag(${id}, '${qEscJs(txt)}')"><span class="d-pop-icon">${k.icon}</span><span class="d-pop-label">${qEsc(txt)}</span></div>`;
     });
   });
-  box.innerHTML = '<div class="d-pop-items">' + items + '</div><div class="d-pop-hint">هيتكتب في الوصف: بنزين/صيانة + العربية</div>';
+  box.innerHTML = '<div class="d-pop-items">' + items + '</div><div class="d-pop-hint">هيتكتب في الوصف: بنزين/صيانة/غيار زيت + العربية</div>';
   const r = btnEl.getBoundingClientRect();
   const spaceBelow = window.innerHeight - r.bottom;
   const openUp = spaceBelow < 260 && r.top > spaceBelow;
