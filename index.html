@@ -8260,6 +8260,14 @@ async function dTodaySave(rowNum, field, inputEl){
     _dTodayMsg('err', '✕ تعذر الحفظ: ' + (err.message || err));
   }
 }
+// ⚡ بعد الحذف بنحدّث الجدول محليًا بدل ما نستنى تحميل اليوم من الشيت تاني: الصفوف اللي تحت
+// كل صف اتمسح بتطلع رقم لفوق — بالظبط زي ما الشيت بيعمل.
+function dTodayApplyLocalDelete(deletedRows){
+  const del = new Set(deletedRows);
+  const sorted = Array.from(del).sort((a, b) => a - b);
+  const rows = D_TODAY_ROWS.filter(r => !del.has(r.row)).map(r => Object.assign({}, r, { row: r.row - sorted.filter(d => d < r.row).length }));
+  dRenderTodayLog(rows);
+}
 function dTodayToggleSel(rowNum, on){
   if (on) D_TODAY_SEL.add(rowNum); else D_TODAY_SEL.delete(rowNum);
   const tr = document.getElementById('d-today-row-' + rowNum);
@@ -8294,7 +8302,7 @@ async function dTodayDeleteSelected(){
   rows.forEach(r => { const tr = document.getElementById('d-today-row-' + r); if (tr) tr.classList.add('saving'); });
   let done = 0, errMsg = '';
   try {
-    const CHUNK = 15; // دفعات صغيرة عشان الطلب ميعدّيش حد وقت جوجل
+    const CHUNK = 150; // الـ GS بيمسح الدفعة كلها بقراية واحدة لكل شيت
     for (let i = 0; i < rows.length; i += CHUNK) {
       const part = rows.slice(i, i + CHUNK);
       try {
@@ -8307,10 +8315,13 @@ async function dTodayDeleteSelected(){
       }
     }
   } catch(err){ errMsg = String(err.message || err); }
-  try {
-    const log = await apiGet('getDailyExpenses', { date: DSTATE.date });
-    dRenderTodayLog(log.rows || []);
-  } catch(e){}
+  if (!errMsg) dTodayApplyLocalDelete(rows);
+  else {
+    try {
+      const log = await apiGet('getDailyExpenses', { date: DSTATE.date });
+      dRenderTodayLog(log.rows || []);
+    } catch(e){}
+  }
   _dTodayUnlock();
   if (errMsg) _dTodayMsg('err', `✕ اتحذف ${done} من ${rows.length} — ${errMsg}`);
   else _dTodayMsg('ok', `✔ اتحذف ${done} مصروف`);
@@ -8330,11 +8341,8 @@ async function dTodayDelete(rowNum){
     // (_dTodayLock فوق) طول الوقت ده، فمفيش أي حذف/تعديل تاني ممكن يحصل برقم
     // صف قديم غلط قبل ما القايمة الجديدة تتحمّل.
     await new Promise(res => setTimeout(res, 200));
-    try {
-      const log = await apiGet('getDailyExpenses', { date: DSTATE.date });
-      dRenderTodayLog(log.rows || []);
-      _dTodayMsg('ok', '✔ اتحذف المصروف');
-    } catch(err){ _dTodayMsg('err', '✕ اتحذف بس تعذر تحديث القايمة: ' + (err.message || err)); }
+    dTodayApplyLocalDelete([rowNum]);
+    _dTodayMsg('ok', '✔ اتحذف المصروف');
   } catch(err){
     if (tr) tr.classList.remove('saving');
     _dTodayMsg('err', '✕ تعذر الحذف: ' + (err.message || err));
