@@ -668,6 +668,10 @@
   .d-log-del-btn{ all:unset; cursor:pointer; width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:13px; transition:background .15s, color .15s, transform .15s var(--bounce); }
   .d-log-del-btn:hover{ background:#fbe9e7; color:var(--red); }
   .d-log-del-btn:active{ transform:scale(.88); }
+  .d-sel-cb{ width:16px; height:16px; cursor:pointer; accent-color:var(--red); vertical-align:middle; }
+  .d-log-row.d-selected td{ background:#fdecea; }
+  .d-del-sel-btn{ border:none; border-radius:9px; padding:6px 12px; font:inherit; font-size:12.5px; font-weight:700; cursor:pointer; background:var(--red); color:#fff; }
+  .d-del-sel-btn:disabled{ opacity:.5; cursor:default; }
   .d-log-note-btn, .d-log-move-btn{ all:unset; cursor:pointer; width:24px; height:24px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; color:var(--muted); font-size:12px; transition:background .15s, color .15s, transform .15s var(--bounce); vertical-align:middle; }
   .d-log-note-btn:hover, .d-log-move-btn:hover{ background:var(--panel-2, #f2f2f2); color:var(--text); }
   .d-log-note-btn:active, .d-log-move-btn:active{ transform:scale(.88); }
@@ -2012,7 +2016,7 @@ else window.addEventListener('storage', ev => { if (ev.key === 'lm_live_ping') _
 document.addEventListener('input', ev => {
   const c = document.getElementById('content'), t = ev.target;
   if (!c || !t || !ev.isTrusted || !c.contains(t) || !t.closest) return;
-  if (t.type === 'date' || t.closest('.adv-filter, .p-filter-tabs, [id*="filter" i], [id*="search" i]')) return; // فلاتر وبحث مش شغل بيتحفظ
+  if (t.type === 'date' || t.classList.contains('d-sel-cb') || t.closest('.adv-filter, .p-filter-tabs, [id*="filter" i], [id*="search" i]')) return; // فلاتر وبحث مش شغل بيتحفظ
   if (t.closest('form, table, .panel')) _liveDirty = true;
 }, true);
 setInterval(() => { if (_livePending || (_liveNeedsRender && _liveCanRefreshNow_())) _liveRefresh_(); }, 2500);
@@ -8104,6 +8108,7 @@ async function dConfirmAlreadySaved(){
 }
 // حالة سطور "مصاريف اليوم المسجلة فعليًا" — بتتخزن هنا عشان نقدر نعدّل/نحذف بالـ row الصحيح
 let D_TODAY_ROWS = [];
+let D_TODAY_SEL = new Set(); // أرقام صفوف السطور المحددة للحذف الجماعي
 // ⚠️ إصلاح باگ: بعد حذف صف، كل الصفوف اللي تحته بتتزحلق رقم واحد لفوق في الشيت.
 // من غير القفل ده، لو المستخدم دوس حذف/تعديل/نقل على صف تاني *قبل* ما القايمة
 // تتحدث من الشيت تاني، الطلب هيروح برقم صف قديم بقى غلط دلوقتي — يعني ممكن يمسح
@@ -8123,14 +8128,18 @@ function _dTodayUnlock(){
 function dRenderTodayLog(rows){
   const box = document.getElementById('d-today-box'); if (!box) return;
   D_TODAY_ROWS = rows || [];
+  D_TODAY_SEL = new Set(); // أرقام الصفوف بتتغير بعد أي حذف/نقل — التحديد بيتصفّر مع كل تحميل
   if (!D_TODAY_ROWS.length){ box.innerHTML = '<div class="empty">لسه مفيش مصاريف مسجلة في اليوم ده</div>'; return; }
   box.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
       <div style="font-size:13px;color:var(--muted);font-weight:700;">إجمالي مصاريف اليوم: <span id="d-today-total" style="color:var(--red);">${fmt(dTodayTotal())} ج</span></div>
-      <div class="msg" id="d-today-msg" style="margin:0;"></div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="msg" id="d-today-msg" style="margin:0;"></div>
+        <button type="button" class="d-del-sel-btn" id="d-del-sel-btn" style="display:none;" onclick="dTodayDeleteSelected()">🗑 حذف المحدد</button>
+      </div>
     </div>
     <div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">اضغط في أي خانة وعدّل — بيتحفظ لوحده أول ما تخرج من الخانة</div>
-    <div class="tbl-wrap tbl-wrap-scroll"><table><thead><tr><th>البيان</th><th style="width:110px;">المبلغ</th><th style="width:110px;">التاريخ</th><th style="width:170px;">المشروع</th><th style="width:110px;"></th></tr></thead>
+    <div class="tbl-wrap tbl-wrap-scroll"><table><thead><tr><th style="width:34px;text-align:center;"><input type="checkbox" class="d-sel-cb" id="d-sel-all" title="تحديد الكل" onchange="dTodaySelectAll(this.checked)"></th><th>البيان</th><th style="width:110px;">المبلغ</th><th style="width:110px;">التاريخ</th><th style="width:170px;">المشروع</th><th style="width:110px;"></th></tr></thead>
     <tbody id="d-today-tbody">${D_TODAY_ROWS.map((r, i) => dTodayRowHtml(r, i, D_TODAY_ROWS.length)).join('')}</tbody></table></div>`;
 }
 function dTodayTotal(){ return D_TODAY_ROWS.reduce((s, r) => s + (Number(r.amount) || 0), 0); }
@@ -8141,6 +8150,7 @@ function dUpdateTodayTotalBadge(){
 function dTodayRowHtml(r, idx, total){
   const hasNote = !!String(r.note || '').trim();
   return `<tr class="d-log-row" id="d-today-row-${r.row}">
+    <td style="text-align:center;"><input type="checkbox" class="d-sel-cb" data-row="${r.row}" onchange="dTodayToggleSel(${r.row}, this.checked)"></td>
     <td><input type="text" class="d-log-input d-log-desc" autocomplete="off" data-lpignore="true" data-1p-ignore value="${qEsc(r.desc)}" onchange="dTodaySave(${r.row}, 'desc', this)"></td>
     <td><input type="text" inputmode="numeric" class="d-log-input d-log-amount ltr-num" autocomplete="off" data-lpignore="true" data-1p-ignore value="${r.amount || ''}" onkeypress="return /[0-9.]/.test(event.key)" onchange="dTodaySave(${r.row}, 'amount', this)"></td>
     <td style="text-align:center;color:var(--muted);font-size:12.5px;">${qEsc(r.date || '—')}</td>
@@ -8250,9 +8260,64 @@ async function dTodaySave(rowNum, field, inputEl){
     _dTodayMsg('err', '✕ تعذر الحفظ: ' + (err.message || err));
   }
 }
+function dTodayToggleSel(rowNum, on){
+  if (on) D_TODAY_SEL.add(rowNum); else D_TODAY_SEL.delete(rowNum);
+  const tr = document.getElementById('d-today-row-' + rowNum);
+  if (tr) tr.classList.toggle('d-selected', !!on);
+  dTodayUpdateSelUi();
+}
+function dTodaySelectAll(on){
+  D_TODAY_SEL = new Set(on ? D_TODAY_ROWS.map(r => r.row) : []);
+  document.querySelectorAll('#d-today-tbody .d-sel-cb').forEach(cb => {
+    cb.checked = !!on;
+    const tr = cb.closest('tr'); if (tr) tr.classList.toggle('d-selected', !!on);
+  });
+  dTodayUpdateSelUi();
+}
+function dTodayUpdateSelUi(){
+  const n = D_TODAY_SEL.size, all = document.getElementById('d-sel-all'), btn = document.getElementById('d-del-sel-btn');
+  if (all) { all.checked = n > 0 && n === D_TODAY_ROWS.length; all.indeterminate = n > 0 && n < D_TODAY_ROWS.length; }
+  if (btn) {
+    btn.style.display = n ? '' : 'none';
+    const sum = D_TODAY_ROWS.filter(r => D_TODAY_SEL.has(r.row)).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+    btn.textContent = `🗑 حذف المحدد (${n}) — ${fmt(sum)} ج`;
+  }
+}
+// حذف جماعي: بيمسح السطور المحددة من تحت لفوق (عشان أرقام الصفوف متتزحلقش)، وكل سطر
+// بيتلغي أثره في كل مكان اتسجل فيه (المشروع/الخزنة/الماستر/المسحوبات/الديون) زي الحذف الفردي بالظبط.
+async function dTodayDeleteSelected(){
+  if (_dTodayBusy || !D_TODAY_SEL.size) return;
+  const rows = Array.from(D_TODAY_SEL).sort((a, b) => b - a);
+  const ok = await openGenConfirm(`هتحذف ${rows.length} مصروف نهائيًا من الشيت ومن كل مكان اتسجلوا فيه (المشروع، الخزنة، المسحوبات...). متأكد؟`, 'حذف المحدد');
+  if (!ok) return;
+  _dTodayLock();
+  rows.forEach(r => { const tr = document.getElementById('d-today-row-' + r); if (tr) tr.classList.add('saving'); });
+  let done = 0, errMsg = '';
+  try {
+    const CHUNK = 15; // دفعات صغيرة عشان الطلب ميعدّيش حد وقت جوجل
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      const part = rows.slice(i, i + CHUNK);
+      try {
+        const res = await apiPost('deleteDailyExpenseRows', { date: DSTATE.date, rows: part });
+        done += (res && res.deleted != null) ? res.deleted : part.length;
+      } catch(err){
+        // لو الـ GS لسه قديم (مفيهوش الحذف الجماعي) — نحذف سطر سطر بنفس الترتيب
+        if (!/Unknown POST action/i.test(String(err.message || err))) throw err;
+        for (const r of part) { await apiPost('deleteDailyExpenseRow', { date: DSTATE.date, row: r }); done++; }
+      }
+    }
+  } catch(err){ errMsg = String(err.message || err); }
+  try {
+    const log = await apiGet('getDailyExpenses', { date: DSTATE.date });
+    dRenderTodayLog(log.rows || []);
+  } catch(e){}
+  _dTodayUnlock();
+  if (errMsg) _dTodayMsg('err', `✕ اتحذف ${done} من ${rows.length} — ${errMsg}`);
+  else _dTodayMsg('ok', `✔ اتحذف ${done} مصروف`);
+}
 async function dTodayDelete(rowNum){
   if (_dTodayBusy) return;
-  const ok = await openGenConfirm('هل تريد حذف هذا المصروف نهائيًا من الشيت؟', 'حذف مصروف');
+  const ok = await openGenConfirm('هتحذف المصروف ده نهائيًا من الشيت ومن كل مكان اتسجل فيه (المشروع، الخزنة، المسحوبات...). متأكد؟', 'حذف مصروف');
   if (!ok) return;
   _dTodayLock();
   const tr = document.getElementById('d-today-row-' + rowNum);
