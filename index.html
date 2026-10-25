@@ -2020,8 +2020,62 @@ document.addEventListener('input', ev => {
   if (t.closest('form, table, .panel')) _liveDirty = true;
 }, true);
 setInterval(() => { if (_livePending || (_liveNeedsRender && _liveCanRefreshNow_())) _liveRefresh_(); }, 2500);
-setInterval(() => { if (!document.hidden) _livePollCv_(); }, 30000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { if (_livePending) _liveRefresh_(); _livePollCv_(); } });
+setInterval(() => { if (!document.hidden) _livePollCv_(); }, 15000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { if (_livePending) _liveRefresh_(); _livePollCv_(); _appCheckUpdate_(); } });
+
+/* ================= تحديث الكود لوحده (2026-10-25) =================
+ * أي نسخة جديدة من الموقع تترفع على GitHub بتتفتح لوحدها في كل التابات المفتوحة من غير ريفرش يدوي:
+ * كل دقيقة بنجيب index.html طازة ونقارن الكود اللي فيها بالكود اللي الصفحة شغالة بيه فعلًا.
+ * لو اتغير، الصفحة بتعمل Reload لوحدها — بس لو إنت مش بتكتب ومفيش بوكس مفتوح؛ غير كده بيظهر
+ * شريط صغير وبيستنى لحد ما تخلص. */
+let _appLastText = null, _appUpdatePending = false;
+function _appMainScript_(doc){
+  let best = '';
+  doc.querySelectorAll('script:not([src])').forEach(sc => { const t = sc.textContent || ''; if (t.length > best.length) best = t; });
+  return best;
+}
+const _appLoadedCode = _appMainScript_(document);
+// الـ ?v= في اللينك بتجبر GitHub يدّينا النسخة الجديدة مش المتكاشة — وبنشيلها من اللينك أول ما الصفحة تفتح
+if (/[?&]v=/.test(location.search)) { try { history.replaceState(history.state, '', location.pathname + location.hash); } catch (e) {} }
+function _appReload_(){
+  try { sessionStorage.setItem('lm_app_reload_at', String(Date.now())); } catch (e) {}
+  location.replace(location.pathname + '?v=' + Date.now().toString(36) + location.hash);
+}
+async function _appCheckUpdate_(){
+  if (_appUpdatePending) return _appTryReload_();
+  if (!/^https?:$/.test(location.protocol)) return;
+  try {
+    const r = await fetch(location.pathname + '?_v=' + Date.now().toString(36), { cache: 'no-store' });
+    if (!r.ok) return;
+    const text = await r.text();
+    if (text === _appLastText) return;
+    _appLastText = text;
+    const code = _appMainScript_(new DOMParser().parseFromString(text, 'text/html'));
+    if (code && _appLoadedCode && code !== _appLoadedCode) { _appUpdatePending = true; _appTryReload_(); }
+  } catch (e) {}
+}
+function _appTryReload_(){
+  if (!_appUpdatePending) return;
+  const a = document.activeElement;
+  const typing = a && (a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || (a.tagName === 'INPUT' && !/^(button|submit|checkbox|radio|date)$/i.test(a.type || '')));
+  const blocked = typing || _liveDirty || _liveBusy || (typeof _dTodayBusy !== 'undefined' && _dTodayBusy) || document.querySelector('[id$="Modal"].open, .d-quick-popover.open, .d-suggest-popover.open');
+  if (!blocked) {
+    // حماية من لوب: منعملش Reload لوحده أكتر من مرة كل 5 دقايق
+    let last = 0; try { last = Number(sessionStorage.getItem('lm_app_reload_at')) || 0; } catch (e) {}
+    if (Date.now() - last > 300000) { _appReload_(); return; }
+  }
+  let bar = document.getElementById('appUpdateBar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'appUpdateBar';
+    bar.style.cssText = 'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:99999;background:#1E1A15;color:#fff;border-radius:12px;padding:9px 14px;font-size:13px;font-weight:700;display:flex;gap:10px;align-items:center;box-shadow:0 6px 24px rgba(0,0,0,.25);';
+    bar.innerHTML = '🔄 فيه تحديث جديد للموقع — هيتحدث لوحده أول ما تخلص <button type="button" style="border:none;border-radius:8px;padding:5px 10px;font:inherit;cursor:pointer;background:#B8975A;color:#1E1A15;" onclick="_appReload_()">حدّث دلوقتي</button>';
+    document.body.appendChild(bar);
+  }
+}
+setInterval(_appCheckUpdate_, 60000);
+setInterval(() => { if (_appUpdatePending) _appTryReload_(); }, 2500);
+setTimeout(_appCheckUpdate_, 15000);
 /* DEMO-BEGIN */
 /* ================= النسخة التجريبية — التشغيل =================
  * زرار "جرّب نسخة تجريبية" في صفحة الدخول بيفتح الموقع كله بأرقام وهمية (DEMO تحت).
