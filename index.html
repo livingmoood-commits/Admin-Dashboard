@@ -702,18 +702,6 @@
   textarea.pay-cell.qa-col-hl{ box-shadow:inset 0 0 0 2px var(--gold) !important; }
   tr.qa-emp-hl td{ background:#fdf6e3; }
   td.pay-emp-name.qa-emp-hl{ background:var(--gold) !important; color:var(--white) !important; }
-  /* ⚠️ 2026-10-28: "تم" — قفل موظف في مرتبات الشهر (نفس شكل "تم" في Work Flow) */
-  .pay-done-btn{ all:unset; box-sizing:border-box; display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px;
-    border-radius:7px; border:1.5px solid var(--border); background:var(--white); color:var(--muted); font-size:12px; font-weight:800;
-    cursor:pointer; margin-inline-end:7px; vertical-align:middle; transition:background .2s, border-color .2s, color .2s; }
-  .pay-done-btn:hover{ border-color:var(--green); color:var(--green); }
-  .pay-done-btn:disabled{ opacity:.5; cursor:wait; }
-  tr.pay-row-done .pay-done-btn{ background:var(--green); border-color:var(--green); color:#fff; }
-  tr.pay-row-done td.pay-emp-name{ background:#e6f4ea !important; color:var(--green); text-decoration:line-through; text-decoration-color:rgba(44,95,58,.45); }
-  tr.pay-row-done td:not(.pay-emp-name){ opacity:.5; }
-  tr.pay-row-done .pay-cell{ pointer-events:none; }
-  tr.pay-row-done .pay-note-btn{ pointer-events:none; }
-  .qa-emp-chip.qa-emp-done{ opacity:.45; text-decoration:line-through; pointer-events:none; }
   textarea.pay-cell.qa-target-hl{ box-shadow:inset 0 0 0 3px var(--red) !important; }
   /* تلوين أعمدة شيت الـ Master (إجمالي الشهر لكل موظف) — بيتلوّن بس لما القيمة فعلاً != 0،
      عشان "0" في عمود إجمالي معناه "مفيش حاجة اتسجلت" مش غياب زي خانة اليوم الفردية. */
@@ -4866,68 +4854,11 @@ function payrollRenderTable(){
   const data = (leftRows.length && !PAYSTATE.showLeft) ? Object.assign({}, raw, { rows: raw.rows.filter(r => !left[String(r.name || '').trim()]) }) : raw;
   if (PAYSTATE.kind === 'monthly') payrollRenderMonthlyTable_(box, data);
   else payrollRenderWeeklyTable_(box, data);
-  payrollApplyDoneUI_(box);
   if (leftRows.length) {
     const panel = box.querySelector('.panel');
     if (panel) panel.insertAdjacentHTML('afterbegin', `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);background:var(--cream,#f6f1e8);border-radius:10px;padding:7px 12px;margin-bottom:10px;">
       🚪 ${PAYSTATE.showLeft ? 'ظاهر' : 'مخفي'} ${leftRows.length} موظف مشي: ${leftRows.map(r => qEsc(r.name) + ' (آخر يوم ' + qEsc(left[String(r.name).trim()]) + ')').join('، ')}
       <button type="button" class="btn btn-outline btn-sm" style="margin-inline-start:auto;" onclick="PAYSTATE.showLeft=!PAYSTATE.showLeft;payrollRenderTable();">${PAYSTATE.showLeft ? 'إخفاء' : 'إظهار'}</button></div>`);
-  }
-}
-
-/* ═══════════ "تم" — قفل موظف في مرتبات الشهر (2026-10-28) ═══════════
- * زي زرار "تم" في Work Flow: ✓ جنب اسم الموظف — الصف يتلوّن أخضر ويتشطب،
- * وخاناته تتقفل (مفيش تعديل) لحد ما تدوس ✓ تاني. علامة بس لكل شهر لوحده
- * (payrollSetEmployeeDone) — مش بتغيّر أي رقم في الشيت. */
-function payrollApplyDoneUI_(box){
-  box = box || document.getElementById('pay-box'); if (!box || !PAYSTATE.data) return;
-  const done = PAYSTATE.data.doneNames || {};
-  const rows = [...box.querySelectorAll('tbody tr[data-emp]')];
-  rows.forEach(tr => {
-    const name = String(tr.dataset.emp || '').trim();
-    const isDone = !!done[name];
-    tr.classList.toggle('pay-row-done', isDone);
-    const nameTd = tr.querySelector('td.pay-emp-name');
-    if (nameTd && !nameTd.querySelector('.pay-done-btn')) {
-      const btn = document.createElement('button');
-      btn.type = 'button'; btn.className = 'pay-done-btn'; btn.innerHTML = '&#10003;';
-      btn.addEventListener('click', (e) => { e.stopPropagation(); payrollToggleEmployeeDone_(name, btn); });
-      nameTd.insertBefore(btn, nameTd.firstChild);
-    }
-    const btn = nameTd && nameTd.querySelector('.pay-done-btn');
-    if (btn) btn.title = isDone ? 'مقفول (خلصته ' + done[name] + ') — دوس تفتحه تاني' : 'تم — اقفل الموظف ده (خلصته الشهر ده)';
-    tr.querySelectorAll('textarea.pay-cell').forEach(t => { t.readOnly = isDone; });
-  });
-  box.querySelectorAll('.qa-emp-chip').forEach(c => c.classList.toggle('qa-emp-done', !!done[String(c.dataset.emp || '').trim()]));
-  // عداد "خلصت X من Y" جنب عنوان الجدول
-  const h3 = box.querySelector('.panel h3'); if (!h3) return;
-  let chip = h3.querySelector('.pay-done-count');
-  const n = rows.filter(tr => tr.classList.contains('pay-row-done')).length;
-  if (!n) { if (chip) chip.remove(); return; }
-  if (!chip) { chip = document.createElement('span'); chip.className = 'pay-done-count'; chip.style.cssText = 'font-size:12px;font-weight:800;color:var(--green);background:#e6f4ea;border-radius:20px;padding:3px 10px;'; h3.firstElementChild.after(chip); }
-  chip.textContent = '✓ خلصت ' + n + ' من ' + rows.length;
-}
-async function payrollToggleEmployeeDone_(name, btn){
-  if (!PAYSTATE.data) return;
-  const map = PAYSTATE.data.doneNames = Object.assign({}, PAYSTATE.data.doneNames || {});
-  const prev = map[name], wasDone = !!prev;
-  // لو مختار في الإضافة السريعة وهنقفله — شيله من الاختيار الأول
-  if (!wasDone && PAY_QA && PAY_QA.emps && PAY_QA.emps.includes(name)) payrollQaToggleEmp(name);
-  if (wasDone) delete map[name]; else map[name] = new Date().toISOString().slice(0, 10);
-  payrollApplyDoneUI_();
-  if (btn) btn.disabled = true;
-  try {
-    const res = await apiPost('payrollSetEmployeeDone', { name, done: !wasDone, monthNum: PAYSTATE.monthIndex + 1, year: PAYSTATE.year });
-    if (!res || res.error) throw new Error((res && res.error) || 'مفيش رد');
-    if (res.doneNames && PAYSTATE.data) PAYSTATE.data.doneNames = res.doneNames;
-    showToast(wasDone ? '↩️ اتفتح "' + name + '" تاني' : '✔ اتقفل "' + name + '" — خلصته الشهر ده', 'success');
-  } catch(err){
-    if (PAYSTATE.data) { const m = PAYSTATE.data.doneNames = PAYSTATE.data.doneNames || {}; if (wasDone) m[name] = prev; else delete m[name]; }
-    const msg = String(err.message || err);
-    showToast(/Unknown POST action/i.test(msg) ? 'لازم تعمل Deploy لنسخة جديدة من Apps Script الأول عشان "تم" تشتغل' : 'خطأ: ' + msg, 'error');
-  } finally {
-    if (btn) btn.disabled = false;
-    payrollApplyDoneUI_();
   }
 }
 
