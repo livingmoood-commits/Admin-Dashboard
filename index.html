@@ -702,6 +702,23 @@
   textarea.pay-cell.qa-col-hl{ box-shadow:inset 0 0 0 2px var(--gold) !important; }
   tr.qa-emp-hl td{ background:#fdf6e3; }
   td.pay-emp-name.qa-emp-hl{ background:var(--gold) !important; color:var(--white) !important; }
+  /* ⚠️ 2026-10-28: الإضافة السريعة — سهم يقفل بلوك الموظف + "تم" زي Work Flow */
+  .qa-emp-head{ display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; }
+  .qa-emp-head .qa-emp-title{ font-weight:700; }
+  .qa-emp-head .qa-emp-sum{ font-size:11.5px; color:var(--muted); font-weight:600; }
+  .qa-emp-head .to-status-btn{ margin-inline-start:auto; padding:3px 10px 3px 4px; }
+  .qa-emp-head .to-status-btn .ic{ width:20px; height:20px; font-size:11px; }
+  .qa-collapse-btn{ all:unset; cursor:pointer; width:30px; height:30px; border-radius:8px; border:1.5px solid var(--border);
+    display:flex; align-items:center; justify-content:center; color:var(--gold-dim); font-size:13px; flex-shrink:0;
+    transition:transform .25s var(--bounce), border-color .2s; }
+  .qa-collapse-btn:hover{ border-color:var(--gold); }
+  .qa-emp-box.collapsed .qa-collapse-btn{ transform:rotate(180deg); }
+  .qa-emp-box .qa-emp-body{ margin-top:8px; }
+  .qa-emp-box.collapsed .qa-emp-body{ display:none; }
+  .qa-emp-box.qa-done{ background:rgba(44,95,58,.07) !important; border-color:rgba(44,95,58,.35) !important; }
+  .qa-emp-box.qa-done .qa-emp-title{ color:var(--green); text-decoration:line-through; text-decoration-color:rgba(44,95,58,.4); }
+  .qa-emp-chip.qa-chip-done::before{ content:'✓ '; color:var(--green); font-weight:800; }
+  .qa-emp-chip.btn-primary.qa-chip-done::before{ color:#fff; }
   textarea.pay-cell.qa-target-hl{ box-shadow:inset 0 0 0 3px var(--red) !important; }
   /* تلوين أعمدة شيت الـ Master (إجمالي الشهر لكل موظف) — بيتلوّن بس لما القيمة فعلاً != 0،
      عشان "0" في عمود إجمالي معناه "مفيش حاجة اتسجلت" مش غياب زي خانة اليوم الفردية. */
@@ -6308,7 +6325,7 @@ function payrollQaToggleEmp(name){
   } else {
     PAY_QA.emps.splice(idx, 1);
     delete PAY_QA.perEmp[name];
-    if (chip) chip.classList.remove('btn-primary');
+    if (chip) chip.classList.remove('btn-primary', 'qa-chip-done');
   }
   payrollQaRenderEmpPanels_();
   payrollQaHighlight_();
@@ -6318,15 +6335,27 @@ function payrollQaToggleEmp(name){
 function payrollQaRenderEmpPanels_(){
   const box = document.getElementById('qa-emp-panels'); if (!box) return;
   if (!PAY_QA.emps.length) { box.innerHTML = '<p style="font-size:12px;color:var(--muted);">اختار موظف واحد على الأقل الأول.</p>'; return; }
-  box.innerHTML = PAY_QA.emps.map(emp => `
-    <div class="panel" style="background:#fff;margin-bottom:12px;padding:12px;">
-      <div style="font-weight:700;margin-bottom:8px;">${qEsc(emp)}</div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">اختار يوم واحد أو أكتر لـ ${qEsc(emp)}:</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
-        ${PAY_QA_DAYLIST.map(d => `<button type="button" class="btn btn-sm qa-day-chip" data-emp="${qEsc(emp)}" data-iso="${d.iso}" onclick="payrollQaToggleDay('${qEsc(emp)}','${d.iso}','${qEsc(d.label)}')">${qEsc(d.label)}</button>`).join('')}
+  box.innerHTML = PAY_QA.emps.map(emp => {
+    const st = PAY_QA.perEmp[emp] || {};
+    return `
+    <div class="panel qa-emp-box${st.collapsed ? ' collapsed' : ''}${st.done ? ' qa-done' : ''}" data-qa-box="${qEsc(emp)}" style="background:#fff;margin-bottom:12px;padding:12px;">
+      <div class="qa-emp-head" onclick="payrollQaToggleCollapse('${qEscJs(emp)}')">
+        <span class="qa-emp-title">${qEsc(emp)}</span>
+        <span class="qa-emp-sum">${qEsc(payrollQaEmpSummary_(emp))}</span>
+        <button type="button" class="to-status-btn ${st.done ? 'done-active' : ''}" title="خلصت الموظف ده — اقفل البلوك بتاعه" onclick="event.stopPropagation();payrollQaToggleDone('${qEscJs(emp)}')">
+          <span class="ic">&#10003;</span><span class="lbl">تم</span>
+        </button>
+        <button type="button" class="qa-collapse-btn" title="${st.collapsed ? 'فتح' : 'قفل'}">&#9650;</button>
       </div>
-      <div data-qa-editors="${qEsc(emp)}"></div>
-    </div>`).join('');
+      <div class="qa-emp-body">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">اختار يوم واحد أو أكتر لـ ${qEsc(emp)}:</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+          ${PAY_QA_DAYLIST.map(d => `<button type="button" class="btn btn-sm qa-day-chip" data-emp="${qEsc(emp)}" data-iso="${d.iso}" onclick="payrollQaToggleDay('${qEsc(emp)}','${d.iso}','${qEsc(d.label)}')">${qEsc(d.label)}</button>`).join('')}
+        </div>
+        <div data-qa-editors="${qEsc(emp)}"></div>
+      </div>
+    </div>`;
+  }).join('');
   // نعيد تعليم أزرار الأيام اللي كانت مختارة فعلاً لكل موظف (لو رجع اتشال واتضاف تاني)
   PAY_QA.emps.forEach(emp => {
     const st = PAY_QA.perEmp[emp]; if (!st) return;
@@ -6336,6 +6365,40 @@ function payrollQaRenderEmpPanels_(){
     });
     payrollQaRenderEditorsFor_(emp);
   });
+}
+
+// ⚠️ 2026-10-28: سهم يقفل/يفتح بلوك الموظف عشان المساحة، و"تم" بتقفله وتعلّمه أخضر
+// (زي Work Flow). علامة شكلية بس — الحفظ بيحفظ كل الموظفين المختارين زي ما هو.
+function payrollQaEmpSummary_(emp){
+  const st = PAY_QA.perEmp[emp]; if (!st) return '';
+  const days = (st.dates || []).length;
+  if (!days) return 'مفيش أيام لسه';
+  const acts = (st.dates || []).reduce((n, iso) => n + ((st.actions && st.actions[iso]) || []).filter(a => String(a.amount || a.hours || '').trim() !== '').length, 0);
+  return days + (days === 1 ? ' يوم' : ' أيام') + (acts ? ' — ' + acts + ' أكشن' : '');
+}
+function payrollQaSyncBox_(emp){
+  const st = PAY_QA.perEmp[emp]; if (!st) return;
+  const el = document.querySelector(`[data-qa-box="${qaCssEsc_(emp)}"]`);
+  if (el) {
+    el.classList.toggle('collapsed', !!st.collapsed);
+    el.classList.toggle('qa-done', !!st.done);
+    const dBtn = el.querySelector('.qa-emp-head .to-status-btn'); if (dBtn) dBtn.classList.toggle('done-active', !!st.done);
+    const cBtn = el.querySelector('.qa-collapse-btn'); if (cBtn) cBtn.title = st.collapsed ? 'فتح' : 'قفل';
+    const sum = el.querySelector('.qa-emp-sum'); if (sum) sum.textContent = payrollQaEmpSummary_(emp);
+  }
+  const chip = document.querySelector(`.qa-emp-chip[data-emp="${qaCssEsc_(emp)}"]`);
+  if (chip) chip.classList.toggle('qa-chip-done', !!st.done);
+}
+function payrollQaToggleCollapse(emp){
+  const st = PAY_QA.perEmp[emp]; if (!st) return;
+  st.collapsed = !st.collapsed;
+  payrollQaSyncBox_(emp);
+}
+function payrollQaToggleDone(emp){
+  const st = PAY_QA.perEmp[emp]; if (!st) return;
+  st.done = !st.done;
+  st.collapsed = st.done; // تم = اقفله، وإلغاء تم = افتحه تاني
+  payrollQaSyncBox_(emp);
 }
 
 function payrollQaEditorsBoxFor_(emp){
