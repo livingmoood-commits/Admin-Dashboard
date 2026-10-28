@@ -8444,6 +8444,10 @@ function pjOpenCreateModal(){
       <label>اسم المشروع</label>
       <input type="text" id="pj-new-name" autocomplete="off" placeholder="مثال: Al Andalus" onkeydown="if(event.key==='Enter'){event.preventDefault();pjSubmitCreate();}">
     </div>
+    <div class="field">
+      <label>الإيرادات (اختياري)</label>
+      <input type="number" id="pj-new-rev" min="0" placeholder="قيمة التعاقد / المتفق عليه مع العميل" onkeydown="if(event.key==='Enter'){event.preventDefault();pjSubmitCreate();}">
+    </div>
     <div class="msg" id="pj-new-msg"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">
       <button type="button" class="btn btn-outline" onclick="closeCardModal()">إلغاء</button>
@@ -8461,6 +8465,11 @@ async function pjSubmitCreate(){
   btn.disabled = true; msg.className = 'msg'; msg.innerHTML = '<span class="spinner"></span>جاري الإنشاء...';
   try {
     await apiPost('createProject', { name });
+    // الإيراد بيتسجل في نفس مكان إيرادات المشروع (بلوك الإيرادات في التكاليف) — نفس مودال "تفاصيل وتعديل الإيرادات"
+    const rev = Number((document.getElementById('pj-new-rev') || {}).value) || 0;
+    // المشروع اتعمل خلاص، فلو الإيراد فشل منرجعش خطأ (إعادة المحاولة هتقول "موجود بالفعل") — نبلّغ بس
+    if (rev > 0) await apiPost('addProjectRevenueEntry', { project: name, date: todayStr(), desc: 'قيمة المشروع', amount: rev })
+      .catch(e => showToast('اتعمل المشروع بس الإيراد متسجلش — ضيفه من عمود الإيرادات: ' + (e.message || e), 'error'));
     closeCardModal();
     sessionStorage.setItem('lm_peProject', name); // المشروع الجديد يتفتح تلقائي في تاب "متابعة صرف المشاريع"
     _allProjectsForTreasury = Array.from(new Set([...(_allProjectsForTreasury||[]), name]));
@@ -8767,6 +8776,10 @@ function pjOpenCreateModal2(){
       <label>اسم المشروع</label>
       <input type="text" id="pj2-new-name" autocomplete="off" placeholder="مثال: Al Andalus" onkeydown="if(event.key==='Enter'){event.preventDefault();pjSubmitCreate2();}">
     </div>
+    <div class="field">
+      <label>الإيرادات (اختياري)</label>
+      <input type="number" id="pj2-new-rev" min="0" placeholder="قيمة التعاقد / المتفق عليه مع العميل" onkeydown="if(event.key==='Enter'){event.preventDefault();pjSubmitCreate2();}">
+    </div>
     <div class="msg" id="pj2-new-msg"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">
       <button type="button" class="btn btn-outline" onclick="closeCardModal()">إلغاء</button>
@@ -8784,6 +8797,11 @@ async function pjSubmitCreate2(){
   btn.disabled = true; msg.className = 'msg'; msg.innerHTML = '<span class="spinner"></span>جاري الإنشاء...';
   try {
     await apiPost('createProject', { name });
+    // الإيراد بيتسجل في نفس مكان إيرادات المشروع (بلوك الإيرادات في التكاليف) — نفس مودال "تفاصيل وتعديل الإيرادات"
+    const rev = Number((document.getElementById('pj2-new-rev') || {}).value) || 0;
+    // المشروع اتعمل خلاص، فلو الإيراد فشل منرجعش خطأ (إعادة المحاولة هتقول "موجود بالفعل") — نبلّغ بس
+    if (rev > 0) await apiPost('addProjectRevenueEntry', { project: name, date: todayStr(), desc: 'قيمة المشروع', amount: rev })
+      .catch(e => showToast('اتعمل المشروع بس الإيراد متسجلش — ضيفه من عمود الإيرادات: ' + (e.message || e), 'error'));
     closeCardModal();
     showToast('✅ اتعمل المشروع');
     await renderProjectsPage(_navToken);
