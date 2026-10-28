@@ -1259,6 +1259,42 @@
     .item-check input{ width:24px; height:24px; }
     .copies-stepper button{ width:38px; height:40px; }
   }
+
+  /* ⚠️ إضافة 2026-10-28: شكل موحّد لكل الدروب داون (select) في الموقع كله —
+     بدل سهم المتصفح الرمادي: سهم دهبي، خلفية بيج، وفتحة دهبي عند الفوكس.
+     القايمة اللي بتفتح نفسها بقت بالتصميم بتاعنا (lm-sel-pop في الآخر) على
+     الكمبيوتر؛ على الموبايل بيفضل منتقي النظام الأصلي (أسهل باللمس). الدارك
+     مود بيشتغل لوحده لأن القايمة جوه نفس الفلتر بتاع باقي الصفحة. */
+  select:not([multiple]):not([size]){
+    -webkit-appearance:none; -moz-appearance:none; appearance:none;
+    background-color:#fdfcfa;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23B8975A' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:left 12px center; background-size:12px 8px;
+    padding-left:34px !important;
+    border:1.5px solid var(--border); border-radius:8px; color:var(--dark); cursor:pointer;
+    transition:border-color .2s, box-shadow .2s, background-color .2s;
+  }
+  select:not([multiple]):not([size]):hover{ border-color:#d8cdb8; }
+  select:not([multiple]):not([size]):focus,
+  select.lm-sel-open{ outline:none; border-color:var(--gold); box-shadow:0 0 0 3px rgba(184,151,90,.18); background-color:#fff; }
+  select:not([multiple]):not([size]):disabled{ opacity:.55; cursor:not-allowed; }
+  select option{ background:#fff; color:var(--dark); }
+  .lm-sel-pop{ position:fixed; z-index:100000; background:var(--white); border:1.5px solid var(--gold); border-radius:10px;
+    box-shadow:0 14px 32px -10px rgba(30,26,21,.32); padding:5px; display:flex; flex-direction:column;
+    font-family:'Cairo',sans-serif; direction:rtl; animation:toCsIn .16s var(--bounce); }
+  .lm-sel-pop.up{ animation:none; }
+  .lm-sel-search{ margin:0 0 5px; padding:7px 10px !important; border:1.5px solid var(--border); border-radius:7px; font-family:inherit;
+    font-size:13px !important; background:#fdfcfa; color:var(--dark); outline:none; }
+  .lm-sel-search:focus{ border-color:var(--gold); }
+  .lm-sel-list{ overflow-y:auto; overscroll-behavior:contain; }
+  .lm-sel-opt{ padding:8px 12px; border-radius:7px; font-size:13.5px; color:var(--dark); cursor:pointer; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; transition:background .12s; }
+  .lm-sel-opt.active{ background:var(--cream); }
+  .lm-sel-opt.selected{ background:var(--gold); color:var(--dark); font-weight:800; }
+  .lm-sel-opt.disabled{ color:#b7ac9a; cursor:default; background:none; }
+  .lm-sel-group{ padding:6px 12px 4px; font-size:10.5px; font-weight:700; color:var(--muted); border-top:1px solid var(--border); margin-top:4px; }
+  .lm-sel-group:first-child{ border-top:none; margin-top:0; }
+  .lm-sel-empty{ padding:10px 12px; font-size:12.5px; color:var(--muted); text-align:center; }
 </style>
 </head>
 <body>
@@ -11361,7 +11397,7 @@ async function expxRender(id, token){
           <span>كل المصاريف بالتفاصيل</span>
           <span style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;font-weight:600;">
             <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="${P}-group" checked> تجميع بالأيام</label>
-            <select id="${P}-sort" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:12px;background:var(--white);">
+            <select id="${P}-sort" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:12px;background-color:var(--white);">
               <option value="date-desc">الأحدث الأول</option>
               <option value="date-asc">الأقدم الأول</option>
               <option value="amount-desc">الأعلى مبلغ</option>
@@ -18080,6 +18116,135 @@ async function matHistDoDelete(usageId){
   finally { if (btn) { btn.disabled = false; btn.textContent = 'تأكيد الحذف'; } }
 }
 
+</script>
+<script>
+/* ⚠️ إضافة 2026-10-28: قايمة الدروب داون بتصميم الموقع لكل الـ<select> (حتى اللي
+   بتترسم بعدين). الـselect الأصلي فاضل هو مصدر القيمة: الاختيار بيعمل
+   select.value + بيبعت input/change عادي، فكل onchange القديم شغال زي ما هو.
+   على الموبايل/اللمس بنسيب منتقي النظام الأصلي. */
+(function(){
+  if (!window.matchMedia || !matchMedia('(hover:hover) and (pointer:fine)').matches) return;
+  let pop = null, cur = null, items = [], activeIdx = -1;
+  const ok = s => s && s.tagName === 'SELECT' && !s.multiple && !(s.size > 1) && !s.disabled;
+
+  function close(){
+    if (!pop) return;
+    pop.remove(); pop = null;
+    if (cur) cur.classList.remove('lm-sel-open');
+    cur = null; items = []; activeIdx = -1;
+  }
+  function choose(opt){
+    const s = cur; if (!s || !opt || opt.disabled) return;
+    const changed = s.value !== opt.value || s.selectedIndex !== opt.index;
+    s.selectedIndex = opt.index;
+    close(); s.focus();
+    if (changed) {
+      s.dispatchEvent(new Event('input', { bubbles:true }));
+      s.dispatchEvent(new Event('change', { bubbles:true }));
+    }
+  }
+  function setActive(i, scroll){
+    items.forEach(it => it.el.classList.remove('active'));
+    activeIdx = i;
+    const it = items[i]; if (!it) return;
+    it.el.classList.add('active');
+    if (scroll) it.el.scrollIntoView({ block:'nearest' });
+  }
+  function visible(){ return items.map((it, i) => i).filter(i => items[i].el.style.display !== 'none' && !items[i].opt.disabled); }
+  function move(d){
+    const v = visible(); if (!v.length) return;
+    const p = v.indexOf(activeIdx);
+    setActive(v[p < 0 ? (d > 0 ? 0 : v.length - 1) : Math.max(0, Math.min(v.length - 1, p + d))], true);
+  }
+  function position(){
+    if (!pop || !cur) return;
+    const r = cur.getBoundingClientRect(), vh = innerHeight, vw = innerWidth;
+    const w = Math.min(Math.max(r.width, 160), vw - 16);
+    pop.style.width = w + 'px';
+    pop.style.left = Math.max(8, Math.min(r.right - w, vw - w - 8)) + 'px'; // RTL: محاذاة على يمين الخانة
+    const below = vh - r.bottom - 10, above = r.top - 10;
+    const up = below < 200 && above > below;
+    const maxH = Math.max(120, Math.min(320, up ? above : below));
+    pop.style.maxHeight = maxH + 'px';
+    pop.classList.toggle('up', up);
+    if (up) { pop.style.top = ''; pop.style.bottom = (vh - r.top + 6) + 'px'; }
+    else { pop.style.bottom = ''; pop.style.top = (r.bottom + 6) + 'px'; }
+  }
+  function open(s){
+    close();
+    cur = s; s.classList.add('lm-sel-open');
+    pop = document.createElement('div');
+    pop.className = 'lm-sel-pop';
+    let search = null;
+    if (s.options.length > 10) {
+      search = document.createElement('input');
+      search.type = 'text'; search.className = 'lm-sel-search'; search.placeholder = '🔍 دوّر...';
+      pop.appendChild(search);
+    }
+    const list = document.createElement('div'); list.className = 'lm-sel-list';
+    let lastGroup = null;
+    Array.from(s.options).forEach(opt => {
+      if (opt.hidden) return;
+      const g = opt.parentElement && opt.parentElement.tagName === 'OPTGROUP' ? opt.parentElement : null;
+      if (g && g !== lastGroup) { const gh = document.createElement('div'); gh.className = 'lm-sel-group'; gh.textContent = g.label; list.appendChild(gh); }
+      lastGroup = g;
+      const el = document.createElement('div');
+      el.className = 'lm-sel-opt' + (opt.selected ? ' selected' : '') + (opt.disabled ? ' disabled' : '');
+      el.textContent = opt.textContent; el.title = opt.textContent;
+      const idx = items.length;
+      el.addEventListener('mousedown', e => { e.preventDefault(); choose(opt); });
+      el.addEventListener('mousemove', () => { if (!opt.disabled && activeIdx !== idx) setActive(idx); });
+      list.appendChild(el);
+      items.push({ el, opt });
+    });
+    const empty = document.createElement('div'); empty.className = 'lm-sel-empty'; empty.textContent = 'مفيش نتايج'; empty.style.display = 'none';
+    list.appendChild(empty);
+    pop.appendChild(list);
+    document.body.appendChild(pop); // body child = جوه فلتر الدارك مود تلقائي
+    position();
+    const selIdx = items.findIndex(it => it.opt.selected);
+    if (selIdx >= 0) setActive(selIdx, true); else move(1);
+    if (search) {
+      search.addEventListener('input', () => {
+        const q = search.value.trim().toLowerCase();
+        items.forEach(it => { it.el.style.display = !q || it.el.textContent.toLowerCase().includes(q) ? '' : 'none'; });
+        list.querySelectorAll('.lm-sel-group').forEach(gh => { gh.style.display = q ? 'none' : ''; });
+        const v = visible(); empty.style.display = v.length ? 'none' : '';
+        setActive(v.length ? v[0] : -1, true);
+      });
+      search.addEventListener('keydown', onKey);
+      search.addEventListener('mousedown', e => e.stopPropagation());
+      setTimeout(() => search && search.focus(), 0);
+    }
+  }
+  function onKey(e){
+    if (!pop) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); move(1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (items[activeIdx]) choose(items[activeIdx].opt); }
+    else if (e.key === 'Escape' || e.key === 'Tab') { const s = cur; close(); if (e.key === 'Escape') { e.preventDefault(); s && s.focus(); } }
+  }
+
+  document.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    const s = e.target.closest ? e.target.closest('select') : null;
+    if (pop && pop.contains(e.target)) return;
+    if (ok(s)) {
+      e.preventDefault();
+      if (cur === s) { close(); return; }
+      s.focus(); open(s);
+    } else close();
+  }, true);
+  document.addEventListener('keydown', e => {
+    if (pop && (e.target === cur || pop.contains(e.target))) { if (e.target === cur) onKey(e); return; }
+    // Alt+↓ / مسافة / Enter على select متفوكس = افتح القايمة بتاعتنا
+    const s = e.target;
+    if (ok(s) && ((e.altKey && e.key === 'ArrowDown') || e.key === ' ' || e.key === 'Enter')) { e.preventDefault(); open(s); }
+  }, true);
+  window.addEventListener('scroll', e => { if (pop && !pop.contains(e.target)) close(); }, true);
+  window.addEventListener('resize', close);
+  window.addEventListener('blur', close);
+})();
 </script>
 </body>
 </html>
