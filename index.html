@@ -1312,6 +1312,15 @@
   .lm-sel-group{ padding:6px 12px 4px; font-size:10.5px; font-weight:700; color:var(--muted); border-top:1px solid var(--border); margin-top:4px; }
   .lm-sel-group:first-child{ border-top:none; margin-top:0; }
   .lm-sel-empty{ padding:10px 12px; font-size:12.5px; color:var(--muted); text-align:center; }
+  /* ⚠️ 2026-10-29: خانة نص + اقتراحات (بدل <datalist> بتاع المتصفح) — نفس شكل وقايمة الدروب داون بتاعتنا،
+     وتقدر تكتب اسم جديد مش في القايمة عادي. الاستخدام: class="lm-combo" data-list="<id الـ datalist>" */
+  input.lm-combo{
+    background-color:#fdfcfa;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23B8975A' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:left 12px center; background-size:12px 8px;
+    padding-left:34px !important; cursor:pointer;
+  }
+  input.lm-combo:focus, input.lm-combo.lm-sel-open{ outline:none; border-color:var(--gold); box-shadow:0 0 0 3px rgba(184,151,90,.18); background-color:#fff; cursor:text; }
 </style>
 </head>
 <body>
@@ -7122,7 +7131,7 @@ function renderTreasuryMovesTab(){
           <div class="form-row">
             <div class="field"><label>البيان</label><input autocomplete="off" id="m_desc" required placeholder="مثال: مرتب أسبوعي، دفعة عميل..."></div>
             <div class="field"><label>المشروع (اختياري)</label>
-              <input autocomplete="off" id="m_project" list="m-project-list" placeholder="اختار من المشاريع الموجودة أو اكتب اسم مشروع جديد">
+              <input autocomplete="off" id="m_project" class="lm-combo" data-list="m-project-list" placeholder="اختار من المشاريع الموجودة أو اكتب اسم مشروع جديد">
               <datalist id="m-project-list">${_allProjectsForTreasury.map(p => `<option value="${qEsc(p)}">`).join('')}</datalist>
             </div>
           </div>
@@ -18307,6 +18316,104 @@ async function matHistDoDelete(usageId){
   window.addEventListener('scroll', e => { if (pop && !pop.contains(e.target)) close(); }, true);
   window.addEventListener('resize', close);
   window.addEventListener('blur', close);
+})();
+
+/* خانة نص بقايمة اقتراحات بشكل الدروب داون بتاعنا (input.lm-combo) — الكتابة بتفلتر، والاختيار
+ * بيكتب القيمة في الخانة. القايمة نفسها جاية من <datalist id=data-list> (اللي بيتعمله render عادي). */
+(function(){
+  let pop = null, cur = null, items = [], activeIdx = -1;
+  function opts(inp){
+    const dl = document.getElementById(inp.dataset.list || '');
+    return dl ? Array.from(dl.options).map(o => o.value).filter(Boolean) : [];
+  }
+  function close(){
+    if (pop) pop.remove();
+    if (cur) cur.classList.remove('lm-sel-open');
+    pop = null; cur = null; items = []; activeIdx = -1;
+  }
+  function position(){
+    if (!pop || !cur) return;
+    const r = cur.getBoundingClientRect(), vh = innerHeight, vw = innerWidth;
+    const w = Math.min(Math.max(r.width, 160), vw - 16);
+    pop.style.width = w + 'px';
+    pop.style.left = Math.max(8, Math.min(r.right - w, vw - w - 8)) + 'px';
+    const below = vh - r.bottom - 10, above = r.top - 10;
+    const up = below < 200 && above > below;
+    pop.style.maxHeight = Math.max(120, Math.min(320, up ? above : below)) + 'px';
+    pop.classList.toggle('up', up);
+    if (up) { pop.style.top = ''; pop.style.bottom = (vh - r.top + 6) + 'px'; }
+    else { pop.style.bottom = ''; pop.style.top = (r.bottom + 6) + 'px'; }
+  }
+  function setActive(i, scroll){
+    items.forEach(it => it.el.classList.remove('active'));
+    activeIdx = i;
+    const it = items[i]; if (!it) return;
+    it.el.classList.add('active');
+    if (scroll) it.el.scrollIntoView({ block:'nearest' });
+  }
+  function choose(val){
+    const inp = cur; if (!inp) return;
+    inp.value = val;
+    close();
+    inp.dispatchEvent(new Event('input', { bubbles:true }));
+    inp.dispatchEvent(new Event('change', { bubbles:true }));
+  }
+  function render(filter){
+    if (!cur) return;
+    const all = opts(cur);
+    const q = String(filter || '').trim().toLowerCase();
+    const list = q ? all.filter(v => v.toLowerCase().includes(q)) : all;
+    if (!pop) {
+      pop = document.createElement('div'); pop.className = 'lm-sel-pop';
+      pop.addEventListener('mousedown', e => e.preventDefault()); // الفوكس يفضل في الخانة
+      document.body.appendChild(pop);
+    }
+    pop.innerHTML = '';
+    const box = document.createElement('div'); box.className = 'lm-sel-list';
+    items = list.map((v, i) => {
+      const el = document.createElement('div');
+      el.className = 'lm-sel-opt' + (v === cur.value ? ' selected' : '');
+      el.textContent = v; el.title = v;
+      el.addEventListener('mousedown', e => { e.preventDefault(); choose(v); });
+      el.addEventListener('mousemove', () => { if (activeIdx !== i) setActive(i); });
+      box.appendChild(el);
+      return { el, v };
+    });
+    if (!items.length) {
+      const empty = document.createElement('div'); empty.className = 'lm-sel-empty';
+      empty.textContent = all.length ? 'مفيش مشروع بالاسم ده — هيتسجل جديد' : 'مفيش اقتراحات';
+      box.appendChild(empty);
+    }
+    pop.appendChild(box);
+    position();
+    const sel = items.findIndex(it => it.v === cur.value);
+    activeIdx = -1;
+    if (sel >= 0) setActive(sel, true);
+  }
+  function open(inp){
+    if (cur !== inp) close();
+    cur = inp; inp.classList.add('lm-sel-open');
+    render(''); // أول ما تفتح: القايمة كلها (زي الدروب داون)
+  }
+  const isCombo = t => t && t.matches && t.matches('input.lm-combo');
+  document.addEventListener('mousedown', e => {
+    if (pop && pop.contains(e.target)) return;
+    if (isCombo(e.target)) { if (cur === e.target && pop) close(); else open(e.target); }
+    else close();
+  }, true);
+  document.addEventListener('focusin', e => { if (isCombo(e.target) && cur !== e.target) open(e.target); });
+  document.addEventListener('focusout', e => { if (e.target === cur) setTimeout(() => { if (cur && document.activeElement !== cur) close(); }, 0); });
+  document.addEventListener('input', e => { if (isCombo(e.target) && e.isTrusted) { if (cur !== e.target) { cur = e.target; cur.classList.add('lm-sel-open'); } render(e.target.value); } });
+  document.addEventListener('keydown', e => {
+    if (!isCombo(e.target)) return;
+    if (!pop) { if (e.key === 'ArrowDown') { e.preventDefault(); open(e.target); } return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(Math.min(items.length - 1, activeIdx + 1), true); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(Math.max(0, activeIdx - 1), true); }
+    else if (e.key === 'Enter' && items[activeIdx]) { e.preventDefault(); choose(items[activeIdx].v); }
+    else if (e.key === 'Escape' || e.key === 'Tab') close();
+  }, true);
+  window.addEventListener('scroll', e => { if (pop && !pop.contains(e.target)) close(); }, true);
+  window.addEventListener('resize', close);
 })();
 </script>
 </body>
