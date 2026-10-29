@@ -341,7 +341,8 @@
   table.to-weekgrid thead th.today{ background:var(--gold); color:var(--dark); }
   table.to-weekgrid thead th.today .ddate{ color:var(--dark2); }
   table.to-weekgrid td.to-emp-col{ background:var(--cream); padding:11px 10px; font-weight:800; font-size:12.5px; white-space:nowrap; text-align:center; vertical-align:middle;
-    position:sticky; right:0; z-index:1; border-inline-end:2px solid var(--border); }
+    position:relative; z-index:1; border-inline-end:2px solid var(--border); }
+  table.to-weekgrid thead th.lm-stick{ position:relative; z-index:2; }
   table.to-weekgrid td.to-day-cell{ vertical-align:middle; text-align:center; min-width:110px; padding:5px; cursor:pointer; transition:.12s; }
   td.to-day-cell:hover{ background:#fdf6e8; }
   td.to-day-cell.selected{ background:#fbeecb; outline:2px solid var(--gold); outline-offset:-2px; }
@@ -4905,7 +4906,7 @@ function payrollRenderWeeklyTable_(box, data){
 
   const row1 = `
     <tr>
-      <th rowspan="2" style="position:sticky;right:0;background:var(--dark);z-index:2;">اسم الموظف</th>
+      <th rowspan="2" class="lm-stick" style="position:sticky;background:var(--dark);z-index:2;">اسم الموظف</th>
       ${data.weekHeaderBlocks.map(wb => `<th colspan="${wb.dayHeaders.length + wb.sumHeaders.length}" style="background:#3a2f22;">الأسبوع ${qEsc(wb.label)}</th>`).join('')}
       ${sepThRowspan}
       <th colspan="${data.monthSummaryHeaders.length}" style="background:#3a2f22;">إجمالي الشهر</th>
@@ -4946,7 +4947,7 @@ function payrollRenderWeeklyTable_(box, data){
     }).join('');
     const monthSumHtml = r.monthSummaryCells.map((v, si) => `<td class="sm-cell ${summaryCellClass(data.monthSummaryHeaders[si], v)}" data-sum-idx="${sumFlatIdx++}">${qEsc(v)}</td>`).join('');
     return `<tr data-emp="${qEsc(r.name)}">
-      <td class="pay-emp-name" data-emp="${qEsc(r.name)}" style="position:sticky;right:0;background:var(--white);font-weight:700;z-index:1;">${qEsc(r.name)}</td>
+      <td class="pay-emp-name lm-stick" data-emp="${qEsc(r.name)}" style="position:relative;background:var(--white);font-weight:700;z-index:1;">${qEsc(r.name)}</td>
       ${weeksHtml}
       ${sepTd}
       ${monthSumHtml}
@@ -6163,13 +6164,13 @@ function payrollRenderMonthlyTable_(box, data){
   PAYSTATE._flatHeaders = data.summaryHeaders;
   const bodyRows = data.rows.map((r, empIdx) => `
     <tr data-emp="${qEsc(r.name)}">
-      <td class="pay-emp-name" data-emp="${qEsc(r.name)}" style="position:sticky;right:0;background:var(--white);font-weight:700;z-index:1;">${qEsc(r.name)}</td>
+      <td class="pay-emp-name lm-stick" data-emp="${qEsc(r.name)}" style="position:relative;background:var(--white);font-weight:700;z-index:1;">${qEsc(r.name)}</td>
       ${r.dayCells.map((v, i) => payrollDayCellHtml_(r.row, data.dayStart + i, v, empIdx, i, (data.dayDates||[])[i], r.name, (r.dayNotes||[])[i])).join('')}
       ${r.summaryCells.map((v, si) => `<td class="sm-cell ${summaryCellClass(data.summaryHeaders[si], v)}" data-sum-idx="${si}">${qEsc(v)}</td>`).join('')}
     </tr>`).join('');
 
   const totalsHtml = data.totals
-    ? `<tr class="tbl-totals-row"><td style="position:sticky;right:0;">الإجمالي</td>${'<td></td>'.repeat(data.dayHeaders.length)}${data.totals.map((v, si) => `<td data-sum-idx="${si}">${qEsc(v)}</td>`).join('')}</tr>`
+    ? `<tr class="tbl-totals-row"><td class="lm-stick" style="position:sticky;">الإجمالي</td>${'<td></td>'.repeat(data.dayHeaders.length)}${data.totals.map((v, si) => `<td data-sum-idx="${si}">${qEsc(v)}</td>`).join('')}</tr>`
     : '';
 
   box.innerHTML = `
@@ -6181,7 +6182,7 @@ function payrollRenderMonthlyTable_(box, data){
       <div class="tbl-wrap tbl-wrap-scroll" style="max-height:70vh;">
         <table style="border-collapse:separate;border-spacing:0;">
           <thead><tr>
-            <th style="position:sticky;right:0;background:var(--dark);z-index:2;">اسم الموظف</th>
+            <th class="lm-stick" style="position:sticky;background:var(--dark);z-index:2;">اسم الموظف</th>
             ${data.dayHeaders.map((h,i) => `<th data-iso="${qEsc((data.dayDates||[])[i] || '')}" style="min-width:62px;white-space:pre-line;">${qEsc(h)}</th>`).join('')}
             ${data.summaryHeaders.map(h => `<th style="background:#3a2f22;min-width:112px;">${qEsc(h)}</th>`).join('')}
           </tr></thead>
@@ -16706,13 +16707,13 @@ function toRenderWeekGrid(dates, from, to) {
       <div class="to-grid-wrap">
         <table class="to-weekgrid">
           <thead><tr>
-            <th style="min-width:120px;">الصنيعي</th>
+            <th class="lm-stick" style="min-width:120px;">الصنيعي</th>
             ${shownDays.map(({ dt, i }) => `<th class="${toISO(dt)===todayIso?'today':''}" data-date="${toISO(dt)}" style="cursor:pointer;" title="حدد كل الصنايعية في اليوم ده"><div class="dname">${TO_DAY_NAMES[i]}</div><div class="ddate">${toFmtDayDate(dt)}</div></th>`).join('')}
           </tr></thead>
           <tbody>
             ${TO_STATE.weekCraftsmenNames.map(emp => `
               <tr>
-                <td class="to-emp-col" data-emp="${qEsc(emp)}" style="cursor:pointer;" title="حدد كل أيام ${qEsc(emp)}">${qEsc(emp)}</td>
+                <td class="to-emp-col lm-stick" data-emp="${qEsc(emp)}" style="cursor:pointer;" title="حدد كل أيام ${qEsc(emp)}">${qEsc(emp)}</td>
                 ${shownDays.map(({ dt }) => {
                   const iso = toISO(dt);
                   const allCellItems = TO_STATE.weekEntries.filter(e => e.craftsman === emp && e.date === iso);
@@ -17348,11 +17349,11 @@ async function toLoadWeeklyReportBox_(from, to){
         <div class="to-grid-wrap">
           <table class="to-weekgrid">
             <thead><tr>
-              <th style="min-width:110px;">الصنيعي</th>
+              <th class="lm-stick" style="min-width:110px;">الصنيعي</th>
               ${days.map(d => `<th class="${d.iso === todayIso ? 'today' : ''}"><div class="dname">${TO_DAY_NAMES[d.i]}</div><div class="ddate">${toFmtDayDate(d.dt)}</div></th>`).join('')}
             </tr></thead>
             <tbody>
-              ${crafts.map(c => `<tr><td class="to-emp-col">${qEsc(c.name)}</td>${days.map(d => `<td class="to-day-cell" style="cursor:default;">${cellHtml(c.name, d.iso)}</td>`).join('')}</tr>`).join('')}
+              ${crafts.map(c => `<tr><td class="to-emp-col lm-stick">${qEsc(c.name)}</td>${days.map(d => `<td class="to-day-cell" style="cursor:default;">${cellHtml(c.name, d.iso)}</td>`).join('')}</tr>`).join('')}
             </tbody>
           </table>
         </div>`;
@@ -18414,6 +18415,34 @@ async function matHistDoDelete(usageId){
   }, true);
   window.addEventListener('scroll', e => { if (pop && !pop.contains(e.target)) close(); }, true);
   window.addEventListener('resize', close);
+})();
+</script>
+<script>
+// ⚠️ إصلاح 2026-10-29 ("الأسامي بتختفي في الموبايل"): عمود الاسم في جدول الأسبوع والمرتبات كان
+// position:sticky; right:0 جوه سكرول أفقي RTL — سفاري الآيفون بيحسب مكانه غلط فبيرميه بره الشاشة
+// والعمود يفضل فاضي. البديل: الخلايا اللي عليها .lm-stick بتتزق بـtransform مع السكرول (شغال في كل المتصفحات).
+(function(){
+  function fix(wrap){
+    const cells = wrap.querySelectorAll('.lm-stick');
+    if (!cells.length) return;
+    const first = cells[0];
+    const cur = parseFloat(first.dataset.lmTx || '0');
+    const wr = wrap.getBoundingClientRect();
+    let tx = Math.round(Math.min(0, (wr.left + wrap.clientLeft + wrap.clientWidth) - (first.getBoundingClientRect().right - cur)));
+    cells.forEach(c => { c.style.transform = tx ? `translateX(${tx}px)` : ''; c.dataset.lmTx = tx; });
+  }
+  function scrollerOf(el){ for (let n = el.parentElement; n && n !== document.body; n = n.parentElement) { if (/auto|scroll/.test(getComputedStyle(n).overflowX)) return n; } return null; }
+  document.addEventListener('scroll', e => { const t = e.target; if (t && t.nodeType === 1 && t.querySelector('.lm-stick')) fix(t); }, true);
+  // الجداول بتترسم من جديد كتير (فيتش/تحديد خلية) — لو السكرول متحرك نرجّع الأسامي مكانها
+  let raf = 0;
+  new MutationObserver(() => {
+    if (raf) return;
+    raf = requestAnimationFrame(() => { raf = 0;
+      const seen = new Set();
+      document.querySelectorAll('.lm-stick').forEach(c => { const w = scrollerOf(c); if (w && !seen.has(w)) { seen.add(w); fix(w); } });
+    });
+  }).observe(document.body, { childList: true, subtree: true });
+  window.addEventListener('resize', () => document.querySelectorAll('.lm-stick').forEach(c => { const w = scrollerOf(c); if (w) fix(w); }));
 })();
 </script>
 </body>
