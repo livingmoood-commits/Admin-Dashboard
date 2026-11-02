@@ -8298,6 +8298,7 @@ function dRenderTodayLog(rows){
       <div style="font-size:13px;color:var(--muted);font-weight:700;">إجمالي مصاريف اليوم: <span id="d-today-total" style="color:var(--red);">${fmt(dTodayTotal())} ج</span></div>
       <div style="display:flex;align-items:center;gap:8px;">
         <div class="msg" id="d-today-msg" style="margin:0;"></div>
+        <button type="button" class="d-del-sel-btn" id="d-move-sel-btn" style="display:none;background:var(--gold);color:var(--dark);" onclick="dTodayMoveSelected()">📅 نقل ليوم تاني</button>
         <button type="button" class="d-del-sel-btn" id="d-del-sel-btn" style="display:none;" onclick="dTodayDeleteSelected()">🗑 حذف المحدد</button>
       </div>
     </div>
@@ -8448,6 +8449,8 @@ function dTodaySelectAll(on){
 function dTodayUpdateSelUi(){
   const n = D_TODAY_SEL.size, all = document.getElementById('d-sel-all'), btn = document.getElementById('d-del-sel-btn');
   if (all) { all.checked = n > 0 && n === D_TODAY_ROWS.length; all.indeterminate = n > 0 && n < D_TODAY_ROWS.length; }
+  const mv = document.getElementById('d-move-sel-btn');
+  if (mv) { mv.style.display = n ? '' : 'none'; mv.textContent = `📅 نقل ليوم تاني (${n})`; }
   if (btn) {
     btn.style.display = n ? '' : 'none';
     const sum = D_TODAY_ROWS.filter(r => D_TODAY_SEL.has(r.row)).reduce((s, r) => s + (Number(r.amount) || 0), 0);
@@ -8488,6 +8491,32 @@ async function dTodayDeleteSelected(){
   _dTodayUnlock();
   if (errMsg) _dTodayMsg('err', `✕ اتحذف ${done} من ${rows.length} — ${errMsg}`);
   else _dTodayMsg('ok', `✔ اتحذف ${done} مصروف`);
+}
+// نقل السطور المحددة ليوم تاني: السيرفر بيمسحها من يومها بكل أثرها وبيسجلها في اليوم الجديد
+// من الأول (المشروع/الخزنة/الماستر/المسحوبات/الديون كلها بتاخد التاريخ الجديد).
+async function dTodayMoveSelected(){
+  if (_dTodayBusy || !D_TODAY_SEL.size) return;
+  const rows = Array.from(D_TODAY_SEL).sort((a, b) => a - b);
+  const inp = document.getElementById('genPromptInput');
+  inp.type = 'date';
+  let newDate;
+  try { newDate = await openGenPrompt(`هتنقل ${rows.length} مصروف ليوم تاني — وهيتعدلوا في كل حاجة (المشروع، الخزنة، المسحوبات...). اختار اليوم:`, DSTATE.date, 'نقل ليوم تاني', false); }
+  finally { inp.type = 'text'; }
+  if (!newDate) return;
+  if (newDate === DSTATE.date) { _dTodayMsg('err', '✕ اختار يوم غير اليوم ده'); return; }
+  _dTodayLock();
+  rows.forEach(r => { const tr = document.getElementById('d-today-row-' + r); if (tr) tr.classList.add('saving'); });
+  let errMsg = '';
+  try { await apiPost('moveDailyExpenseRows', { date: DSTATE.date, rows, newDate }); }
+  catch(err){ errMsg = String(err.message || err); }
+  if (!errMsg) dTodayApplyLocalDelete(rows);
+  else { try { const log = await apiGet('getDailyExpenses', { date: DSTATE.date }); dRenderTodayLog(log.rows || []); } catch(e){} }
+  _dTodayUnlock();
+  if (errMsg) _dTodayMsg('err', /Unknown POST action/i.test(errMsg) ? '✕ لازم تحدّث كود الـ GS وتعمل Deploy الأول' : '✕ ' + errMsg);
+  else {
+    _dTodayMsg('ok', `✔ اتنقل ${rows.length} مصروف ليوم ${newDate}`);
+    try { if (typeof dRenderDaysList === 'function') dRenderDaysList(); } catch(e){}
+  }
 }
 async function dTodayDelete(rowNum){
   if (_dTodayBusy) return;
